@@ -110,6 +110,7 @@ export default function MilestoneConfigPage() {
             ),
             size: 200,
         },
+        /*
         {
             header: 'Icon',
             accessorKey: 'icon',
@@ -124,6 +125,7 @@ export default function MilestoneConfigPage() {
             ),
             size: 60,
         },
+        */
         {
             header: 'ชื่อ (TH)',
             accessorKey: 'name_th',
@@ -132,6 +134,7 @@ export default function MilestoneConfigPage() {
             ),
             size: 150,
         },
+        /*
         {
             header: 'คำอธิบาย',
             accessorKey: 'description',
@@ -142,6 +145,7 @@ export default function MilestoneConfigPage() {
             ),
             size: 200,
         },
+        */
         {
             header: 'สถานะ',
             accessorKey: 'is_active',
@@ -159,29 +163,26 @@ export default function MilestoneConfigPage() {
             id: 'actions',
             header: '',
             cell: ({ row }: { row: { original: MilestoneConfig } }) => (
-                <div className="flex justify-end">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger>
-                            <div className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-slate-100 cursor-pointer">
-                                <MoreHorizontal className="w-4 h-4" />
-                            </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEdit(row.original)}>
-                                <Pencil className="w-4 h-4 mr-2" /> แก้ไข
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                                onClick={() => handleDelete(row.original)}
-                                className="text-red-600 focus:text-red-600"
-                            >
-                                <Trash2 className="w-4 h-4 mr-2" /> ลบ
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                <div className="flex justify-end gap-2">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(row.original)}
+                        className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                    >
+                        <Pencil size={16} />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(row.original)}
+                        className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                    >
+                        <Trash2 size={16} />
+                    </Button>
                 </div>
             ),
-            size: 60,
+            size: 100,
         }
     ];
 

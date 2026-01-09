@@ -10,6 +10,7 @@ import {
     Trash2,
     Mail,
     Plus,
+    KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getEmployees, deleteEmployee } from "@/lib/actions/employee-actions";
@@ -111,10 +112,16 @@ export default function TeamPage() {
 
     const loadEmployees = async () => {
         try {
-            const employees = await getEmployees();
-            setData(employees as any);
+            const result = await getEmployees();
+            if (result.success) {
+                setData(result.data);
+            } else {
+                console.error("Failed to load employees:", result.error);
+                setData([]);
+            }
         } catch (error) {
             console.error("Failed to load employees:", error);
+            setData([]);
         } finally {
             setLoading(false);
         }
@@ -260,6 +267,23 @@ export default function TeamPage() {
             header: () => <div className="text-right">Actions</div>,
             cell: ({ row }) => (
                 <div className="flex justify-end gap-2">
+                    <button
+                        onClick={async () => {
+                            if (confirm(`รีเซ็ตรหัสผ่านของ ${row.original.first_name} เป็น 1234 ?`)) {
+                                const { resetPassword } = await import('@/lib/actions/auth-actions');
+                                const result = await resetPassword(row.original.id);
+                                if (result.success) {
+                                    alert('รีเซ็ตรหัสผ่านสำเร็จ');
+                                } else {
+                                    alert(result.error);
+                                }
+                            }
+                        }}
+                        className="p-1 hover:bg-amber-50 rounded text-amber-600"
+                        title="รีเซ็ตรหัสผ่าน"
+                    >
+                        <KeyRound size={16} />
+                    </button>
                     <button onClick={() => handleEdit(row.original)} className="p-1 hover:bg-blue-50 rounded text-blue-600">
                         <Edit size={16} />
                     </button>
@@ -268,7 +292,7 @@ export default function TeamPage() {
                     </button>
                 </div>
             ),
-            size: 100,
+            size: 140, // Increased size to accommodate new button
         }
     ];
 

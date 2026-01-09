@@ -1,303 +1,414 @@
-"use client";
+'use client'
 
-import { useState, useEffect } from "react";
-import { Modal } from "@/components/ui/modal";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { createEmployee, updateEmployee, EmployeeFormData } from "@/lib/actions/employee-actions";
-import { getDepartments } from "@/lib/actions/department-actions";
-import { getPositions } from "@/lib/actions/position-actions";
-import { getEmployees } from "@/lib/actions/employee-actions";
+    createEmployee,
+    updateEmployee,
+    getEmployeeFormOptions
+} from '@/lib/actions/employee-actions'
 
 interface EmployeeModalProps {
-    open: boolean;
-    onClose: () => void;
-    mode: 'create' | 'edit';
-    employee: any | null;
-    onSuccess: () => void;
+    open: boolean
+    onClose: () => void
+    mode: 'create' | 'edit'
+    employee: any | null
+    onSuccess: () => void
+}
+
+interface FormData {
+    employee_code: string
+    email: string
+    first_name: string
+    last_name: string
+    first_name_th: string
+    last_name_th: string
+    nickname: string
+    phone: string
+    department_id: string
+    position_id: string
+    manager_id: string
+    role: string
+    employment_type: string
+    employment_status: string
+    start_date: string
+}
+
+const initialFormData: FormData = {
+    employee_code: '',
+    email: '',
+    first_name: '',
+    last_name: '',
+    first_name_th: '',
+    last_name_th: '',
+    nickname: '',
+    phone: '',
+    department_id: '',
+    position_id: '',
+    manager_id: '',
+    role: 'member',
+    employment_type: 'full_time',
+    employment_status: 'active',
+    start_date: ''
 }
 
 export function EmployeeModal({ open, onClose, mode, employee, onSuccess }: EmployeeModalProps) {
-    const [isLoading, setIsLoading] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [formData, setFormData] = useState<FormData>(initialFormData)
+    const [options, setOptions] = useState<{
+        departments: any[]
+        positions: any[]
+        managers: any[]
+    }>({
+        departments: [],
+        positions: [],
+        managers: []
+    })
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
-    // Dropdown Data
-    const [departments, setDepartments] = useState<any[]>([]);
-    const [positions, setPositions] = useState<any[]>([]);
-    const [managers, setManagers] = useState<any[]>([]);
-
-    const [formData, setFormData] = useState<EmployeeFormData>({
-        employee_code: "",
-        first_name: "",
-        last_name: "",
-        first_name_th: "",
-        last_name_th: "",
-        nickname: "",
-        email: "",
-        phone: "",
-        department_id: "",
-        position_id: "",
-        manager_id: "0",
-        role: "member",
-        employment_type: "full-time",
-        employment_status: "active",
-        start_date: new Date().toISOString().split('T')[0],
-        probation_end_date: "",
-        working_hours_per_day: 8,
-        working_days_per_week: 5,
-    });
-
+    // Load options on mount
     useEffect(() => {
         if (open) {
-            // Load dropdowns when modal opens
-            const loadDropdowns = async () => {
-                try {
-                    const [depts, pos, emps] = await Promise.all([
-                        getDepartments(),
-                        getPositions(),
-                        getEmployees(),
-                    ]);
-                    setDepartments(depts || []);
-                    setPositions(pos || []);
-                    setManagers(emps || []);
-                } catch (err) {
-                    console.error("Failed to load dropdown data", err);
-                }
-            };
-            loadDropdowns();
+            loadOptions()
         }
-    }, [open]);
+    }, [open])
 
+    // Set form data when editing
     useEffect(() => {
         if (mode === 'edit' && employee) {
             setFormData({
-                employee_code: employee.employee_code || "",
-                first_name: employee.first_name || "",
-                last_name: employee.last_name || "",
-                first_name_th: employee.first_name_th || "",
-                last_name_th: employee.last_name_th || "",
-                nickname: employee.nickname || "",
-                email: employee.email || "",
-                phone: employee.phone || "",
-                department_id: employee.department_id || "",
-                position_id: employee.position_id || "",
-                manager_id: employee.manager_id || "0",
-                role: employee.role || "member",
-                employment_type: employee.employment_type || "full-time",
-                employment_status: employee.employment_status || "active",
-                start_date: employee.start_date ? new Date(employee.start_date).toISOString().split('T')[0] : "",
-                probation_end_date: employee.probation_end_date ? new Date(employee.probation_end_date).toISOString().split('T')[0] : "",
-                working_hours_per_day: employee.working_hours_per_day || 8,
-                working_days_per_week: employee.working_days_per_week || 5,
-            });
+                employee_code: employee.employee_code || '',
+                email: employee.email || '',
+                first_name: employee.first_name || '',
+                last_name: employee.last_name || '',
+                first_name_th: employee.first_name_th || '',
+                last_name_th: employee.last_name_th || '',
+                nickname: employee.nickname || '',
+                phone: employee.phone || '',
+                department_id: employee.department_id || '',  // อาจเป็น null
+                position_id: employee.position_id || '',      // อาจเป็น null
+                manager_id: employee.manager_id || '',        // อาจเป็น null
+                role: employee.role || 'member',
+                employment_type: employee.employment_type || 'full_time',
+                employment_status: employee.employment_status || 'active',
+                start_date: employee.start_date
+                    ? new Date(employee.start_date).toISOString().split('T')[0]
+                    : ''
+            })
         } else {
-            setFormData({
-                employee_code: "",
-                first_name: "",
-                last_name: "",
-                first_name_th: "",
-                last_name_th: "",
-                nickname: "",
-                email: "",
-                phone: "",
-                department_id: "",
-                position_id: "",
-                manager_id: "0",
-                role: "member",
-                employment_type: "full-time",
-                employment_status: "active",
-                start_date: new Date().toISOString().split('T')[0],
-                probation_end_date: "",
-                working_hours_per_day: 8,
-                working_days_per_week: 5,
-            });
+            setFormData(initialFormData)
         }
-    }, [mode, employee, open]);
+        setError(null)
+    }, [mode, employee, open])
 
-    const filteredPositions = departments.length > 0 && formData.department_id
-        ? positions.filter(p => p.department_id === formData.department_id)
-        : positions;
+    const loadOptions = async () => {
+        const result = await getEmployeeFormOptions()
+        if (result.success && result.data) {
+            setOptions(result.data)
+        }
+    }
 
-    const handleSubmit = async () => {
-        setIsLoading(true);
-        setErrors({});
+    const handleChange = (field: keyof FormData, value: string) => {
+        setFormData(prev => ({ ...prev, [field]: value }))
+        setError(null)
+    }
 
-        // Fallback for hidden EN names
-        const submitData = { ...formData };
-        if (!submitData.first_name) submitData.first_name = submitData.first_name_th || "-";
-        if (!submitData.last_name) submitData.last_name = submitData.last_name_th || "-";
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setIsLoading(true)
+        setError(null)
 
         try {
-            if (mode === 'create') {
-                await createEmployee(submitData);
-            } else {
-                await updateEmployee(employee.id, submitData);
+            // Validate required fields
+            if (!formData.employee_code || !formData.email || !formData.first_name_th || !formData.last_name_th) {
+                setError('กรุณากรอกข้อมูลที่จำเป็น')
+                setIsLoading(false)
+                return
             }
-            onSuccess();
-        } catch (error: any) {
-            console.error("Submit Error:", error);
-            setErrors({ submit: error.message || "An error occurred during submission." });
+
+            // เตรียมข้อมูล - แปลงค่าว่างเป็น undefined (จะถูกแปลงเป็น null ใน Server Action)
+            const submitData = {
+                ...formData,
+                department_id: formData.department_id || undefined,
+                position_id: formData.position_id || undefined,
+                manager_id: formData.manager_id || undefined,
+                start_date: formData.start_date || undefined,
+                // ถ้าไม่มีชื่อ EN ให้ใช้ชื่อ TH
+                first_name: formData.first_name || formData.first_name_th,
+                last_name: formData.last_name || formData.last_name_th
+            }
+
+            let result
+            if (mode === 'create') {
+                result = await createEmployee(submitData)
+            } else {
+                result = await updateEmployee(employee.id, submitData)
+            }
+
+            if (result.success) {
+                onSuccess()
+                onClose()
+            } else {
+                setError(result.error || 'เกิดข้อผิดพลาด')
+            }
+        } catch (err: any) {
+            setError(err.message || 'เกิดข้อผิดพลาด')
         } finally {
-            setIsLoading(false);
+            setIsLoading(false)
         }
-    };
+    }
+
+    // Filter positions by department
+    const filteredPositions = formData.department_id
+        ? options.positions.filter(p =>
+            !p.department_id || p.department_id === formData.department_id
+        )
+        : options.positions
+
+    if (!open) return null
 
     return (
-        <Modal
-            open={open}
-            onClose={onClose}
-            title={mode === 'create' ? 'เพิ่มพนักงาน' : 'แก้ไขพนักงาน'}
-            size="lg"
-        >
-            <div className="space-y-6">
-                {errors.submit && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
-                        {errors.submit}
-                    </div>
-                )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-                {/* Section: ข้อมูลพื้นฐาน */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <Label>รหัสพนักงาน <span className="text-red-500">*</span></Label>
-                        <Input
-                            value={formData.employee_code}
-                            onChange={e => setFormData({ ...formData, employee_code: e.target.value })}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <Label>Email <span className="text-red-500">*</span></Label>
-                        <Input
-                            type="email"
-                            value={formData.email}
-                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <Label>ชื่อ (TH) <span className="text-red-500">*</span></Label>
-                        <Input
-                            value={formData.first_name_th}
-                            onChange={e => setFormData({ ...formData, first_name_th: e.target.value })}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <Label>นามสกุล (TH) <span className="text-red-500">*</span></Label>
-                        <Input
-                            value={formData.last_name_th}
-                            onChange={e => setFormData({ ...formData, last_name_th: e.target.value })}
-                            required
-                        />
-                    </div>
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+                    <h2 className="text-lg font-semibold">
+                        {mode === 'create' ? 'เพิ่มพนักงาน' : 'แก้ไขพนักงาน'}
+                    </h2>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
-                <div className="border-t pt-4">
-                    <h3 className="font-semibold text-slate-900 mb-3">องค์กร</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <Label>แผนก <span className="text-red-500">*</span></Label>
-                            <Select
-                                value={formData.department_id}
-                                onValueChange={val => setFormData({ ...formData, department_id: val, position_id: "" })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกแผนก" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {departments.map(d => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                {/* Body */}
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
+                    {/* Error */}
+                    {error && (
+                        <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+                            {error}
                         </div>
-                        <div>
-                            <Label>ตำแหน่ง <span className="text-red-500">*</span></Label>
-                            <Select
-                                value={formData.position_id}
-                                onValueChange={val => setFormData({ ...formData, position_id: val })}
-                                disabled={!formData.department_id}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกตำแหน่ง" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {filteredPositions.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    )}
+
+                    <div className="space-y-6">
+                        {/* Basic Info */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    รหัสพนักงาน <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.employee_code}
+                                    onChange={(e) => handleChange('employee_code', e.target.value)}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Email <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => handleChange('email', e.target.value)}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    required
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Label>หัวหน้า</Label>
-                            <Select
-                                value={formData.manager_id}
-                                onValueChange={val => setFormData({ ...formData, manager_id: val })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกหัวหน้า" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="0">No Manager</SelectItem>
-                                    {managers.map(m => (
-                                        <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+
+                        {/* Thai Name */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    ชื่อ (TH) <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.first_name_th}
+                                    onChange={(e) => handleChange('first_name_th', e.target.value)}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    นามสกุล (TH) <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.last_name_th}
+                                    onChange={(e) => handleChange('last_name_th', e.target.value)}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    required
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Label>Role <span className="text-red-500">*</span></Label>
-                            <Select
-                                value={formData.role}
-                                onValueChange={val => setFormData({ ...formData, role: val as any })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="member">Member</SelectItem>
-                                    <SelectItem value="manager">Manager</SelectItem>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                </SelectContent>
-                            </Select>
+
+                        {/* English Name (Optional) */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    First Name (EN)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.first_name}
+                                    onChange={(e) => handleChange('first_name', e.target.value)}
+                                    placeholder={formData.first_name_th || 'Optional'}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Last Name (EN)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.last_name}
+                                    onChange={(e) => handleChange('last_name', e.target.value)}
+                                    placeholder={formData.last_name_th || 'Optional'}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Label>สถานะ</Label>
-                            <Select
-                                value={formData.employment_status}
-                                onValueChange={val => setFormData({ ...formData, employment_status: val as any })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="inactive">Inactive</SelectItem>
-                                    <SelectItem value="suspended">Suspended</SelectItem>
-                                </SelectContent>
-                            </Select>
+
+                        {/* Organization */}
+                        <div className="border-t pt-4">
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3">องค์กร</h3>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        แผนก
+                                    </label>
+                                    <select
+                                        value={formData.department_id}
+                                        onChange={(e) => handleChange('department_id', e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="">-- ไม่ระบุ --</option>
+                                        {options.departments.map(d => (
+                                            <option key={d.id} value={d.id}>{d.name_th || d.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        ตำแหน่ง
+                                    </label>
+                                    <select
+                                        value={formData.position_id}
+                                        onChange={(e) => handleChange('position_id', e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="">-- ไม่ระบุ --</option>
+                                        {filteredPositions.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name_th || p.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        หัวหน้า
+                                    </label>
+                                    <select
+                                        value={formData.manager_id}
+                                        onChange={(e) => handleChange('manager_id', e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="">-- ไม่มี --</option>
+                                        {options.managers
+                                            .filter(m => m.id !== employee?.id) // ไม่แสดงตัวเอง
+                                            .map(m => (
+                                                <option key={m.id} value={m.id}>{m.name_th || m.name}</option>
+                                            ))
+                                        }
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Role <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={formData.role}
+                                        onChange={(e) => handleChange('role', e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                    >
+                                        <option value="member">Member</option>
+                                        <option value="manager">Manager</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Employment */}
+                        <div className="border-t pt-4">
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3">การจ้างงาน</h3>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        ประเภท
+                                    </label>
+                                    <select
+                                        value={formData.employment_type}
+                                        onChange={(e) => handleChange('employment_type', e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="full_time">Full Time</option>
+                                        <option value="part_time">Part Time</option>
+                                        <option value="contract">Contract</option>
+                                        <option value="intern">Intern</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        สถานะ
+                                    </label>
+                                    <select
+                                        value={formData.employment_status}
+                                        onChange={(e) => handleChange('employment_status', e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                        <option value="suspended">Suspended</option>
+                                        <option value="resigned">Resigned</option>
+                                        <option value="terminated">Terminated</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-
+                </form>
 
                 {/* Footer */}
-                <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-                    <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-                    <Button onClick={handleSubmit} loading={isLoading}>
-                        {mode === 'create' ? 'บันทึก' : 'อัพเดท'}
-                    </Button>
+                <div className="flex justify-end gap-3 px-6 py-4 border-t bg-slate-50 shrink-0">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100"
+                    >
+                        ยกเลิก
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isLoading}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        {isLoading ? 'กำลังบันทึก...' : mode === 'create' ? 'เพิ่มพนักงาน' : 'อัพเดท'}
+                    </button>
                 </div>
             </div>
-        </Modal>
-    );
+        </div>
+    )
 }

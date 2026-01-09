@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { MainLayout } from "@/components/layout/MainLayout"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -38,10 +37,7 @@ export default function ReportsPage() {
     ]
 
     return (
-        <MainLayout
-            title="Reports"
-            breadcrumb={[{ label: "Reports" }]}
-        >
+        <div className="pt-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Reports</h1>
@@ -212,6 +208,6 @@ export default function ReportsPage() {
                     </div>
                 </CardContent>
             </Card>
-        </MainLayout>
+        </div>
     )
 }

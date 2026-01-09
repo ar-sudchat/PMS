@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { MainLayout } from "@/components/layout/MainLayout"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -63,10 +62,7 @@ export default function TimeTrackingPage() {
     }, {} as Record<string, typeof timeEntries>)
 
     return (
-        <MainLayout
-            title="Time Tracking"
-            breadcrumb={[{ label: "Time Tracking" }]}
-        >
+        <div className="pt-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Time Tracking</h1>
@@ -190,6 +186,6 @@ export default function TimeTrackingPage() {
                     ))}
                 </div>
             </Card>
-        </MainLayout>
+        </div>
     )
 }

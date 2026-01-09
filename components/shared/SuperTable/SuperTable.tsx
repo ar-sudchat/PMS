@@ -402,7 +402,7 @@ const dateRangeFilter: FilterFn<any> = (row, columnId, filterValue) => {
     const cellValue = row.getValue(columnId);
     if (!cellValue) return false;
 
-    const date = typeof cellValue === "string" ? parseISO(cellValue) : cellValue;
+    const date = typeof cellValue === "string" ? parseISO(cellValue) : (cellValue as Date);
 
     if (filterValue.from && filterValue.to) {
         return isWithinInterval(date, {
@@ -861,7 +861,7 @@ export function SuperTable<TData>({
     }, [columns, columnFilterConfig]);
 
     // Table instance
-    const table = useReactTable({
+    const table = useReactTable<TData>({
         data,
         columns: enhancedColumns,
         state: {
@@ -874,6 +874,11 @@ export function SuperTable<TData>({
         enableRowSelection,
         enableColumnResizing,
         columnResizeMode: "onChange",
+        ...({
+            autoResetPageIndex: false,
+            autoResetGlobalFilter: false,
+            autoResetColumnFilters: false,
+        } as any),
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         onGlobalFilterChange: setGlobalFilter,
@@ -907,6 +912,16 @@ export function SuperTable<TData>({
             row,
         });
     };
+
+    // Auto-adjust page index if data deletion causes empty page
+    React.useEffect(() => {
+        const pageCount = table.getPageCount();
+        const { pageIndex } = table.getState().pagination;
+
+        if (pageCount > 0 && pageIndex >= pageCount) {
+            table.setPageIndex(pageCount - 1);
+        }
+    }, [data.length, table.getPageCount(), table.getState().pagination.pageIndex, table]);
 
     // Calculate active filters count
     const activeFiltersCount = columnFilters.length + (globalFilter ? 1 : 0);

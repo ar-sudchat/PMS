@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { FolderKanban, BarChart3, Settings } from 'lucide-react'
+import { FolderKanban, BarChart3, Settings, Search, Building, ChevronDown, Check } from 'lucide-react'
 import Link from 'next/link'
 import { GanttChart, ZoomLevel } from '@/components/gantt/GanttChart'
 import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 import { GanttContextMenu } from '@/components/gantt/GanttContextMenu'
 import { StoryModal } from '@/components/gantt/StoryModal'
 import { TaskModal } from '@/components/gantt/TaskModal'
-import { AssignTaskModal } from '@/components/workload/AssignTaskModal' // Keep in workload folder as originally planned
+import { AssignTaskModal } from '@/components/gantt/AssignTaskModal'
+import { QuickAddModal } from '@/components/gantt/QuickAddModal'
 import { TeamWorkloadView } from '@/components/workload/TeamWorkloadView'
+import { getProjectFilterOptions } from '@/lib/actions/project-actions'
 import {
     GanttData,
     GanttTask,
@@ -25,12 +27,57 @@ interface MyProjectsGanttPageProps {
 
 type ViewMode = 'gantt' | 'workload'
 
+interface Filters {
+    year: number | ''
+    customerId: string
+    managerId: string
+    ownerId: string
+    statusId: string
+    milestoneIds: string[]
+    search: string
+}
+
+interface FilterOptions {
+    customers: { id: string; code: string; name: string }[]
+    managers: { id: string; name: string; name_th: string }[]
+    owners: { id: string; name: string; name_th: string; position_code: string }[]
+    years: number[]
+    statuses: { id: string; code: string; name: string; color: string }[]
+    milestones: { id: string; code: string; name: string; color: string }[]
+}
+
 export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGanttPageProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('gantt')
-    const [zoom, setZoom] = useState<ZoomLevel>('week')
+    const [zoom, setZoom] = useState<ZoomLevel>('day') // Default to 'day'
     const [ganttData, setGanttData] = useState<GanttData | null>(initialData)
     const [isLoading, setIsLoading] = useState(false)
     const [isRefreshing, setIsRefreshing] = useState(false)
+
+    // Filters
+    const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+        customers: [],
+        managers: [],
+        owners: [],
+        years: [],
+        statuses: [],
+        milestones: []
+    })
+
+    const [filters, setFilters] = useState<Filters>({
+        year: new Date().getFullYear(),
+        customerId: '',
+        managerId: '',
+        ownerId: currentUser?.employeeId || currentUser?.id || '', // Default to login user
+        statusId: '',
+        milestoneIds: [],
+        search: ''
+    })
+
+    const [isMilestoneDropdownOpen, setIsMilestoneDropdownOpen] = useState(false)
+
+    // Derived Read-Only State
+    // Always Read-Only in My Projects page as per user request
+    const isReadOnly = true
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
@@ -55,28 +102,94 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         task: GanttTask | null
     }>({ open: false, task: null })
 
+    const [quickAddModal, setQuickAddModal] = useState<{
+        open: boolean
+        projectId: string
+    }>({ open: false, projectId: '' })
+
+    // Load Filter Options
+    useEffect(() => {
+        loadFilterOptions()
+    }, [])
+
+    const loadFilterOptions = async () => {
+        const result = await getProjectFilterOptions()
+        if (result.success && result.data) {
+            setFilterOptions(result.data)
+        }
+    }
+
     // Load data
     const loadData = useCallback(async () => {
-        // Only load if explicit refresh or not initial
-        // But we use initialData. 
-        // This is for manual refresh.
-        const result = await getGanttData()
+        setIsLoading(true)
+        // Pass filters to getGanttData
+        const result = await getGanttData({
+            year: filters.year || undefined,
+            customerId: filters.customerId || undefined,
+            managerId: filters.managerId || undefined,
+            ownerId: filters.ownerId || undefined,
+            statusId: filters.statusId || undefined,
+            milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
+            search: filters.search || undefined
+        })
+
         if (result.success && result.data) {
             setGanttData(result.data)
         }
         setIsLoading(false)
         setIsRefreshing(false)
-    }, [])
+    }, [filters]) // Reload when filters change
+
+    // Initial load with default filters (if they differ from initialData context) is tricky because initialData might be raw.
+    // But since we set default filters, we should probably fetch data matching those filters on mount?
+    // User wants "Default Owner = Me".
+    // If initialData didn't respect that, we should reload.
+    // Let's reload on mount or filter change.
+    useEffect(() => {
+        loadData()
+    }, [filters])
 
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true)
         loadData()
     }, [loadData])
 
+
+    const handleFilterChange = (key: keyof Filters, value: any) => {
+        setFilters(prev => ({ ...prev, [key]: value }))
+    }
+
+    const toggleMilestone = (milestoneId: string) => {
+        setFilters(prev => ({
+            ...prev,
+            milestoneIds: prev.milestoneIds.includes(milestoneId)
+                ? prev.milestoneIds.filter(id => id !== milestoneId)
+                : [...prev.milestoneIds, milestoneId]
+        }))
+    }
+
     // Context menu handlers
     const handleContextMenu = useCallback((task: GanttTask, position: { x: number; y: number }) => {
+        // Disable context menu if read only? Or just disable edit options?
+        // User said "View Only". So no context menu actions for editing.
+        // It's cleaner to just not show it, or show limited options.
+        if (isReadOnly) return
         setContextMenu({ task, position })
-    }, [])
+    }, [isReadOnly])
+
+    const handleQuickAdd = useCallback(() => {
+        if (isReadOnly) return
+        const firstProject = ganttData?.data.find(d => d.entity_type === 'project')
+        setQuickAddModal({ open: true, projectId: firstProject?.entity_id || '' })
+    }, [ganttData, isReadOnly])
+
+    // ... (rest of methods)
+
+    // ... (rest of methods)
+
+    const projects = ganttData?.data
+        .filter(t => t.entity_type === 'project')
+        .map(t => ({ id: t.entity_id, name: t.text })) || []
 
     const handleAddStory = useCallback((projectId: string, milestoneId?: string) => {
         setStoryModal({ open: true, projectId, milestoneId })
@@ -99,6 +212,11 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
     }, [handleAssign])
 
     const handleDelete = useCallback(async (task: GanttTask) => {
+        if (task.entity_type === 'project' || task.entity_type === 'milestone') {
+            alert('ไม่สามารถลบ Project หรือ Milestone ได้จากหน้านี้ กรุณาแก้ไขที่หน้า Project Detail')
+            return
+        }
+
         const msg = task.entity_type === 'story'
             ? 'ลบ Story นี้และ Tasks ทั้งหมด?'
             : 'ลบ Task นี้?'
@@ -134,45 +252,126 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
 
     return (
         <div className="flex flex-col h-screen bg-slate-50">
-            {/* Header */}
-            <header className="bg-white border-b px-6 py-4 flex items-center justify-between shrink-0 h-16">
-                <div className="flex items-center gap-3">
-                    <div className="bg-blue-600 p-2 rounded-lg">
-                        <FolderKanban className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-slate-800">My Projects</h1>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="flex bg-slate-100 p-1 rounded-lg">
-                        <button
-                            onClick={() => setViewMode('gantt')}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'gantt' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                        >
-                            Gantt View
-                        </button>
-                        <button
-                            onClick={() => setViewMode('workload')}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                        >
-                            Team Workload
-                        </button>
-                    </div>
-
-                    <Link href="/settings" className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Settings">
-                        <Settings className="w-5 h-5" />
-                    </Link>
-                </div>
-            </header>
-
             {/* Main Content */}
-            <div className="flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
+                {/* Filters */}
+                <div className="bg-white rounded-xl border p-4 shrink-0 shadow-sm">
+                    <div className="flex items-end gap-4 flex-wrap">
+                        {/* Year */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Fiscal Year</label>
+                            <select
+                                value={filters.year}
+                                onChange={(e) => handleFilterChange('year', e.target.value ? parseInt(e.target.value) : '')}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[100px] bg-white"
+                            >
+                                <option value="">All Years</option>
+                                {filterOptions.years.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Customer */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Customer</label>
+                            <select
+                                value={filters.customerId}
+                                onChange={(e) => handleFilterChange('customerId', e.target.value)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[180px] bg-white"
+                            >
+                                <option value="">All Customers</option>
+                                {filterOptions.customers.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Project Manager */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Project Manager</label>
+                            <select
+                                value={filters.managerId}
+                                onChange={(e) => handleFilterChange('managerId', e.target.value)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[150px] bg-white"
+                            >
+                                <option value="">All PMs</option>
+                                {filterOptions.managers.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name_th || m.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Owner */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Owner</label>
+                            <select
+                                value={filters.ownerId}
+                                onChange={(e) => handleFilterChange('ownerId', e.target.value)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[150px] bg-white"
+                            >
+                                <option value="">All Owners</option>
+                                {filterOptions.owners.map(o => (
+                                    <option key={o.id} value={o.id}>
+                                        {o.name_th || o.name} {o.position_code && `(${o.position_code})`}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Status */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Status</label>
+                            <select
+                                value={filters.statusId}
+                                onChange={(e) => handleFilterChange('statusId', e.target.value)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[120px] bg-white"
+                            >
+                                <option value="">All Status</option>
+                                {filterOptions.statuses.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Milestone Multi-Select in Gantt Page? Optional but user might want it */}
+                        {/* Search */}
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs text-slate-500 mb-1">Search</label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={filters.search}
+                                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                                    placeholder="Search projects..."
+                                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* View Switcher */}
+                        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0 h-[38px] items-center">
+                            <button
+                                onClick={() => setViewMode('gantt')}
+                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center ${viewMode === 'gantt' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                            >
+                                Gantt View
+                            </button>
+                            <button
+                                onClick={() => setViewMode('workload')}
+                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center ${viewMode === 'workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                            >
+                                Team Workload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 {viewMode === 'gantt' ? (
-                    <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border overflow-hidden">
+                    <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border overflow-hidden min-h-0">
                         <div className="p-2 border-b">
                             <GanttToolbar
                                 zoom={zoom}
@@ -180,6 +379,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                                 onRefresh={handleRefresh}
                                 isRefreshing={isRefreshing}
                                 onExport={() => alert('Export feature coming soon!')}
+                                onQuickAdd={!isReadOnly ? handleQuickAdd : undefined}
                             />
                         </div>
 
@@ -195,6 +395,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                                 <GanttChart
                                     data={ganttData}
                                     zoom={zoom}
+                                    readOnly={isReadOnly}
                                     onTaskDblClick={handleTaskDblClick}
                                     onContextMenu={handleContextMenu}
                                     onDataChange={handleRefresh}
@@ -289,18 +490,18 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                 <AssignTaskModal
                     open={assignModal.open}
                     onClose={() => setAssignModal({ ...assignModal, open: false })}
-                    taskId={assignModal.task.entity_id}
-                    taskTitle={assignModal.task.text}
-                    startDate={assignModal.task.start_date}
-                    endDate={assignModal.task.end_date}
-                    estimatedHours={assignModal.task.estimated_hours || 0}
-                    currentAssigneeId={assignModal.task.assignee_id || undefined}
-                    onAssign={async () => {
-                        // Assign logic is inside modal, just refresh here
-                        handleRefresh()
-                    }}
+                    task={assignModal.task}
+                    onSuccess={handleRefresh}
                 />
             )}
+
+            <QuickAddModal
+                open={quickAddModal.open}
+                onClose={() => setQuickAddModal({ ...quickAddModal, open: false })}
+                projectId={quickAddModal.projectId}
+                onSuccess={handleRefresh}
+                projects={projects}
+            />
         </div>
     )
 }

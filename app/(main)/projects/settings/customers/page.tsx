@@ -80,6 +80,14 @@ export default function CustomersPage() {
 
     const columns: ColumnDef<Customer>[] = [
         {
+            accessorKey: "code",
+            header: "Code",
+            cell: ({ row }) => (
+                <span className="font-mono text-slate-500 font-medium">{row.original.code}</span>
+            ),
+            size: 100,
+        },
+        {
             accessorKey: "name",
             header: "Customer",
             cell: ({ row }) => (
@@ -100,12 +108,12 @@ export default function CustomersPage() {
                     </div>
                     <div>
                         <div style={{ fontWeight: 600, color: "#1e293b", fontSize: '14px' }}>{row.original.name}</div>
-                        <div style={{ fontSize: "11px", color: "#64748b" }}>{row.original.code}</div>
                     </div>
                 </div>
             ),
-            size: 220,
+            size: 500,
         },
+        /*
         {
             accessorKey: "address",
             header: "ที่อยู่",
@@ -143,6 +151,7 @@ export default function CustomersPage() {
             ),
             size: 120,
         },
+        */
         {
             accessorKey: "is_active",
             header: "Status",
@@ -212,7 +221,7 @@ export default function CustomersPage() {
             <SuperTable
                 data={data}
                 columns={columns}
-                size="lg"
+                size="md"
                 enableSorting={true}
                 enableGlobalFilter={true}
                 searchPlaceholder="Search customers..."

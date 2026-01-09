@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { Plus, Search, Filter, CheckCircle2, Circle, Clock, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,7 +32,7 @@ export default function MyTasksPage() {
     const [searchQuery, setSearchQuery] = useState('');
 
     return (
-        <MainLayout>
+        <div className="pt-6">
             <div className="max-w-5xl mx-auto">
                 {/* Page Header */}
                 <div className="mb-8">
@@ -160,6 +159,6 @@ export default function MyTasksPage() {
                     )}
                 </div>
             </div>
-        </MainLayout>
+        </div>
     );
 }

@@ -1,31 +1,49 @@
-"use client"
+'use client'
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Layers, Github, Mail } from "lucide-react"
+import { Layers } from "lucide-react"
+import { login } from "@/lib/actions/auth-actions"
 
 export default function LoginPage() {
-    const [email, setEmail] = React.useState("")
+    const router = useRouter()
+    const [employeeCode, setEmployeeCode] = React.useState("")
     const [password, setPassword] = React.useState("")
-    const [remember, setRemember] = React.useState(false)
     const [isLoading, setIsLoading] = React.useState(false)
+    const [error, setError] = React.useState<string | null>(null)
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsLoading(true)
-        // Simulate login - in real app, call API
-        setTimeout(() => {
-            window.location.href = "/"
-        }, 1000)
+        setError(null)
+
+        try {
+            const result = await login(employeeCode, password)
+
+            if (result.success) {
+                if (result.mustChangePassword) {
+                    router.push('/change-password')
+                } else {
+                    router.push('/')
+                }
+            } else {
+                setError(result.error || 'Login failed')
+            }
+        } catch (err) {
+            setError('An error occurred during login')
+        } finally {
+            setIsLoading(false)
+        }
     }
 
     return (
         <div className="min-h-screen flex">
             {/* Left - Form */}
-            <div className="flex-1 flex items-center justify-center p-8">
+            <div className="flex-1 flex items-center justify-center p-8 bg-white dark:bg-slate-950">
                 <div className="w-full max-w-md space-y-8">
                     {/* Logo */}
                     <div className="text-center">
@@ -43,12 +61,19 @@ export default function LoginPage() {
 
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        
+                        {error && (
+                            <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg">
+                                {error}
+                            </div>
+                        )}
+
                         <Input
-                            label="Email address"
-                            type="email"
-                            placeholder="you@example.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            label="Employee Code"
+                            type="text"
+                            placeholder="e.g. 240001"
+                            value={employeeCode}
+                            onChange={(e) => setEmployeeCode(e.target.value)}
                             required
                         />
 
@@ -62,11 +87,10 @@ export default function LoginPage() {
                                 required
                             />
                             <div className="mt-2 flex items-center justify-between">
-                                <Checkbox
-                                    label="Remember me"
-                                    checked={remember}
-                                    onChange={(e) => setRemember(e.target.checked)}
-                                />
+                                <div className="flex items-center gap-2">
+                                     <Checkbox id="remember" />
+                                     <label htmlFor="remember" className="text-sm text-slate-600 cursor-pointer">Remember me</label>
+                                </div>
                                 <Link
                                     href="/forgot-password"
                                     className="text-sm text-indigo-600 hover:text-indigo-500"
@@ -76,8 +100,8 @@ export default function LoginPage() {
                             </div>
                         </div>
 
-                        <Button type="submit" fullWidth isLoading={isLoading}>
-                            Sign in
+                        <Button type="submit" className="w-full" disabled={isLoading}>
+                            {isLoading ? "Signing in..." : "Sign in"}
                         </Button>
                     </form>
 
@@ -87,22 +111,13 @@ export default function LoginPage() {
                             <div className="w-full border-t border-slate-200 dark:border-slate-700" />
                         </div>
                         <div className="relative flex justify-center text-sm">
-                            <span className="bg-white dark:bg-slate-900 px-4 text-slate-500">
-                                Or continue with
+                            <span className="bg-white dark:bg-slate-950 px-4 text-slate-500">
+                                Default Password: 1234
                             </span>
                         </div>
                     </div>
 
-                    {/* Social Login */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <Button variant="outline" leftIcon={<Mail className="h-4 w-4" />}>
-                            Google
-                        </Button>
-                        <Button variant="outline" leftIcon={<Github className="h-4 w-4" />}>
-                            GitHub
-                        </Button>
-                    </div>
-
+                    
                     {/* Sign up link */}
                     <p className="text-center text-sm text-slate-600 dark:text-slate-400">
                         Don't have an account?{" "}
@@ -110,35 +125,32 @@ export default function LoginPage() {
                             href="/register"
                             className="font-medium text-indigo-600 hover:text-indigo-500"
                         >
-                            Sign up
+                            Contact Admin
                         </Link>
                     </p>
                 </div>
             </div>
 
             {/* Right - Branding */}
-            <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-indigo-600 to-purple-700 items-center justify-center p-12">
-                <div className="max-w-lg text-center text-white">
-                    <h2 className="text-4xl font-bold mb-6">
-                        Manage your projects with ease
-                    </h2>
-                    <p className="text-lg text-indigo-100">
-                        Stay organized, collaborate with your team, and deliver projects on time.
-                        ProjectHub makes project management simple and intuitive.
-                    </p>
-                    <div className="mt-12 grid grid-cols-3 gap-8 text-center">
-                        <div>
-                            <div className="text-3xl font-bold">50K+</div>
-                            <div className="text-indigo-200 text-sm">Active Users</div>
-                        </div>
-                        <div>
-                            <div className="text-3xl font-bold">10M+</div>
-                            <div className="text-indigo-200 text-sm">Tasks Completed</div>
-                        </div>
-                        <div>
-                            <div className="text-3xl font-bold">99.9%</div>
-                            <div className="text-indigo-200 text-sm">Uptime</div>
-                        </div>
+            <div className="hidden lg:flex lg:flex-1 relative bg-slate-900 overflow-hidden">
+                <div className="absolute inset-0">
+                    <img 
+                        src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1964&auto=format&fit=crop" 
+                        alt="Abstract Background" 
+                        className="w-full h-full object-cover opacity-40 hover:scale-105 transition-transform duration-700"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+                </div>
+                
+                <div className="relative z-10 w-full h-full flex flex-col justify-end p-16">
+                    <div className="max-w-md">
+                        <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
+                            Build the future, <br/>
+                            <span className="text-indigo-400">one task at a time.</span>
+                        </h2>
+                        <p className="text-lg text-slate-300">
+                            The modern platform for engineering and product teams.
+                        </p>
                     </div>
                 </div>
             </div>

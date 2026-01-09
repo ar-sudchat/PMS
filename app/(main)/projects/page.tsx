@@ -111,10 +111,10 @@ export default function ProjectsPage() {
         }))
     }
 
-    // Row click → Detail Modal
+    // Row click → Edit Modal (skip detail modal per request)
     const handleRowClick = (project: any) => {
-        setSelectedProjectId(project.id)
-        setIsDetailModalOpen(true)
+        setSelectedProject(project)
+        setIsEditModalOpen(true)
     }
 
     // Edit from Detail Modal
@@ -402,19 +402,20 @@ export default function ProjectsPage() {
                             </>
                         )}
                     </div>
-                </div>
 
-                {/* Search */}
-                <div className="mt-4">
-                    <div className="relative max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                            type="text"
-                            value={filters.search}
-                            onChange={(e) => handleFilterChange('search', e.target.value)}
-                            placeholder="Search projects..."
-                            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm"
-                        />
+                    {/* Search */}
+                    <div>
+                        <label className="block text-xs text-slate-500 mb-1">Search</label>
+                        <div className="relative w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input
+                                type="text"
+                                value={filters.search}
+                                onChange={(e) => handleFilterChange('search', e.target.value)}
+                                placeholder="Search by name, code..."
+                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -424,10 +425,10 @@ export default function ProjectsPage() {
                 <SuperTable
                     data={projects}
                     columns={columns}
-                    loading={isLoading}
+                    isLoading={isLoading}
                     onRowClick={handleRowClick}
-                    rowClassName="cursor-pointer hover:bg-slate-50"
                     emptyMessage="No projects found"
+                    enableGlobalFilter={false}
                     pageSize={10}
                     pageSizeOptions={[10, 20, 50]}
                 />

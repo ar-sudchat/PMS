@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { GanttData, GanttTask, updateGanttTaskDates, updateGanttTaskProgress } from '@/lib/actions/gantt-actions'
+import 'dhtmlx-gantt/codebase/dhtmlxgantt.css'
 
 export type ZoomLevel = 'day' | 'week' | 'month'
 
 interface GanttChartProps {
   data: GanttData
   zoom: ZoomLevel
+  readOnly?: boolean
   onTaskClick?: (task: GanttTask) => void
   onTaskDblClick?: (task: GanttTask) => void
   onContextMenu?: (task: GanttTask, position: { x: number; y: number }) => void
@@ -24,6 +26,7 @@ interface GanttChartProps {
 export function GanttChart({
   data,
   zoom,
+  readOnly,
   onTaskClick,
   onTaskDblClick,
   onContextMenu,
@@ -42,10 +45,42 @@ export function GanttChart({
     onContextMenu,
     onDataChange,
     onAddStory,
-    onAddTask
+    onAddTask,
+    readOnly
   })
 
-  // Update callback refs
+  // Helper to get columns
+  const getColumns = (isReadOnly: boolean) => {
+    const columns = [
+      { name: 'text', label: 'Task', tree: true, width: 280, resize: true },
+      {
+        name: 'start_date', label: 'Start', width: 85, align: 'center',
+        template: (task: any) => {
+          if (!task.start_date) return '-'
+          const d = new Date(task.start_date)
+          return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })
+        }
+      },
+      {
+        name: 'duration', label: 'Days', width: 50, align: 'center',
+        template: (task: any) => {
+          if (task.type === 'milestone') return '-'
+          return task.duration || '-'
+        }
+      },
+      {
+        name: 'progress', label: '%', width: 50, align: 'center',
+        template: (task: any) => Math.round((task.progress || 0) * 100) + '%'
+      }
+    ]
+
+    if (!isReadOnly) {
+      columns.push({ name: 'add', label: '+', width: 40, align: 'center', template: (obj: any) => '+' })
+    }
+    return columns
+  }
+
+  // Update callback refs and config
   useEffect(() => {
     callbacksRef.current = {
       onTaskClick,
@@ -53,9 +88,17 @@ export function GanttChart({
       onContextMenu,
       onDataChange,
       onAddStory,
-      onAddTask
+      onAddTask,
+      readOnly
     }
-  }, [onTaskClick, onTaskDblClick, onContextMenu, onDataChange, onAddStory, onAddTask])
+
+    // Update readonly and columns dynamically if initialized
+    if (ganttInstanceRef.current) {
+      ganttInstanceRef.current.config.readonly = !!readOnly
+      ganttInstanceRef.current.config.columns = getColumns(!!readOnly)
+      ganttInstanceRef.current.render()
+    }
+  }, [onTaskClick, onTaskDblClick, onContextMenu, onDataChange, onAddStory, onAddTask, readOnly])
 
   // ============================================
   // Initialize Gantt (runs once)
@@ -67,9 +110,7 @@ export function GanttChart({
       if (!containerRef.current) return
 
       try {
-        // Dynamic import
         const ganttModule = await import('dhtmlx-gantt')
-        await import('dhtmlx-gantt/codebase/dhtmlxgantt.css')
 
         const gantt = ganttModule.gantt || ganttModule.default
 
@@ -85,49 +126,8 @@ export function GanttChart({
         gantt.config.xml_date = '%Y-%m-%d'
 
         // Columns
-        gantt.config.columns = [
-          {
-            name: 'text',
-            label: 'Task',
-            tree: true,
-            width: 280,
-            resize: true
-          },
-          {
-            name: 'start_date',
-            label: 'Start',
-            width: 85,
-            align: 'center',
-            template: (task: any) => {
-              if (!task.start_date) return '-'
-              const d = new Date(task.start_date)
-              return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })
-            }
-          },
-          {
-            name: 'duration',
-            label: 'Days',
-            width: 50,
-            align: 'center',
-            template: (task: any) => {
-              if (task.type === 'milestone') return '-'
-              return task.duration || '-'
-            }
-          },
-          {
-            name: 'progress',
-            label: '%',
-            width: 50,
-            align: 'center',
-            template: (task: any) => Math.round((task.progress || 0) * 100) + '%'
-          },
-          {
-            name: 'add',
-            label: '+',
-            width: 40,
-            align: 'center'
-          }
-        ]
+        // Columns
+        gantt.config.columns = getColumns(!!readOnly)
 
         // Layout
         gantt.config.row_height = 32
@@ -195,6 +195,14 @@ export function GanttChart({
           return ''
         }
 
+        // Timeline cell class (Weekends)
+        gantt.templates.timeline_cell_class = (item: any, date: Date) => {
+          if (date.getDay() === 0 || date.getDay() === 6) {
+            return 'gantt-weekend'
+          }
+          return ''
+        }
+
         // Tooltip
         gantt.templates.tooltip_text = (start: Date, end: Date, task: any) => {
           let html = '<div class="gantt-tooltip-box">'
@@ -216,10 +224,17 @@ export function GanttChart({
         }
 
         // Event Handlers
+        gantt.attachEvent('onBeforeTaskDrag', (id: string, mode: string) => {
+          if (callbacksRef.current.readOnly) return false
+          return true
+        })
+
         gantt.attachEvent('onTaskClick', (id: string, e: any) => {
           // Handle 'Add' button click in the grid
           const target = e.target as HTMLElement;
           if (target.closest(".gantt_add")) {
+            if (callbacksRef.current.readOnly) return false
+
             const task = gantt.getTask(id)
             if (task.entity_type === 'project' || task.entity_type === 'milestone') {
               const projectId = task.entity_type === 'project' ? task.entity_id : task.project_id
@@ -260,12 +275,12 @@ export function GanttChart({
           if (mode === 'progress') {
             // Handle progress update
             const progress = task.progress || 0
-            await updateGanttTaskProgress(id, progress)
+            await updateGanttTaskProgress(id, task.entity_type, progress)
           } else {
             // Handle move/resize
             const startDate = gantt.date.date_to_str('%Y-%m-%d')(task.start_date)
             const endDate = gantt.date.date_to_str('%Y-%m-%d')(task.end_date)
-            await updateGanttTaskDates(id, startDate, endDate)
+            await updateGanttTaskDates(id, task.entity_type, startDate, endDate)
           }
 
           callbacksRef.current.onDataChange?.()
@@ -309,44 +324,86 @@ export function GanttChart({
   }, [])
 
   // ============================================
-  // Apply Zoom Level
+  // ZOOM CONFIG
   // ============================================
-  useEffect(() => {
-    const gantt = ganttInstanceRef.current
-    if (!gantt || !isInitialized) return
 
-    switch (zoom) {
+  const configureZoom = useCallback((level: ZoomLevel) => {
+    if (!ganttInstanceRef.current) return
+
+    const gantt = ganttInstanceRef.current
+
+    switch (level) {
       case 'day':
         gantt.config.scales = [
           { unit: 'month', step: 1, date: '%F %Y' },
           { unit: 'day', step: 1, date: '%D %d' }
         ]
-        gantt.config.min_column_width = 50
+        gantt.config.step = 1
+        gantt.config.min_column_width = 60
         gantt.config.scale_height = 50
+
+        // ⭐ แสดงทีละ 7 วัน (เริ่มวันอาทิตย์)
+        const today = new Date()
+        const startOfView = new Date(today)
+        startOfView.setDate(today.getDate() - today.getDay()) // เริ่มจากวันอาทิตย์
+
+        const endOfView = new Date(startOfView)
+        endOfView.setDate(startOfView.getDate() + 7) // แสดง 7 วัน
+
+        gantt.config.start_date = startOfView
+        gantt.config.end_date = endOfView
         break
 
       case 'week':
-        gantt.config.scales = [
-          { unit: 'month', step: 1, date: '%F %Y' },
-          { unit: 'week', step: 1, date: 'Week %W' },
-          { unit: 'day', step: 1, date: '%d' }
+        gantt.config.scale_unit = 'week'
+        gantt.config.date_scale = 'Week %W'
+        gantt.config.subscales = [
+          { unit: 'day', step: 1, date: '%d %M' }
         ]
-        gantt.config.min_column_width = 30
+        gantt.config.step = 1
+        gantt.config.min_column_width = 50
         gantt.config.scale_height = 50
+
+        // แสดง 4 สัปดาห์
+        const weekStart = new Date()
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekStart.getDate() + 28)
+
+        gantt.config.start_date = weekStart
+        gantt.config.end_date = weekEnd
         break
 
       case 'month':
-        gantt.config.scales = [
-          { unit: 'year', step: 1, date: '%Y' },
-          { unit: 'month', step: 1, date: '%F' }
+        gantt.config.scale_unit = 'month'
+        gantt.config.date_scale = '%F %Y'
+        gantt.config.subscales = [
+          { unit: 'week', step: 1, date: 'W%W' }
         ]
-        gantt.config.min_column_width = 50
+        gantt.config.step = 1
+        gantt.config.min_column_width = 80
         gantt.config.scale_height = 50
+
+        // แสดง 3 เดือน
+        const monthStart = new Date()
+        monthStart.setDate(1)
+        const monthEnd = new Date(monthStart)
+        monthEnd.setMonth(monthStart.getMonth() + 3)
+
+        gantt.config.start_date = monthStart
+        gantt.config.end_date = monthEnd
         break
     }
 
     gantt.render()
-  }, [zoom, isInitialized])
+  }, []) // No dependencies needed as it uses ref
+
+  // Apply zoom when it changes
+  useEffect(() => {
+    if (isInitialized) {
+      configureZoom(zoom)
+    }
+  }, [zoom, isInitialized, configureZoom])
 
   // ============================================
   // Load/Update Data
@@ -365,80 +422,112 @@ export function GanttChart({
   }, [data, isInitialized])
 
   // ============================================
-  // Navigation Methods (Exposed via Window)
+  // NAVIGATION - ปรับให้เลื่อนตาม Zoom Level
   // ============================================
-  const scrollToToday = useCallback(() => {
-    const gantt = ganttInstanceRef.current
-    if (gantt) {
-      gantt.showDate(new Date())
-    }
-  }, [])
 
-  const scrollPrev = useCallback(() => {
-    const gantt = ganttInstanceRef.current
-    if (!gantt) return
-
-    const state = gantt.getState()
-    let newDate: Date
-
-    switch (zoom) {
-      case 'day':
-        newDate = gantt.date.add(state.min_date, -7, 'day')
-        break
-      case 'week':
-        newDate = gantt.date.add(state.min_date, -4, 'week')
-        break
-      case 'month':
-        newDate = gantt.date.add(state.min_date, -3, 'month')
-        break
-      default:
-        newDate = gantt.date.add(state.min_date, -7, 'day')
-    }
-
-    gantt.showDate(newDate)
-  }, [zoom])
-
-  const scrollNext = useCallback(() => {
-    const gantt = ganttInstanceRef.current
-    if (!gantt) return
-
-    const state = gantt.getState()
-    let newDate: Date
-
-    switch (zoom) {
-      case 'day':
-        newDate = gantt.date.add(state.min_date, 7, 'day')
-        break
-      case 'week':
-        newDate = gantt.date.add(state.min_date, 4, 'week')
-        break
-      case 'month':
-        newDate = gantt.date.add(state.min_date, 3, 'month')
-        break
-      default:
-        newDate = gantt.date.add(state.min_date, 7, 'day')
-    }
-
-    gantt.showDate(newDate)
-  }, [zoom])
-
-  // Expose methods via window
   useEffect(() => {
-    const w = window as any
-    w.__ganttScrollToToday = scrollToToday
-    w.__ganttScrollPrev = scrollPrev
-    w.__ganttScrollNext = scrollNext
+    if (!ganttInstanceRef.current) return
+
+    const gantt = ganttInstanceRef.current
+
+      // Scroll Previous - เลื่อนถอยหลัง
+      ; (window as any).__ganttScrollPrev = () => {
+        const currentStart = gantt.config.start_date
+        const currentEnd = gantt.config.end_date
+
+        if (zoom === 'day') {
+          // เลื่อนทีละ 7 วัน
+          const newStart = new Date(currentStart)
+          newStart.setDate(newStart.getDate() - 7)
+          const newEnd = new Date(currentEnd)
+          newEnd.setDate(newEnd.getDate() - 7)
+
+          gantt.config.start_date = newStart
+          gantt.config.end_date = newEnd
+        } else if (zoom === 'week') {
+          // เลื่อนทีละ 4 สัปดาห์
+          const newStart = new Date(currentStart)
+          newStart.setDate(newStart.getDate() - 28)
+          const newEnd = new Date(currentEnd)
+          newEnd.setDate(newEnd.getDate() - 28)
+
+          gantt.config.start_date = newStart
+          gantt.config.end_date = newEnd
+        } else {
+          // เลื่อนทีละ 3 เดือน
+          const newStart = new Date(currentStart)
+          newStart.setMonth(newStart.getMonth() - 3)
+          const newEnd = new Date(currentEnd)
+          newEnd.setMonth(newEnd.getMonth() - 3)
+
+          gantt.config.start_date = newStart
+          gantt.config.end_date = newEnd
+        }
+
+        gantt.render()
+      }
+
+      // Scroll Next - เลื่อนไปข้างหน้า
+      ; (window as any).__ganttScrollNext = () => {
+        const currentStart = gantt.config.start_date
+        const currentEnd = gantt.config.end_date
+
+        if (zoom === 'day') {
+          // เลื่อนทีละ 7 วัน
+          const newStart = new Date(currentStart)
+          newStart.setDate(newStart.getDate() + 7)
+          const newEnd = new Date(currentEnd)
+          newEnd.setDate(newEnd.getDate() + 7)
+
+          gantt.config.start_date = newStart
+          gantt.config.end_date = newEnd
+        } else if (zoom === 'week') {
+          // เลื่อนทีละ 4 สัปดาห์
+          const newStart = new Date(currentStart)
+          newStart.setDate(newStart.getDate() + 28)
+          const newEnd = new Date(currentEnd)
+          newEnd.setDate(newEnd.getDate() + 28)
+
+          gantt.config.start_date = newStart
+          gantt.config.end_date = newEnd
+        } else {
+          // เลื่อนทีละ 3 เดือน
+          const newStart = new Date(currentStart)
+          newStart.setMonth(newStart.getMonth() + 3)
+          const newEnd = new Date(currentEnd)
+          newEnd.setMonth(newEnd.getMonth() + 3)
+
+          gantt.config.start_date = newStart
+          gantt.config.end_date = newEnd
+        }
+
+        gantt.render()
+      }
+
+      // Scroll to Today
+      ; (window as any).__ganttScrollToToday = () => {
+        configureZoom(zoom) // Re-apply zoom จะ reset กลับมาที่วันนี้
+      }
 
     return () => {
-      delete w.__ganttScrollToToday
-      delete w.__ganttScrollPrev
-      delete w.__ganttScrollNext
+      delete (window as any).__ganttScrollPrev
+      delete (window as any).__ganttScrollNext
+      delete (window as any).__ganttScrollToToday
     }
-  }, [scrollToToday, scrollPrev, scrollNext])
+  }, [zoom, configureZoom])
 
   return (
     <>
       <style jsx global>{`
+        /* ============================================ */
+        /* WEEKEND STYLE                               */
+        /* ============================================ */
+        
+        .gantt_task_cell.gantt-weekend {
+          background-color: #e2e8f0 !important;
+          border-left: 1px solid #cbd5e1;
+        }
+
         /* ============================================ */
         /* GANTT BASE STYLES                           */
         /* ============================================ */
@@ -504,87 +593,53 @@ export function GanttChart({
         /* ============================================ */
         
         .gantt_task_line {
-          border-radius: 4px !important;
+          border-radius: 12px !important; /* Pill shape */
           border: none !important;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.08) !important;
+          transition: all 0.2s;
+        }
+        .gantt_task_line:hover {
+          box-shadow: 0 4px 8px rgba(0,0,0,0.12) !important;
+          transform: translateY(-1px);
         }
         
-        /* Project bar */
+        /* Project bar - Premium Indigo */
         .gantt_task_line.gantt-project {
-          background: linear-gradient(135deg, #1e40af, #3b82f6) !important;
+          background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
         }
         
-        /* Story bar */
+        /* Story bar - Modern Blue */
         .gantt_task_line.gantt-story {
-          background: linear-gradient(135deg, #3b82f6, #60a5fa) !important;
+          background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
         }
         
-        /* Task bar */
+        /* Task bar - Soft Sky */
         .gantt_task_line.gantt-task-item {
-          background: linear-gradient(135deg, #60a5fa, #93c5fd) !important;
+          background: linear-gradient(135deg, #0ea5e9, #38bdf8) !important;
         }
         
-        /* Status colors */
+        /* Status colors override - keep shape but use semantic colors if needed, 
+           or maybe keep the blue theme and use indicators? 
+           Let's stick to the blue theme for type hierarchy as requested for "Beauty". 
+           We will let status change just the border or indicator if needed, 
+           but currently the code overrides with status colors. 
+           Let's make sure status colors are also "Modern" if they apply.
+        */
         .gantt_task_line.gantt-done {
-          background: linear-gradient(135deg, #16a34a, #22c55e) !important;
-        }
-        .gantt_task_line.gantt-in-progress {
-          background: linear-gradient(135deg, #d97706, #f59e0b) !important;
-        }
-        .gantt_task_line.gantt-blocked {
-          background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+          background: linear-gradient(135deg, #059669, #10b981) !important; /* Emerald */
+          opacity: 0.8;
         }
         .gantt_task_line.gantt-overdue {
           background: linear-gradient(135deg, #dc2626, #ef4444) !important;
-          animation: pulse-red 2s infinite;
+          box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4) !important;
         }
-        
-        @keyframes pulse-red {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-          50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
-        }
-        
-        /* ============================================ */
-        /* MILESTONE DIAMOND                           */
-        /* ============================================ */
-        
-        .gantt_task_line.gantt-milestone {
-          background: transparent !important;
-          border: none !important;
-          box-shadow: none !important;
-          width: 0 !important;
-          height: 0 !important;
-          margin-left: -10px !important;
-          overflow: visible !important;
-        }
-        
-        .gantt_task_line.gantt-milestone .gantt_task_content {
-          background: linear-gradient(135deg, #7c3aed, #8b5cf6) !important;
-          width: 18px !important;
-          height: 18px !important;
-          transform: rotate(45deg) !important;
-          border-radius: 3px !important;
-          margin-top: 3px !important;
-          margin-left: 1px !important;
-          box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3) !important;
-        }
-        
-        .gantt_task_line.gantt-milestone.gantt-done .gantt_task_content {
-          background: linear-gradient(135deg, #16a34a, #22c55e) !important;
-          box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3) !important;
-        }
-        
-        .gantt_task_line.gantt-milestone .gantt_task_progress {
-          display: none !important;
-        }
-        
-        /* ============================================ */
-        /* PROGRESS BAR                                */
-        /* ============================================ */
-        
+
+        /* Progress Bar - Soft Overlay */
         .gantt_task_progress {
-          background: rgba(0,0,0,0.15) !important;
-          border-radius: 4px !important;
+          background: rgba(255, 255, 255, 0.3) !important;
+          border-radius: 12px !important;
+          box-shadow: none !important;
+          border-right: 1px solid rgba(255,255,255,0.4);
         }
         
         /* Text inside bar */

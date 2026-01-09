@@ -3,7 +3,6 @@
 import * as React from "react";
 import { SmartCombobox, ComboboxOption } from "@/components/shared/SmartCombobox/SmartCombobox";
 import { User, Building, Briefcase, MapPin } from "lucide-react";
-import { MainLayout } from "@/components/layout/MainLayout";
 
 // ============================================
 // 1. Basic Single Select
@@ -254,12 +253,7 @@ export function ProjectSelect() {
 
 export default function ComboboxDemo() {
     return (
-        <MainLayout
-            breadcrumb={[
-                { label: "Design System", href: "/design-system" },
-                { label: "Smart Combobox" }
-            ]}
-        >
+        <div className="pt-6">
             <div style={{ maxWidth: "800px", margin: "0 auto" }}>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
                     SmartCombobox Component
@@ -279,6 +273,6 @@ export default function ComboboxDemo() {
                     </div>
                 </div>
             </div>
-        </MainLayout>
+        </div>
     );
 }

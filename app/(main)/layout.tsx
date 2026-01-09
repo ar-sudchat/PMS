@@ -1,27 +1,21 @@
-// app/(main)/layout.tsx
-import { TopNavigation } from "@/components/layout/TopNavigation";
+import { redirect } from 'next/navigation'
+import { getCurrentUser } from '@/lib/auth'
+import { MainLayout } from '@/components/layout/MainLayout'
 
-export default function MainLayout({
-    children,
+export default async function MainAppLayout({
+  children,
 }: {
-    children: React.ReactNode;
+  children: React.ReactNode
 }) {
-    return (
-        <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
-            {/* Fixed Top Navigation */}
-            <TopNavigation />
+  const user = await getCurrentUser()
+  
+  if (!user) {
+    redirect('/login')
+  }
 
-            {/* Main Content (with top padding for fixed nav) */}
-            <main
-                style={{
-                    paddingTop: "70px", // Height of TopNavigation
-                    minHeight: "100vh",
-                }}
-            >
-                <div style={{ padding: "24px" }}>
-                    {children}
-                </div>
-            </main>
-        </div>
-    );
+  if (user.mustChangePassword) {
+    redirect('/change-password')
+  }
+
+  return <MainLayout>{children}</MainLayout>
 }

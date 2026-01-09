@@ -50,6 +50,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
         warranty_end_date: '',
         status_id: '',
         current_milestone_id: '',
+        project_owner_id: '',
     })
 
     // Form State - Milestones
@@ -106,6 +107,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                 warranty_end_date: project.warranty_end_date ? new Date(project.warranty_end_date).toISOString().split('T')[0] : '', // Format date for input
                 status_id: project.status_id || '',
                 current_milestone_id: project.current_milestone_id || '',
+                project_owner_id: project.project_owner_id || '',
             })
             if (project.milestones) {
                 setMilestones(project.milestones.map(m => ({
@@ -124,7 +126,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
 
     const loadOptions = async () => {
         try {
-            const [cust, emp, ms, del, stat] = await Promise.all([
+            const [cust, empResult, ms, del, stat] = await Promise.all([
                 getCustomers(),
                 getEmployees(),
                 getMilestoneConfigs(),
@@ -132,7 +134,13 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                 getProjectStatusConfigs(),
             ])
             setCustomers(cust)
-            setEmployees(emp)
+            // Handle getEmployees returning { success, data } or array (backward compat if needed)
+            if ('success' in (empResult as any)) {
+                setEmployees((empResult as any).data || [])
+            } else {
+                setEmployees(empResult as any)
+            }
+
             setMilestoneConfigs(ms)
             setDeliverableConfigs(del)
             setStatusConfigs(stat)
@@ -164,6 +172,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             warranty_end_date: '',
             status_id: '',
             current_milestone_id: '',
+            project_owner_id: '',
         })
         // Start with 4 empty milestone rows
         setMilestones([
@@ -341,8 +350,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                     type="text"
                                     value={formData.project_code}
                                     onChange={(e) => setFormData({ ...formData, project_code: e.target.value })}
+                                    readOnly={mode === 'edit'}
                                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.project_code ? 'border-red-500' : 'border-slate-300'
-                                        }`}
+                                        } ${mode === 'edit' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                                     placeholder="Enter or Auto-gen"
                                 />
                                 {errors.project_code && <p className="text-red-500 text-sm mt-1">{errors.project_code}</p>}
@@ -426,43 +436,24 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                             </div>
                         </div>
 
-                        {/* Row 4.5: Project Owner */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                                Project Owner
-                            </label>
-                            <select
-                                value={(formData as any).project_owner_id || ''}
-                                onChange={(e) => setFormData({ ...formData, project_owner_id: e.target.value } as any)}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Select Owner</option>
-                                {employees.map((e: any) => (
-                                    <option key={e.id} value={e.id}>{e.full_name} {e.position_name ? `(${e.position_name})` : ''}</option>
-                                ))}
-                            </select>
-                            <p className="text-xs text-slate-500 mt-1">ผู้รับผิดชอบหลักของโครงการ (SA/BA/Dev)</p>
-                        </div>
-
-                        {/* Row 5: Description */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                                Description
-                            </label>
-                            <textarea
-                                value={formData.description}
-                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="Brief description of the project..."
-                                rows={3}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
-                            />
-                        </div>
-
-                        {/* Divider */}
-                        <hr className="my-2" />
-
-                        {/* Row 6: Mandays & Pricing */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {/* Row: Project Owner, Sold Mandays, Warranty End */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Project Owner
+                                </label>
+                                <select
+                                    value={formData.project_owner_id}
+                                    onChange={(e) => setFormData({ ...formData, project_owner_id: e.target.value })}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Select Owner</option>
+                                    {employees.map((e: any) => (
+                                        <option key={e.id} value={e.id}>{e.full_name} {e.position_name ? `(${e.position_name})` : ''}</option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-slate-500 mt-1">ผู้รับผิดชอบหลักของโครงการ</p>
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">
                                     Sold Mandays <span className="text-red-500">*</span>
@@ -476,6 +467,37 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                 />
                                 <p className="text-xs text-slate-500 mt-1">จำนวนวันทำงาน</p>
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Warranty End
+                                </label>
+                                <input
+                                    type="date"
+                                    value={formData.warranty_end_date}
+                                    onChange={(e) => setFormData({ ...formData, warranty_end_date: e.target.value })}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">หลัง Go-Live</p>
+                            </div>
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Description
+                            </label>
+                            <textarea
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Brief description of the project..."
+                                rows={3}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
+                            />
+                        </div>
+
+                        {/* Hidden/Commented Fields */}
+                        {/* 
+                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">
                                     Manday Rate (THB) <span className="text-red-500">*</span>
@@ -497,20 +519,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                     {totalValue.toLocaleString()}
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">คำนวณอัตโนมัติ</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Warranty End
-                                </label>
-                                <input
-                                    type="date"
-                                    value={formData.warranty_end_date}
-                                    onChange={(e) => setFormData({ ...formData, warranty_end_date: e.target.value })}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                />
-                                <p className="text-xs text-slate-500 mt-1">หลัง Go-Live</p>
-                            </div>
+                            </div> 
                         </div>
+                        */}
                     </div>
 
                     {/* ═══ Tab: Milestones ═══ */}

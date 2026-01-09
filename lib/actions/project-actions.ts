@@ -370,8 +370,10 @@ export async function getProjectById(id: string) {
         const project = projectResult.recordset[0]
 
         // Get milestones
+        // Get milestones
         const milestonesResult = await pool.request()
             .input('project_id', sql.UniqueIdentifier, id)
+            .input('current_ms_id', sql.UniqueIdentifier, project.current_milestone_id || null) // Add this here
             .query(`
         SELECT 
           pm.id,
@@ -392,9 +394,16 @@ export async function getProjectById(id: string) {
           -- Is current milestone?
           CASE WHEN pm.id = @current_ms_id THEN 1 ELSE 0 END as is_current,
           
-          -- Deliverables count
+          -- Deliverables
           (SELECT COUNT(*) FROM pms.project_milestone_deliverables d WHERE d.project_milestone_id = pm.id) as deliverable_count,
-          (SELECT COUNT(*) FROM pms.project_milestone_deliverables d WHERE d.project_milestone_id = pm.id AND d.is_submitted = 1) as submitted_count
+          (SELECT COUNT(*) FROM pms.project_milestone_deliverables d WHERE d.project_milestone_id = pm.id AND d.is_submitted = 1) as submitted_count,
+          
+          -- Deliverable IDs (for Edit Form)
+          (
+            SELECT STRING_AGG(CAST(deliverable_config_id AS NVARCHAR(50)), ',') 
+            FROM pms.project_milestone_deliverables 
+            WHERE project_milestone_id = pm.id
+          ) as deliverable_ids_str
           
         FROM pms.project_milestones pm
         LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
@@ -402,12 +411,13 @@ export async function getProjectById(id: string) {
         ORDER BY pm.sort_order
       `)
 
-        // Add current milestone id parameter
-        await pool.request()
-            .input('current_ms_id', sql.UniqueIdentifier, project.current_milestone_id)
+        // Calculate totals and format milestones
+        const milestonesRaw = milestonesResult.recordset
+        const milestones = milestonesRaw.map((m: any) => ({
+            ...m,
+            deliverable_ids: m.deliverable_ids_str ? m.deliverable_ids_str.split(',') : []
+        }))
 
-        // Calculate totals
-        const milestones = milestonesResult.recordset
         const totalPlannedMD = milestones.reduce((sum: number, m: any) => sum + (m.planned_mandays || 0), 0)
         const totalActualMD = milestones.reduce((sum: number, m: any) => sum + (m.actual_mandays || 0), 0)
         const completedCount = milestones.filter((m: any) => m.status === 'completed').length
@@ -556,23 +566,127 @@ export async function createProject(data: ProjectFormData) {
 
 // Update Project
 export async function updateProject(id: string, data: ProjectFormData) {
+    console.log('[UPDATE_PROJECT] Starting update for id:', id);
     const pool = await getConnection()
     const transaction = new sql.Transaction(pool)
 
     try {
         await transaction.begin()
+        console.log('[UPDATE_PROJECT] Transaction begun');
 
-        // 1. First, clear current_milestone_id to avoid FK constraint when deleting milestones
+        // 1. Get existing milestones to diff
+        const existingResult = await transaction.request()
+            .input('project_id', id)
+            .query(`
+                SELECT id, milestone_config_id 
+                FROM pms.project_milestones 
+                WHERE project_id = @project_id
+            `)
+
+        const existingMap = new Map<string, string>(); // config_id -> milestone_id
+        existingResult.recordset.forEach((r: any) => {
+            if (r.milestone_config_id) existingMap.set(r.milestone_config_id.toString(), r.id);
+        });
+
+        const touchedMilestoneIds = new Set<string>();
+        let newCurrentMilestoneId = null;
+
+        // 2. Clear current milestone on project to allow safe updates/deletes if needed
+        // (We might set it back later)
         await transaction.request()
             .input('id', id)
             .query('UPDATE pms.projects SET current_milestone_id = NULL WHERE id = @id')
 
-        // 2. Delete existing milestones (cascade deletes deliverables)
-        await transaction.request()
-            .input('project_id', id)
-            .query('DELETE FROM pms.project_milestones WHERE project_id = @project_id')
+        // 3. Loop through submitted milestones (Upsert)
+        for (let i = 0; i < data.milestones.length; i++) {
+            const m = data.milestones[i] as any
+            if (!m.milestone_config_id) continue;
 
-        // 3. Update Project Info
+            const configId = m.milestone_config_id.toString();
+            let milestoneId = existingMap.get(configId);
+
+            if (milestoneId) {
+                // UPDATE existing
+                await transaction.request()
+                    .input('id', milestoneId)
+                    .input('planned_mandays', m.planned_mandays)
+                    .input('weight_percent', m.weight_percent)
+                    .input('due_date', m.due_date || null)
+                    .input('sort_order', i + 1)
+                    .query(`
+                        UPDATE pms.project_milestones
+                        SET planned_mandays = @planned_mandays,
+                            weight_percent = @weight_percent,
+                            due_date = @due_date,
+                            sort_order = @sort_order
+                        WHERE id = @id
+                    `)
+
+                // Refresh Deliverables (Simpler to delete all for this MS and re-insert)
+                // Note: pms.project_milestone_deliverables usually doesn't have restrictive FKs from other tables
+                await transaction.request()
+                    .input('ms_id', milestoneId)
+                    .query('DELETE FROM pms.project_milestone_deliverables WHERE project_milestone_id = @ms_id')
+
+                touchedMilestoneIds.add(milestoneId);
+            } else {
+                // INSERT new
+                const msResult = await transaction.request()
+                    .input('project_id', id)
+                    .input('milestone_config_id', m.milestone_config_id)
+                    .input('planned_mandays', m.planned_mandays)
+                    .input('weight_percent', m.weight_percent)
+                    .input('due_date', m.due_date || null)
+                    .input('sort_order', i + 1)
+                    .query(`
+                        INSERT INTO pms.project_milestones 
+                        (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order)
+                        OUTPUT INSERTED.id
+                        VALUES 
+                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order)
+                    `)
+                milestoneId = msResult.recordset[0].id;
+            }
+
+            // Insert Deliverables for this milestone
+            if (m.deliverable_ids && m.deliverable_ids.length > 0) {
+                for (const delId of m.deliverable_ids) {
+                    await transaction.request()
+                        .input('project_milestone_id', milestoneId)
+                        .input('deliverable_config_id', delId)
+                        .query(`
+                             INSERT INTO pms.project_milestone_deliverables (project_milestone_id, deliverable_config_id)
+                             VALUES (@project_milestone_id, @deliverable_config_id)
+                         `)
+                }
+            }
+
+            // Check if this is the current milestone
+            const originalId = m.id || `temp-${i}`;
+            if (data.current_milestone_id && (data.current_milestone_id === originalId || data.current_milestone_id === m.id || data.current_milestone_id === milestoneId)) {
+                newCurrentMilestoneId = milestoneId;
+            }
+        }
+
+        // 4. Delete removed milestones
+        // Identify IDs in DB that were NOT touched
+        const idsToDelete = Array.from(existingMap.values()).filter(dbId => !touchedMilestoneIds.has(dbId));
+
+        if (idsToDelete.length > 0) {
+            for (const delId of idsToDelete) {
+                // Unlink stories first (FK constraint fix)
+                await transaction.request()
+                    .input('ms_id', delId)
+                    .query('UPDATE pms.stories SET milestone_id = NULL WHERE milestone_id = @ms_id')
+
+                // Delete milestone
+                await transaction.request()
+                    .input('id', delId)
+                    .query('DELETE FROM pms.project_milestones WHERE id = @id')
+            }
+        }
+
+        // 5. Update Project Info
         await transaction.request()
             .input('id', id)
             .input('name', data.name)
@@ -585,6 +699,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
             .input('manday_rate', data.manday_rate)
             .input('warranty_end_date', data.warranty_end_date || null)
             .input('status_id', data.status_id || null)
+            .input('current_milestone_id', newCurrentMilestoneId) // Set the calculated ID
             .query(`
         UPDATE pms.projects SET
           name = @name,
@@ -596,77 +711,19 @@ export async function updateProject(id: string, data: ProjectFormData) {
           sold_mandays = @sold_mandays,
           manday_rate = @manday_rate,
           warranty_end_date = @warranty_end_date,
-          status_id = @status_id
+          status_id = @status_id,
+          current_milestone_id = @current_milestone_id
         WHERE id = @id
       `)
 
-        // 4. Re-insert milestones & deliverables
-        let newCurrentMilestoneId = null;
-
-        for (let i = 0; i < data.milestones.length; i++) {
-            const m = data.milestones[i] as any
-            if (!m.milestone_config_id) continue; // Skip empty milestones
-            // We assume frontend sends existing milestones with ID, and newly added ones might have temp ID or no ID.
-            // But importantly, data.current_milestone_id matches ONE of these IDs (or temp IDs).
-            // Since we rebuilt the form logic, we know the structure.
-            const originalId = m.id || `temp-${i}`;
-
-            const msResult = await transaction.request()
-                .input('project_id', id)
-                .input('milestone_config_id', m.milestone_config_id)
-                .input('planned_mandays', m.planned_mandays)
-                .input('weight_percent', m.weight_percent)
-                .input('due_date', m.due_date || null)
-                .input('sort_order', i + 1)
-                .query(`
-            INSERT INTO pms.project_milestones 
-            (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order)
-            OUTPUT INSERTED.id
-            VALUES 
-            (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order)
-          `)
-
-            const newMilestoneId = msResult.recordset[0].id;
-
-            if (data.current_milestone_id && (data.current_milestone_id === originalId || data.current_milestone_id === m.id)) {
-                newCurrentMilestoneId = newMilestoneId;
-            }
-
-            // Insert deliverables
-            if (m.deliverable_ids && m.deliverable_ids.length > 0) {
-                // ... (existing deliverable logic if any, or need to add it?) 
-                // Wait, the previous code didn't show deliverable insertion inside look. 
-                // Let's check if I missed it in view.
-                // Ah, previous code (Step 1744) didn't show deliverable insertion inside the loop, it was cut off.
-                // But wait, "m.deliverable_ids" logic must be there. I need to proceed carefully.
-                // I will assume I need to insert deliverables too if they are passed.
-                for (const delId of m.deliverable_ids) {
-                    await transaction.request()
-                        .input('project_milestone_id', newMilestoneId)
-                        .input('deliverable_config_id', delId)
-                        .query(`
-                             INSERT INTO pms.project_milestone_deliverables (project_milestone_id, deliverable_config_id)
-                             VALUES (@project_milestone_id, @deliverable_config_id)
-                         `)
-                }
-            }
-        }
-
-        // 5. Update Current Milestone if found
-        if (newCurrentMilestoneId) {
-            await transaction.request()
-                .input('id', id)
-                .input('current_milestone_id', newCurrentMilestoneId)
-                .query('UPDATE pms.projects SET current_milestone_id = @current_milestone_id WHERE id = @id')
-        }
-
+        console.log('[UPDATE_PROJECT] Committing transaction');
         await transaction.commit()
         revalidatePath('/projects')
         revalidatePath(`/projects/${id}`)
         return { success: true, id: id }
 
     } catch (error) {
-        await transaction.rollback()
+        if (transaction) await transaction.rollback()
         console.error('Update project error:', error)
         throw error
     }

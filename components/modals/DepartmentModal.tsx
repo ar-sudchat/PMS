@@ -47,12 +47,17 @@ export function DepartmentModal({ open, onClose, mode, department, onSuccess }: 
         if (open) {
             const loadDropdowns = async () => {
                 try {
-                    const [depts, emps] = await Promise.all([
+                    const [depts, empsResult] = await Promise.all([
                         getDepartments(),
                         getEmployees(),
                     ]);
                     setDepartments(depts || []);
-                    setEmployees(emps || []);
+
+                    if (empsResult && 'success' in (empsResult as any)) {
+                        setEmployees((empsResult as any).data || []);
+                    } else {
+                        setEmployees(empsResult as any || []);
+                    }
                 } catch (err) {
                     console.error("Failed to load dropdown data", err);
                 }

@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { useParams } from "next/navigation"
-import { MainLayout } from "@/components/layout/MainLayout"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -210,22 +209,16 @@ export default function KanbanBoardPage() {
 
     if (!project) {
         return (
-            <MainLayout>
+            <div className="pt-6">
                 <div className="flex items-center justify-center h-64">
                     <p className="text-slate-500">Project not found</p>
                 </div>
-            </MainLayout>
+            </div>
         )
     }
 
     return (
-        <MainLayout
-            breadcrumb={[
-                { label: "Projects", href: "/projects" },
-                { label: project.name, href: `/projects/${projectId}` },
-                { label: "Board" }
-            ]}
-        >
+        <div className="pt-6">
             {/* Toolbar */}
             <div className="flex items-center justify-between mb-6">
                 <Button>
@@ -259,6 +252,6 @@ export default function KanbanBoardPage() {
                     {activeTask && <TaskCard task={activeTask} />}
                 </DragOverlay>
             </DndContext>
-        </MainLayout>
+        </div>
     )
 }
