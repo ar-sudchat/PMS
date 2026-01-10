@@ -41,7 +41,7 @@ async function runMigration() {
         const pool = await sql.connect(config)
         console.log('Connected.')
 
-        const sqlPath = path.join(process.cwd(), 'scripts', 'kpi-operational-schema.sql')
+        const sqlPath = path.join(process.cwd(), 'scripts', 'project-detail-table-views.sql')
         const sqlContent = fs.readFileSync(sqlPath, 'utf8')
 
         // Split by GO

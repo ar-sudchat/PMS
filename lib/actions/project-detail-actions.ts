@@ -3,6 +3,7 @@
 import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
+import { revalidatePath } from 'next/cache'
 
 // ============================================
 // TYPES
@@ -70,8 +71,62 @@ export interface ProjectTeamMember {
     logged_hours: number
 }
 
+// New Types for Table View
+export interface StoryListItem {
+    id: string
+    story_code: string
+    title: string
+    milestone_id: string
+    milestone_code: string
+    milestone_name: string
+    milestone_color: string
+    status: string
+    priority: string
+    estimated_md: number | null
+    task_count: number
+    completed_task_count: number
+    progress_percent: number
+    due_date: string | null
+}
+
+export interface TaskListItem {
+    id: string
+    task_code: string
+    title: string
+    story_id: string
+    story_code: string
+    story_title: string
+    milestone_code: string
+    milestone_name: string
+    milestone_color: string
+    task_type: string
+    status: string
+    priority: string
+    assignee_id: string | null
+    assignee_name: string | null
+    assignee_nickname: string | null
+    assignee_avatar: string | null
+    estimated_hours: number | null
+    actual_hours: number | null
+    due_date: string | null
+    is_overdue: boolean
+}
+
+export interface ProjectSummary {
+    project: ProjectDetail
+    milestone_summary: ProjectMilestone[]
+    totals: {
+        milestones: number
+        stories: number
+        tasks: number
+        progress_percent: number
+        planned_mandays: number
+        actual_mandays: number
+    }
+}
+
 // ============================================
-// GET PROJECT DETAIL
+// GET PROJECT DETAIL (Existing)
 // ============================================
 
 export async function getProjectDetail(projectId: string) {
@@ -196,7 +251,7 @@ export async function getProjectDetail(projectId: string) {
 }
 
 // ============================================
-// GET PROJECT MILESTONES
+// GET PROJECT MILESTONES (Existing)
 // ============================================
 
 export async function getProjectMilestones(projectId: string) {
@@ -246,7 +301,7 @@ export async function getProjectMilestones(projectId: string) {
 }
 
 // ============================================
-// GET PROJECT TEAM
+// GET PROJECT TEAM (Existing)
 // ============================================
 
 export async function getProjectTeam(projectId: string) {
@@ -289,5 +344,255 @@ export async function getProjectTeam(projectId: string) {
     } catch (error: any) {
         console.error('getProjectTeam error:', error)
         return { success: false, error: error.message, data: [] }
+    }
+}
+
+// ============================================
+// NEW: PROJECT SUMMARY (For Tab 1)
+// ============================================
+
+export async function getProjectSummary(projectId: string): Promise<ProjectSummary | null> {
+    const [detailRes, milestoneRes] = await Promise.all([
+        getProjectDetail(projectId),
+        getProjectMilestones(projectId)
+    ])
+
+    if (!detailRes.success || !detailRes.data || !milestoneRes.success) {
+        return null
+    }
+
+    const project = detailRes.data as ProjectDetail
+    const milestones = milestoneRes.data as ProjectMilestone[]
+
+    const totals = {
+        milestones: milestones.length,
+        stories: project.total_stories,
+        tasks: project.total_tasks,
+        progress_percent: project.progress_percent,
+        planned_mandays: milestones.reduce((sum, m) => sum + (m.planned_mandays || 0), 0),
+        actual_mandays: project.used_mandays // Used from detail query
+    }
+
+    return {
+        project,
+        milestone_summary: milestones,
+        totals
+    }
+}
+
+// ============================================
+// NEW: GET PROJECT STORIES
+// ============================================
+
+export async function getProjectStories(
+    projectId: string,
+    filters?: {
+        milestoneId?: string
+        status?: string
+        priority?: string
+        search?: string
+    },
+    sort?: { field: string; order: 'asc' | 'desc' },
+    pagination?: { page: number; pageSize: number }
+): Promise<{ data: StoryListItem[]; total: number }> {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('projectId', sql.UniqueIdentifier, projectId)
+
+        let query = `SELECT * FROM pms.vw_project_stories_list WHERE project_id = @projectId`
+
+        // Filters
+        if (filters?.milestoneId && filters.milestoneId !== 'all') {
+            request.input('milestoneId', sql.UniqueIdentifier, filters.milestoneId)
+            query += ` AND milestone_id = @milestoneId`
+        }
+        if (filters?.status && filters.status !== 'all') {
+            request.input('status', sql.VarChar, filters.status)
+            query += ` AND status = @status`
+        }
+        if (filters?.priority && filters.priority !== 'all') {
+            request.input('priority', sql.VarChar, filters.priority)
+            query += ` AND priority = @priority`
+        }
+        if (filters?.search) {
+            request.input('search', sql.NVarChar, `%${filters.search}%`)
+            query += ` AND (title LIKE @search OR story_code LIKE @search)`
+        }
+
+        // Count Total
+        const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total')
+        const countResult = await request.query(countQuery)
+        const total = countResult.recordset[0].total
+
+        // Sorting
+        const sortField = sort?.field || 'sort_order'
+        const sortOrder = sort?.order || 'asc'
+        query += ` ORDER BY ${sortField} ${sortOrder}`
+
+        // Pagination
+        if (pagination) {
+            const offset = (pagination.page - 1) * pagination.pageSize
+            query += ` OFFSET ${offset} ROWS FETCH NEXT ${pagination.pageSize} ROWS ONLY`
+        }
+
+        const result = await request.query(query)
+
+        return {
+            data: result.recordset as StoryListItem[],
+            total
+        }
+    } catch (error) {
+        console.error('getProjectStories error:', error)
+        return { data: [], total: 0 }
+    }
+}
+
+// ============================================
+// NEW: GET PROJECT TASKS
+// ============================================
+
+export async function getProjectTasks(
+    projectId: string,
+    filters?: {
+        storyId?: string
+        milestoneId?: string
+        status?: string
+        priority?: string
+        assigneeId?: string
+        taskType?: string
+        search?: string
+    },
+    sort?: { field: string; order: 'asc' | 'desc' },
+    pagination?: { page: number; pageSize: number }
+): Promise<{ data: TaskListItem[]; total: number }> {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('projectId', sql.UniqueIdentifier, projectId)
+
+        let query = `SELECT * FROM pms.vw_project_tasks_list WHERE project_id = @projectId`
+
+        // Filters
+        if (filters?.storyId) {
+            request.input('storyId', sql.UniqueIdentifier, filters.storyId)
+            query += ` AND story_id = @storyId`
+        }
+        if (filters?.milestoneId && filters.milestoneId !== 'all') {
+            request.input('milestoneId', sql.UniqueIdentifier, filters.milestoneId)
+            query += ` AND milestone_id = @milestoneId`
+        }
+        if (filters?.status && filters.status !== 'all') {
+            request.input('status', sql.VarChar, filters.status)
+            query += ` AND status = @status`
+        }
+        if (filters?.priority && filters.priority !== 'all') {
+            request.input('priority', sql.VarChar, filters.priority)
+            query += ` AND priority = @priority`
+        }
+        if (filters?.assigneeId && filters.assigneeId !== 'all') {
+            if (filters.assigneeId === 'unassigned') {
+                query += ` AND assignee_id IS NULL`
+            } else {
+                request.input('assigneeId', sql.UniqueIdentifier, filters.assigneeId)
+                query += ` AND assignee_id = @assigneeId`
+            }
+        }
+        if (filters?.taskType && filters.taskType !== 'all') {
+            request.input('taskType', sql.VarChar, filters.taskType)
+            query += ` AND task_type = @taskType`
+        }
+        if (filters?.search) {
+            request.input('search', sql.NVarChar, `%${filters.search}%`)
+            query += ` AND (title LIKE @search OR task_code LIKE @search OR story_code LIKE @search)`
+        }
+
+        // Count Total
+        const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total')
+        const countResult = await request.query(countQuery)
+        const total = countResult.recordset[0].total
+
+        // Sorting
+        const sortField = sort?.field || 'sort_order'
+        const sortOrder = sort?.order || 'asc'
+        query += ` ORDER BY ${sortField} ${sortOrder}`
+
+        // Pagination
+        if (pagination) {
+            const offset = (pagination.page - 1) * pagination.pageSize
+            query += ` OFFSET ${offset} ROWS FETCH NEXT ${pagination.pageSize} ROWS ONLY`
+        }
+
+        const result = await request.query(query)
+
+        return {
+            data: result.recordset as TaskListItem[],
+            total
+        }
+    } catch (error) {
+        console.error('getProjectTasks error:', error)
+        return { data: [], total: 0 }
+    }
+}
+
+// ============================================
+// NEW: INLINE UPDATES
+// ============================================
+
+export async function updateStoryField(
+    storyId: string,
+    field: 'status' | 'priority' | 'milestone_id',
+    value: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('id', sql.UniqueIdentifier, storyId)
+        request.input('value', value)
+
+        let updateQuery = ''
+        if (field === 'status') updateQuery = 'UPDATE pms.stories SET status = @value, updated_at = GETDATE() WHERE id = @id'
+        else if (field === 'priority') updateQuery = 'UPDATE pms.stories SET priority = @value, updated_at = GETDATE() WHERE id = @id'
+        else if (field === 'milestone_id') updateQuery = 'UPDATE pms.stories SET milestone_id = @value, updated_at = GETDATE() WHERE id = @id'
+
+        await request.query(updateQuery)
+
+        revalidatePath('/projects')
+        return { success: true }
+    } catch (error: any) {
+        return { success: false, error: error.message }
+    }
+}
+
+export async function updateTaskField(
+    taskId: string,
+    field: 'status' | 'priority' | 'assignee_id' | 'task_type',
+    value: string | null
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('id', sql.UniqueIdentifier, taskId)
+
+        // Handle null for assignee
+        if (value === 'null' || value === null) {
+            request.input('value', sql.UniqueIdentifier, null)
+        } else {
+            // Basic casting, mssql driver handles string to UID usually
+            request.input('value', field === 'assignee_id' ? sql.UniqueIdentifier : sql.VarChar, value)
+        }
+
+        let updateQuery = ''
+        if (field === 'status') updateQuery = 'UPDATE pms.tasks SET status = @value, updated_at = GETDATE() WHERE id = @id'
+        else if (field === 'priority') updateQuery = 'UPDATE pms.tasks SET priority = @value, updated_at = GETDATE() WHERE id = @id'
+        else if (field === 'assignee_id') updateQuery = 'UPDATE pms.tasks SET assignee_id = @value, updated_at = GETDATE() WHERE id = @id'
+        else if (field === 'task_type') updateQuery = 'UPDATE pms.tasks SET task_type = @value, updated_at = GETDATE() WHERE id = @id'
+
+        await request.query(updateQuery)
+
+        revalidatePath('/projects')
+        return { success: true }
+    } catch (error: any) {
+        return { success: false, error: error.message }
     }
 }

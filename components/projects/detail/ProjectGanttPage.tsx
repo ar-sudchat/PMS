@@ -6,7 +6,7 @@ import { ArrowLeft, Plus } from 'lucide-react'
 import { ProjectDetail } from '@/lib/actions/project-detail-actions'
 import { GanttData, getGanttData } from '@/lib/actions/gantt-actions'
 import { GanttTabContent } from './GanttTabContent'
-import { WorkItemsTabContent } from './work-items/WorkItemsTabContent'
+import { ProjectDetailView } from './table-view/ProjectDetailView'
 import { ProjectTabs } from './ProjectTabs'
 import { cn } from '@/lib/utils'
 
@@ -140,7 +140,7 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
                     onRefresh={handleGanttRefresh}
                 />
             ) : (
-                <WorkItemsTabContent projectId={project.id} />
+                <ProjectDetailView projectId={project.id} />
             )}
         </div>
     )

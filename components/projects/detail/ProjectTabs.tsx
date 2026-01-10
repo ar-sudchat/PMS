@@ -28,16 +28,16 @@ export function ProjectTabs({ projectId }: ProjectTabsProps) {
                 Gantt View
             </Link>
             <Link
-                href={`/projects/${projectId}?tab=work-items`}
+                href={`/projects/${projectId}?tab=detail`}
                 className={cn(
                     "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
-                    currentTab === 'work-items'
+                    currentTab === 'detail'
                         ? "bg-white text-indigo-600 shadow-sm"
                         : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
                 )}
             >
                 <LayoutList className="w-4 h-4" />
-                Work Items
+                Detail
             </Link>
         </div>
     )
