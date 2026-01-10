@@ -25,7 +25,7 @@ export function ConfirmDeleteModal({ open, onClose, onConfirm, title, message, i
 
             <div className="flex justify-center gap-3 mt-4">
                 <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-                <Button variant="destructive" onClick={onConfirm} loading={isLoading}>ลบ</Button>
+                <Button variant="danger" onClick={onConfirm} disabled={isLoading}>ลบ</Button>
             </div>
         </Modal>
     )

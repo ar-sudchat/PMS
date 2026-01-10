@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { GanttData, GanttTask, updateGanttTaskDates, updateGanttTaskProgress } from '@/lib/actions/gantt-actions'
 import 'dhtmlx-gantt/codebase/dhtmlxgantt.css'
 
-export type ZoomLevel = 'day' | 'week' | 'month'
+export type ZoomLevel = 'day' | 'month'
 
 interface GanttChartProps {
   data: GanttData
@@ -37,6 +37,7 @@ export function GanttChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const ganttInstanceRef = useRef<any>(null)
   const [isInitialized, setIsInitialized] = useState(false)
+  const currentDateRef = useRef<Date>(new Date()) // เก็บวันที่ปัจจุบันที่กำลังแสดง
 
   // Store callbacks in refs
   const callbacksRef = useRef({
@@ -56,7 +57,7 @@ export function GanttChart({
       {
         name: 'start_date', label: 'Start', width: 85, align: 'center',
         template: (task: any) => {
-          if (!task.start_date) return '-'
+          if (!task.start_date || task.unscheduled) return '-'
           const d = new Date(task.start_date)
           return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })
         }
@@ -149,6 +150,7 @@ export function GanttChart({
         gantt.config.details_on_dblclick = false
         gantt.config.touch = true
         gantt.config.readonly = false
+        gantt.config.show_tasks_outside_timescale = true // แสดงรายการแม้อยู่นอกช่วงเวลาที่กำลังแสดง
 
         // Plugins
         gantt.plugins({
@@ -180,6 +182,10 @@ export function GanttChart({
         // Grid row class
         gantt.templates.grid_row_class = (start: Date, end: Date, task: any) => {
           const classes: string[] = []
+          // ซ่อน dummy tasks
+          if (task.id === '__timeline_start__' || task.id === '__timeline_end__') {
+            classes.push('gantt-row-hidden')
+          }
           if (task.is_overdue) classes.push('gantt-row-overdue')
           if (task.type === 'milestone') classes.push('gantt-row-milestone')
           if (task.entity_type === 'project') classes.push('gantt-row-project')
@@ -195,8 +201,13 @@ export function GanttChart({
           return ''
         }
 
-        // Timeline cell class (Weekends)
+        // Timeline cell class (Weekends) - แสดงสีเทาเฉพาะ Day view
         gantt.templates.timeline_cell_class = (item: any, date: Date) => {
+          // ไม่แสดงสีเทาใน Month view
+          if (gantt.config.scale_unit === 'month') {
+            return ''
+          }
+          // แสดงสีเทาสำหรับวันเสาร์-อาทิตย์ใน Day view
           if (date.getDay() === 0 || date.getDay() === 6) {
             return 'gantt-weekend'
           }
@@ -331,9 +342,12 @@ export function GanttChart({
     if (!ganttInstanceRef.current) return
 
     const gantt = ganttInstanceRef.current
+    const today = new Date()
 
     switch (level) {
       case 'day':
+        // Day view: แสดง 7 วัน เริ่มจากวันอาทิตย์ของสัปดาห์ปัจจุบัน
+        gantt.config.scale_unit = 'day'
         gantt.config.scales = [
           { unit: 'month', step: 1, date: '%F %Y' },
           { unit: 'day', step: 1, date: '%D %d' }
@@ -342,56 +356,33 @@ export function GanttChart({
         gantt.config.min_column_width = 60
         gantt.config.scale_height = 50
 
-        // ⭐ แสดงทีละ 7 วัน (เริ่มวันอาทิตย์)
-        const today = new Date()
-        const startOfView = new Date(today)
-        startOfView.setDate(today.getDate() - today.getDay()) // เริ่มจากวันอาทิตย์
+        // หาวันอาทิตย์ของสัปดาห์นี้
+        const dayStart = new Date(today)
+        const currentDay = dayStart.getDay() // 0 = Sunday, 6 = Saturday
+        dayStart.setDate(dayStart.getDate() - currentDay) // ย้อนกลับไปวันอาทิตย์
 
-        const endOfView = new Date(startOfView)
-        endOfView.setDate(startOfView.getDate() + 7) // แสดง 7 วัน
+        const dayEnd = new Date(dayStart)
+        dayEnd.setDate(dayEnd.getDate() + 6) // อาทิตย์ + 6 = เสาร์
 
-        gantt.config.start_date = startOfView
-        gantt.config.end_date = endOfView
-        break
-
-      case 'week':
-        gantt.config.scale_unit = 'week'
-        gantt.config.date_scale = 'Week %W'
-        gantt.config.subscales = [
-          { unit: 'day', step: 1, date: '%d %M' }
-        ]
-        gantt.config.step = 1
-        gantt.config.min_column_width = 50
-        gantt.config.scale_height = 50
-
-        // แสดง 4 สัปดาห์
-        const weekStart = new Date()
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-        const weekEnd = new Date(weekStart)
-        weekEnd.setDate(weekStart.getDate() + 28)
-
-        gantt.config.start_date = weekStart
-        gantt.config.end_date = weekEnd
+        gantt.config.start_date = gantt.date.date_part(dayStart)
+        gantt.config.end_date = gantt.date.date_part(dayEnd)
         break
 
       case 'month':
+        // Month view: แสดงทั้ง 12 เดือนของปี (แค่ 12 ช่อง ไม่มี subscales)
         gantt.config.scale_unit = 'month'
-        gantt.config.date_scale = '%F %Y'
-        gantt.config.subscales = [
-          { unit: 'week', step: 1, date: 'W%W' }
+        gantt.config.scales = [
+          { unit: 'month', step: 1, date: '%F %Y' }
         ]
         gantt.config.step = 1
         gantt.config.min_column_width = 80
         gantt.config.scale_height = 50
 
-        // แสดง 3 เดือน
-        const monthStart = new Date()
-        monthStart.setDate(1)
-        const monthEnd = new Date(monthStart)
-        monthEnd.setMonth(monthStart.getMonth() + 3)
-
-        gantt.config.start_date = monthStart
-        gantt.config.end_date = monthEnd
+        // แสดงทั้งปี
+        const yearStart = new Date(today.getFullYear(), 0, 1) // 1 ม.ค.
+        const yearEnd = new Date(today.getFullYear(), 11, 31) // 31 ธ.ค.
+        gantt.config.start_date = gantt.date.date_part(yearStart)
+        gantt.config.end_date = gantt.date.date_part(yearEnd)
         break
     }
 
@@ -412,8 +403,31 @@ export function GanttChart({
     const gantt = ganttInstanceRef.current
     if (!gantt || !isInitialized || !data) return
 
+    // แปลง NULL dates เป็นวันที่ปัจจุบัน เพื่อให้รายการไม่หายเมื่อเลื่อนช่วงเวลา
+    // แต่เก็บ flag unscheduled เพื่อไม่วาดแท่ง
+    const today = new Date().toISOString().split('T')[0]
+
+    const processedData = {
+      ...data,
+      data: data.data.map(task => {
+        // Task/Story ถือว่า unscheduled ถ้า:
+        // 1. ไม่มี start_date หรือ end_date (NULL จาก SQL)
+        // 2. หรือ duration = 0 (Story ที่ SQL ใช้ COALESCE แล้วแต่ยังไม่มีวันที่จริง)
+        const hasNoDate = !task.start_date || !task.end_date
+        const isUnscheduled = hasNoDate || (task.duration === 0 && task.entity_type === 'task')
+
+        return {
+          ...task,
+          start_date: task.start_date || today,
+          end_date: task.end_date || today,
+          duration: hasNoDate ? 0 : task.duration, // duration = 0 จะไม่วาดแท่ง
+          unscheduled: isUnscheduled // flag สำหรับแสดง UI ว่ายังไม่กำหนดวันที่
+        }
+      })
+    }
+
     gantt.clearAll()
-    gantt.parse(data)
+    gantt.parse(processedData)
 
     // Scroll to today
     setTimeout(() => {
@@ -426,95 +440,90 @@ export function GanttChart({
   // ============================================
 
   useEffect(() => {
-    if (!ganttInstanceRef.current) return
+    if (!ganttInstanceRef.current || !isInitialized) return
 
     const gantt = ganttInstanceRef.current
 
-      // Scroll Previous - เลื่อนถอยหลัง
-      ; (window as any).__ganttScrollPrev = () => {
-        const currentStart = gantt.config.start_date
-        const currentEnd = gantt.config.end_date
-
-        if (zoom === 'day') {
-          // เลื่อนทีละ 7 วัน
-          const newStart = new Date(currentStart)
-          newStart.setDate(newStart.getDate() - 7)
-          const newEnd = new Date(currentEnd)
-          newEnd.setDate(newEnd.getDate() - 7)
-
-          gantt.config.start_date = newStart
-          gantt.config.end_date = newEnd
-        } else if (zoom === 'week') {
-          // เลื่อนทีละ 4 สัปดาห์
-          const newStart = new Date(currentStart)
-          newStart.setDate(newStart.getDate() - 28)
-          const newEnd = new Date(currentEnd)
-          newEnd.setDate(newEnd.getDate() - 28)
-
-          gantt.config.start_date = newStart
-          gantt.config.end_date = newEnd
-        } else {
-          // เลื่อนทีละ 3 เดือน
-          const newStart = new Date(currentStart)
-          newStart.setMonth(newStart.getMonth() - 3)
-          const newEnd = new Date(currentEnd)
-          newEnd.setMonth(newEnd.getMonth() - 3)
-
-          gantt.config.start_date = newStart
-          gantt.config.end_date = newEnd
-        }
-
+    // Scroll Previous - เลื่อนถอยหลัง
+    ; (window as any).__ganttScrollPrev = () => {
+      if (zoom === 'day') {
+        // Day view: ถอยหลัง 7 วัน (ไปสัปดาห์ก่อนหน้า อาทิตย์-เสาร์)
+        const state = gantt.getState()
+        const newStart = new Date(state.min_date)
+        newStart.setDate(newStart.getDate() - 7)
+        const newEnd = new Date(newStart)
+        newEnd.setDate(newEnd.getDate() + 6)
+        gantt.config.start_date = gantt.date.date_part(newStart)
+        gantt.config.end_date = gantt.date.date_part(newEnd)
+        gantt.render()
+      } else {
+        // Month view: ถอยหลัง 1 ปี
+        const state = gantt.getState()
+        const currentStart = new Date(state.min_date)
+        const prevYear = currentStart.getFullYear() - 1
+        const yearStart = new Date(prevYear, 0, 1)
+        const yearEnd = new Date(prevYear, 11, 31)
+        gantt.config.start_date = gantt.date.date_part(yearStart)
+        gantt.config.end_date = gantt.date.date_part(yearEnd)
         gantt.render()
       }
+    }
 
-      // Scroll Next - เลื่อนไปข้างหน้า
-      ; (window as any).__ganttScrollNext = () => {
-        const currentStart = gantt.config.start_date
-        const currentEnd = gantt.config.end_date
-
-        if (zoom === 'day') {
-          // เลื่อนทีละ 7 วัน
-          const newStart = new Date(currentStart)
-          newStart.setDate(newStart.getDate() + 7)
-          const newEnd = new Date(currentEnd)
-          newEnd.setDate(newEnd.getDate() + 7)
-
-          gantt.config.start_date = newStart
-          gantt.config.end_date = newEnd
-        } else if (zoom === 'week') {
-          // เลื่อนทีละ 4 สัปดาห์
-          const newStart = new Date(currentStart)
-          newStart.setDate(newStart.getDate() + 28)
-          const newEnd = new Date(currentEnd)
-          newEnd.setDate(newEnd.getDate() + 28)
-
-          gantt.config.start_date = newStart
-          gantt.config.end_date = newEnd
-        } else {
-          // เลื่อนทีละ 3 เดือน
-          const newStart = new Date(currentStart)
-          newStart.setMonth(newStart.getMonth() + 3)
-          const newEnd = new Date(currentEnd)
-          newEnd.setMonth(newEnd.getMonth() + 3)
-
-          gantt.config.start_date = newStart
-          gantt.config.end_date = newEnd
-        }
-
+    // Scroll Next - เลื่อนไปข้างหน้า
+    ; (window as any).__ganttScrollNext = () => {
+      if (zoom === 'day') {
+        // Day view: เลื่อนไป 7 วัน (ไปสัปดาห์ถัดไป อาทิตย์-เสาร์)
+        const state = gantt.getState()
+        const newStart = new Date(state.min_date)
+        newStart.setDate(newStart.getDate() + 7)
+        const newEnd = new Date(newStart)
+        newEnd.setDate(newEnd.getDate() + 6)
+        gantt.config.start_date = gantt.date.date_part(newStart)
+        gantt.config.end_date = gantt.date.date_part(newEnd)
+        gantt.render()
+      } else {
+        // Month view: เลื่อนไป 1 ปี
+        const state = gantt.getState()
+        const currentStart = new Date(state.min_date)
+        const nextYear = currentStart.getFullYear() + 1
+        const yearStart = new Date(nextYear, 0, 1)
+        const yearEnd = new Date(nextYear, 11, 31)
+        gantt.config.start_date = gantt.date.date_part(yearStart)
+        gantt.config.end_date = gantt.date.date_part(yearEnd)
         gantt.render()
       }
+    }
 
-      // Scroll to Today
-      ; (window as any).__ganttScrollToToday = () => {
-        configureZoom(zoom) // Re-apply zoom จะ reset กลับมาที่วันนี้
+    // Scroll to Today - กลับไปที่วันนี้ตาม zoom level
+    ; (window as any).__ganttScrollToToday = () => {
+      const today = new Date()
+
+      if (zoom === 'day') {
+        // Day view: แสดง 7 วัน เริ่มจากวันอาทิตย์ของสัปดาห์ปัจจุบัน
+        const dayStart = new Date(today)
+        const currentDay = dayStart.getDay()
+        dayStart.setDate(dayStart.getDate() - currentDay)
+        const dayEnd = new Date(dayStart)
+        dayEnd.setDate(dayEnd.getDate() + 6)
+        gantt.config.start_date = gantt.date.date_part(dayStart)
+        gantt.config.end_date = gantt.date.date_part(dayEnd)
+        gantt.render()
+      } else {
+        // Month view: แสดงทั้งปีนี้
+        const yearStart = new Date(today.getFullYear(), 0, 1)
+        const yearEnd = new Date(today.getFullYear(), 11, 31)
+        gantt.config.start_date = gantt.date.date_part(yearStart)
+        gantt.config.end_date = gantt.date.date_part(yearEnd)
+        gantt.render()
       }
+    }
 
     return () => {
       delete (window as any).__ganttScrollPrev
       delete (window as any).__ganttScrollNext
       delete (window as any).__ganttScrollToToday
     }
-  }, [zoom, configureZoom])
+  }, [zoom, isInitialized, configureZoom])
 
   return (
     <>
@@ -715,7 +724,7 @@ export function GanttChart({
         /* ============================================ */
         /* ADD BUTTON COLUMN                           */
         /* ============================================ */
-        
+
         .gantt_add {
           opacity: 0.5;
           transition: opacity 0.2s;
@@ -723,6 +732,14 @@ export function GanttChart({
         }
         .gantt_row:hover .gantt_add {
           opacity: 1;
+        }
+
+        /* ============================================ */
+        /* HIDE DUMMY TIMELINE TASKS                   */
+        /* ============================================ */
+
+        .gantt-row-hidden {
+          display: none !important;
         }
       `}</style>
 

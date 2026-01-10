@@ -74,13 +74,8 @@ export function TaskModal({ open, onClose, storyId, onSuccess }: TaskModalProps)
         const result = await createTask({
             story_id: storyId,
             title: formData.title,
-            description: formData.description || undefined,
             task_type: formData.taskType,
-            assignee_id: formData.assigneeId || undefined,
-            start_date: formData.startDate || undefined,
-            due_date: formData.dueDate || undefined,
-            estimated_hours: formData.estimatedHours ? parseFloat(formData.estimatedHours) : undefined,
-            priority: formData.priority
+            estimated_hours: formData.estimatedHours ? parseFloat(formData.estimatedHours) : undefined
         })
 
         setIsSaving(false)

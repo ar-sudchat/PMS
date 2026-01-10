@@ -101,19 +101,19 @@ export function KPIDashboard({ project, timesheets }: KPIDashboardProps) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {project.milestones.map(ms => (
+                                {project.milestones?.map(ms => (
                                     <tr key={ms.id}>
-                                        <td className="py-3 pl-2 font-medium">{ms.name}</td>
-                                        <td className="py-3">{ms.time_delivery_ratio}%</td>
-                                        <td className="py-3 text-muted-foreground">{ms.planned_end_date}</td>
-                                        <td className="py-3">{ms.actual_end_date || '-'}</td>
+                                        <td className="py-3 pl-2 font-medium">{ms.milestone_name || 'N/A'}</td>
+                                        <td className="py-3">-</td>
+                                        <td className="py-3 text-muted-foreground">-</td>
+                                        <td className="py-3">-</td>
                                         <td className="py-3">
-                                            <Badge variant={ms.is_on_time ? "secondary" : "destructive"} className="text-[10px]">
-                                                {ms.is_on_time ? "ON TIME" : "LATE"}
+                                            <Badge variant="secondary" className="text-[10px]">
+                                                -
                                             </Badge>
                                         </td>
                                         <td className="py-3 pr-2 text-right font-mono">
-                                            {ms.status === 'completed' ? (ms.is_on_time ? ms.time_delivery_ratio : 0).toFixed(1) : '-'}
+                                            -
                                         </td>
                                     </tr>
                                 ))}

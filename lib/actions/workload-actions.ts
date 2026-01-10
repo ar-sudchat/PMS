@@ -157,7 +157,7 @@ export async function getTeamWorkloadForDateRange(
             .input('startDate', sql.Date, new Date(startDate))
             .input('endDate', sql.Date, new Date(endDate))
             .query(`
-        SELECT 
+        SELECT
           employee_id,
           employee_code,
           employee_name,
@@ -173,7 +173,7 @@ export async function getTeamWorkloadForDateRange(
         FROM pms.vw_employee_daily_workload
         WHERE work_date BETWEEN @startDate AND @endDate
           AND position_code IN ('SA', 'BA', 'PG')
-        ORDER BY employee_name, work_date
+        ORDER BY position_code, employee_name, work_date
       `)
 
         // Group by employee

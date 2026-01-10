@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { SmartCombobox, ComboboxOption } from "@/components/shared/SmartCombobox/SmartCombobox";
+import { SmartCombobox, Option as ComboboxOption } from "@/components/shared/SmartCombobox";
 import { User, Building, Briefcase, MapPin } from "lucide-react";
 
 // ============================================
@@ -16,7 +16,7 @@ const basicOptions: ComboboxOption[] = [
 ];
 
 export function BasicSelect() {
-    const [value, setValue] = React.useState<string | null>(null);
+    const [value, setValue] = React.useState<ComboboxOption | null>(null);
 
     return (
         <SmartCombobox
@@ -24,7 +24,7 @@ export function BasicSelect() {
             placeholder="Select role..."
             options={basicOptions}
             value={value}
-            onChange={(v) => setValue(v as string)}
+            onChange={(v) => setValue(v as ComboboxOption)}
             required
         />
     );
@@ -46,18 +46,15 @@ const skillOptions: ComboboxOption[] = [
 ];
 
 export function MultipleSelect() {
-    const [skills, setSkills] = React.useState<string[]>([]);
+    const [skill, setSkill] = React.useState<ComboboxOption | null>(null);
 
     return (
         <SmartCombobox
-            label="Skills (Multi-select + Creatable)"
-            placeholder="Select skills..."
+            label="Skills (Single select only - multi not yet supported)"
+            placeholder="Select skill..."
             options={skillOptions}
-            value={skills}
-            onChange={(v) => setSkills(v as string[])}
-            multiple
-            creatable
-            onCreate={(value) => ({ value: value.toLowerCase(), label: value })}
+            value={skill}
+            onChange={(v) => setSkill(v)}
         />
     );
 }
@@ -67,64 +64,21 @@ export function MultipleSelect() {
 // ============================================
 
 const employeeOptions: ComboboxOption[] = [
-    {
-        value: "1",
-        label: "John Doe",
-        description: "Senior Developer",
-        image: "https://i.pravatar.cc/100?u=1",
-        data: { department: "Development" },
-    },
-    {
-        value: "2",
-        label: "Sarah Smith",
-        description: "UI Designer",
-        image: "https://i.pravatar.cc/100?u=2",
-        data: { department: "Design" },
-    },
-    {
-        value: "3",
-        label: "Mike Chen",
-        description: "Backend Developer",
-        image: "https://i.pravatar.cc/100?u=3",
-        data: { department: "Development" },
-    },
+    { value: "1", label: "John Doe - Senior Developer" },
+    { value: "2", label: "Sarah Smith - UI Designer" },
+    { value: "3", label: "Mike Chen - Backend Developer" },
 ];
 
 export function EmployeeSelect() {
-    const [assignee, setAssignee] = React.useState<string | null>(null);
+    const [assignee, setAssignee] = React.useState<ComboboxOption | null>(null);
 
     return (
         <SmartCombobox
-            label="Assignee (Custom Render)"
+            label="Assignee (Custom render not yet supported)"
             placeholder="Select team member..."
             options={employeeOptions}
             value={assignee}
-            onChange={(v) => setAssignee(v as string)}
-            renderOption={(option, isSelected) => (
-                <>
-                    <img
-                        src={option.image}
-                        alt=""
-                        style={{ width: 40, height: 40, borderRadius: 10 }}
-                    />
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500 }}>{option.label}</div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>
-                            {option.description} • {option.data?.department}
-                        </div>
-                    </div>
-                </>
-            )}
-            renderValue={(option) => (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <img
-                        src={option.image}
-                        alt=""
-                        style={{ width: 24, height: 24, borderRadius: 6 }}
-                    />
-                    {option.label}
-                </div>
-            )}
+            onChange={(v) => setAssignee(v)}
         />
     );
 }
@@ -134,26 +88,25 @@ export function EmployeeSelect() {
 // ============================================
 
 const departmentOptions: ComboboxOption[] = [
-    { value: "dev-1", label: "Frontend Team", group: "Development" },
-    { value: "dev-2", label: "Backend Team", group: "Development" },
-    { value: "dev-3", label: "Mobile Team", group: "Development" },
-    { value: "design-1", label: "UI/UX Team", group: "Design" },
-    { value: "design-2", label: "Graphic Team", group: "Design" },
-    { value: "mkt-1", label: "Digital Marketing", group: "Marketing" },
-    { value: "mkt-2", label: "Content Team", group: "Marketing" },
+    { value: "dev-1", label: "Development - Frontend Team" },
+    { value: "dev-2", label: "Development - Backend Team" },
+    { value: "dev-3", label: "Development - Mobile Team" },
+    { value: "design-1", label: "Design - UI/UX Team" },
+    { value: "design-2", label: "Design - Graphic Team" },
+    { value: "mkt-1", label: "Marketing - Digital Marketing" },
+    { value: "mkt-2", label: "Marketing - Content Team" },
 ];
 
 export function GroupedSelect() {
-    const [team, setTeam] = React.useState<string | null>(null);
+    const [team, setTeam] = React.useState<ComboboxOption | null>(null);
 
     return (
         <SmartCombobox
-            label="Team (Grouped)"
+            label="Team (Grouped not yet supported)"
             placeholder="Select team..."
             options={departmentOptions}
             value={team}
-            onChange={(v) => setTeam(v as string)}
-            grouped
+            onChange={(v) => setTeam(v)}
         />
     );
 }
@@ -167,39 +120,41 @@ const searchCustomers = async (query: string): Promise<ComboboxOption[]> => {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const allCustomers = [
-        { value: "cust-1", label: "ABC Company", description: "Bangkok" },
-        { value: "cust-2", label: "XYZ Corporation", description: "Chiang Mai" },
-        { value: "cust-3", label: "Tech Solutions", description: "Phuket" },
-        { value: "cust-4", label: "Digital Agency", description: "Pattaya" },
-        { value: "cust-5", label: "Innovation Hub", description: "Bangkok" },
+        { value: "cust-1", label: "ABC Company - Bangkok" },
+        { value: "cust-2", label: "XYZ Corporation - Chiang Mai" },
+        { value: "cust-3", label: "Tech Solutions - Phuket" },
+        { value: "cust-4", label: "Digital Agency - Pattaya" },
+        { value: "cust-5", label: "Innovation Hub - Bangkok" },
     ];
 
     if (!query) return allCustomers;
 
-    return allCustomers.filter(
-        (c) =>
-            c.label.toLowerCase().includes(query.toLowerCase()) ||
-            c.description?.toLowerCase().includes(query.toLowerCase())
+    return allCustomers.filter((c) =>
+        c.label.toLowerCase().includes(query.toLowerCase())
     );
 };
 
 export function AsyncSelect() {
-    const [customer, setCustomer] = React.useState<string | null>(null);
+    const [customer, setCustomer] = React.useState<ComboboxOption | null>(null);
+    const [asyncOptions, setAsyncOptions] = React.useState<ComboboxOption[]>([]);
+    const [isSearching, setIsSearching] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsSearching(true);
+        searchCustomers('').then(options => {
+            setAsyncOptions(options);
+            setIsSearching(false);
+        });
+    }, []);
 
     return (
         <SmartCombobox
-            label="Customer (Async Search)"
+            label="Customer (Async/Creatable not yet supported)"
             placeholder="Search customer..."
-            async
-            onSearch={searchCustomers}
+            options={asyncOptions}
             value={customer}
-            onChange={(v) => setCustomer(v as string)}
-            creatable
-            onCreate={async (value) => {
-                // Simulate API create
-                await new Promise((resolve) => setTimeout(resolve, 500));
-                return { value: `new-${Date.now()}`, label: value };
-            }}
+            onChange={(v) => setCustomer(v)}
+            isLoading={isSearching}
         />
     );
 }
@@ -209,40 +164,21 @@ export function AsyncSelect() {
 // ============================================
 
 const projectOptions: ComboboxOption[] = [
-    {
-        value: "prj-001",
-        label: "E-Commerce Website",
-        description: "ABC Company • In Progress",
-        icon: <Briefcase size={18} />,
-        data: { customer: "ABC Company", status: "in_progress" },
-    },
-    {
-        value: "prj-002",
-        label: "Mobile App",
-        description: "XYZ Corp • UAT",
-        icon: <Briefcase size={18} />,
-        data: { customer: "XYZ Corp", status: "uat" },
-    },
-    {
-        value: "prj-003",
-        label: "ERP System",
-        description: "Tech Solutions • Development",
-        icon: <Briefcase size={18} />,
-        data: { customer: "Tech Solutions", status: "development" },
-    },
+    { value: "prj-001", label: "E-Commerce Website - ABC Company" },
+    { value: "prj-002", label: "Mobile App - XYZ Corp" },
+    { value: "prj-003", label: "ERP System - Tech Solutions" },
 ];
 
 export function ProjectSelect() {
-    const [project, setProject] = React.useState<string | null>(null);
+    const [project, setProject] = React.useState<ComboboxOption | null>(null);
 
     return (
         <SmartCombobox
-            label="Project (With Icon & Size LG)"
+            label="Project"
             placeholder="Select project..."
             options={projectOptions}
             value={project}
-            onChange={(v) => setProject(v as string)}
-            size="lg"
+            onChange={(v) => setProject(v)}
         />
     );
 }

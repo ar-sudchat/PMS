@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { getTeamWorkloadForDateRange, EmployeeWorkload } from '@/lib/actions/workload-actions'
 import { getWorkloadConfig, WorkloadConfig } from '@/lib/actions/config-actions'
 import { WorkloadBar } from './WorkloadBar'
 import { cn } from '@/lib/utils'
+
+type PositionFilter = 'all' | 'SA' | 'BA' | 'PG'
 
 export function TeamWorkloadView() {
     const [startDate, setStartDate] = useState(() => {
@@ -17,6 +19,7 @@ export function TeamWorkloadView() {
     const [employees, setEmployees] = useState<EmployeeWorkload[]>([])
     const [config, setConfig] = useState<WorkloadConfig | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const [activeTab, setActiveTab] = useState<PositionFilter>('all')
 
     const endDate = (() => {
         const end = new Date(startDate)
@@ -60,6 +63,23 @@ export function TeamWorkloadView() {
 
     const dates = getDates()
 
+    // Filter employees by position
+    const filteredEmployees = useMemo(() => {
+        if (activeTab === 'all') return employees
+        return employees.filter(emp => emp.position_code === activeTab)
+    }, [employees, activeTab])
+
+    // Count by position
+    const positionCounts = useMemo(() => {
+        const counts = {
+            all: employees.length,
+            SA: employees.filter(e => e.position_code === 'SA').length,
+            BA: employees.filter(e => e.position_code === 'BA').length,
+            PG: employees.filter(e => e.position_code === 'PG').length
+        }
+        return counts
+    }, [employees])
+
     return (
         <div className="bg-white rounded-xl border">
             {/* Header */}
@@ -101,6 +121,56 @@ export function TeamWorkloadView() {
                 </div>
             </div>
 
+            {/* Position Tabs */}
+            <div className="px-6 py-3 border-b bg-slate-50">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab('all')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                            activeTab === 'all'
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        All ({positionCounts.all})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('SA')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                            activeTab === 'SA'
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        System Analyst ({positionCounts.SA})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('BA')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                            activeTab === 'BA'
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        Business Analyst ({positionCounts.BA})
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('PG')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                            activeTab === 'PG'
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        Programmer ({positionCounts.PG})
+                    </button>
+                </div>
+            </div>
+
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full">
@@ -129,14 +199,17 @@ export function TeamWorkloadView() {
                                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
                                 </td>
                             </tr>
-                        ) : employees.length === 0 ? (
+                        ) : filteredEmployees.length === 0 ? (
                             <tr>
                                 <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                                    No data available
+                                    {activeTab === 'all'
+                                        ? 'No data available'
+                                        : `No ${activeTab} employees found`
+                                    }
                                 </td>
                             </tr>
                         ) : (
-                            employees.map((emp) => (
+                            filteredEmployees.map((emp) => (
                                 <tr key={emp.employee_id} className="hover:bg-slate-50">
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">

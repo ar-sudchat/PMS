@@ -1,6 +1,6 @@
-import { Fragment, useState, useEffect } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import { Combobox, Transition } from '@headlessui/react'
-import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface Option {
@@ -18,10 +18,7 @@ export interface SmartComboboxProps {
     required?: boolean
     disabled?: boolean
     isLoading?: boolean
-
-    // Dynamic props (simulated for now)
-    tableName?: string
-    onLookupClick?: () => void
+    maxDisplayItems?: number
 }
 
 export function SmartCombobox({
@@ -34,18 +31,43 @@ export function SmartCombobox({
     required,
     disabled,
     isLoading,
+    maxDisplayItems = 10
 }: SmartComboboxProps) {
     const [query, setQuery] = useState('')
+    const [showAll, setShowAll] = useState(false)
+    const [isOpen, setIsOpen] = useState(false)
 
-    const filteredOptions =
-        query === ''
-            ? options
-            : options.filter((option) =>
-                option.label
-                    .toLowerCase()
-                    .replace(/\s+/g, '')
-                    .includes(query.toLowerCase().replace(/\s+/g, ''))
-            )
+    // Filter options based on search query
+    const filteredOptions = useMemo(() => {
+        if (query === '') return options
+
+        return options.filter((option) =>
+            option.label
+                .toLowerCase()
+                .replace(/\s+/g, '')
+                .includes(query.toLowerCase().replace(/\s+/g, ''))
+        )
+    }, [options, query])
+
+    // Display options (limited or all)
+    const displayOptions = useMemo(() => {
+        if (showAll || filteredOptions.length <= maxDisplayItems) {
+            return filteredOptions
+        }
+        return filteredOptions.slice(0, maxDisplayItems)
+    }, [filteredOptions, showAll, maxDisplayItems])
+
+    const hasMore = filteredOptions.length > maxDisplayItems
+
+    // Reset showAll when query changes
+    useEffect(() => {
+        setShowAll(false)
+    }, [query])
+
+    const handleChange = (newValue: Option | null) => {
+        onChange(newValue)
+        setIsOpen(false)
+    }
 
     return (
         <div className="flex flex-col gap-1.5 w-full">
@@ -60,84 +82,151 @@ export function SmartCombobox({
                     {label}
                 </label>
             )}
-            <Combobox value={value} onChange={onChange} disabled={disabled} nullable>
-                <div className="relative mt-1">
-                    <div className="relative w-full cursor-default overflow-hidden rounded-md border border-input bg-background text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-sm">
-                        <Combobox.Input
-                            className={cn(
-                                "w-full border-none py-2 pl-3 pr-10 text-sm leading-5 text-foreground bg-transparent focus:ring-0 focus:outline-none",
-                                error && "text-destructive placeholder:text-destructive/60"
-                            )}
-                            displayValue={(option: Option) => option?.label ?? ''}
-                            onChange={(event) => setQuery(event.target.value)}
-                            placeholder={placeholder}
-                        />
-                        <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
-                            {isLoading ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            ) : (
-                                <ChevronsUpDown
-                                    className="h-4 w-4 text-muted-foreground"
-                                    aria-hidden="true"
-                                />
-                            )}
-                        </Combobox.Button>
-                    </div>
-                    <Transition
-                        as={Fragment}
-                        leave="transition ease-in duration-100"
-                        leaveFrom="opacity-100"
-                        leaveTo="opacity-0"
-                        afterLeave={() => setQuery('')}
-                    >
-                        <Combobox.Options className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-popover py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm z-50">
-                            {filteredOptions.length === 0 && query !== '' ? (
-                                <div className="relative cursor-default select-none py-2 px-4 text-muted-foreground">
-                                    Nothing found.
+
+            <div className="relative">
+                <button
+                    type="button"
+                    onClick={() => !disabled && setIsOpen(!isOpen)}
+                    disabled={disabled}
+                    className={cn(
+                        "w-full px-3 py-2 text-left border rounded-md bg-background",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        error && "border-destructive",
+                        disabled && "opacity-50 cursor-not-allowed",
+                        !disabled && "cursor-pointer hover:border-input"
+                    )}
+                >
+                    <span className={cn(
+                        "block truncate text-sm",
+                        !value && "text-muted-foreground"
+                    )}>
+                        {value?.label || placeholder}
+                    </span>
+                    <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                        {isLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        ) : (
+                            <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                    </span>
+                </button>
+
+                {isOpen && !disabled && (
+                    <div className="absolute z-[100] mt-1 w-full rounded-md bg-white shadow-lg ring-1 ring-black/5 border border-slate-200">
+                        {/* Search Input */}
+                        <div className="p-2 border-b">
+                            <input
+                                type="text"
+                                className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                                placeholder="ค้นหา..."
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+
+                        {/* Header with count */}
+                        {!query && (
+                            <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30 border-b">
+                                <span className="font-medium">
+                                    {hasMore && !showAll
+                                        ? `แสดง ${displayOptions.length}/${options.length} รายการ`
+                                        : `ทั้งหมด ${options.length} รายการ`
+                                    }
+                                </span>
+                            </div>
+                        )}
+
+                        {query && (
+                            <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/50 border-b">
+                                <div className="flex items-center gap-2">
+                                    <Search className="w-3 h-3" />
+                                    <span>
+                                        แสดง {displayOptions.length}/{filteredOptions.length} รายการ
+                                        {filteredOptions.length < options.length && ` (จากทั้งหมด ${options.length})`}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Options List */}
+                        <div className="max-h-60 overflow-auto py-1">
+                            {filteredOptions.length === 0 ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                    <p>ไม่พบรายการที่ค้นหา</p>
+                                    {query && <p className="text-xs mt-1">ลองค้นหาด้วยคำอื่น</p>}
                                 </div>
                             ) : (
-                                filteredOptions.map((option) => (
-                                    <Combobox.Option
-                                        key={option.value}
-                                        className={({ active }) =>
-                                            cn(
-                                                "relative cursor-default select-none py-2 pl-10 pr-4",
-                                                active ? "bg-accent text-accent-foreground" : "text-popover-foreground"
-                                            )
-                                        }
-                                        value={option}
-                                    >
-                                        {({ selected, active }) => (
-                                            <>
-                                                <span
-                                                    className={cn(
-                                                        "block truncate",
-                                                        selected ? "font-medium" : "font-normal"
+                                <>
+                                    {displayOptions.map((option) => {
+                                        // Compare both value and convert to string for comparison
+                                        const currentValue = value?.value
+                                        const optionValue = option.value
+                                        const isSelected = currentValue !== undefined && currentValue !== null
+                                            ? String(currentValue) === String(optionValue)
+                                            : false
+
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                className={cn(
+                                                    "w-full text-left px-3 py-2 text-sm cursor-pointer",
+                                                    "hover:bg-accent hover:text-accent-foreground",
+                                                    "flex items-center gap-2",
+                                                    isSelected && "bg-accent/50"
+                                                )}
+                                                onClick={() => {
+                                                    handleChange(option)
+                                                    setQuery('')
+                                                    setShowAll(false)
+                                                }}
+                                            >
+                                                <div className="w-4 flex-shrink-0">
+                                                    {isSelected && (
+                                                        <Check className="h-4 w-4 text-primary" />
                                                     )}
-                                                >
+                                                </div>
+                                                <span className={cn(
+                                                    "flex-1 truncate",
+                                                    isSelected && "font-medium"
+                                                )}>
                                                     {option.label}
                                                 </span>
-                                                {selected ? (
-                                                    <span
-                                                        className={cn(
-                                                            "absolute inset-y-0 left-0 flex items-center pl-3",
-                                                            active ? "text-accent-foreground" : "text-primary"
-                                                        )}
-                                                    >
-                                                        <Check className="h-4 w-4" aria-hidden="true" />
-                                                    </span>
-                                                ) : null}
-                                            </>
-                                        )}
-                                    </Combobox.Option>
-                                ))
+                                            </button>
+                                        )
+                                    })}
+
+                                    {/* Show More Button */}
+                                    {hasMore && !showAll && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                setShowAll(true)
+                                            }}
+                                            className="w-full py-2.5 px-4 text-sm font-medium text-primary hover:text-primary/80 hover:bg-accent border-t transition-colors"
+                                        >
+                                            แสดงทั้งหมด ({filteredOptions.length - maxDisplayItems} รายการเพิ่มเติม)
+                                        </button>
+                                    )}
+                                </>
                             )}
-                        </Combobox.Options>
-                    </Transition>
-                </div>
-            </Combobox>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {error && (
                 <p className="text-xs text-destructive">{error}</p>
+            )}
+
+            {/* Backdrop to close dropdown */}
+            {isOpen && (
+                <div
+                    className="fixed inset-0 z-[90]"
+                    onClick={() => setIsOpen(false)}
+                />
             )}
         </div>
     )

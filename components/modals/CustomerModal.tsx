@@ -98,7 +98,7 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
                     <div className="flex items-center gap-2">
                         <Switch
                             checked={formData.is_active}
-                            onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                            onChange={(checked) => setFormData({ ...formData, is_active: checked })}
                         />
                         <span className="text-sm">{formData.is_active ? 'Active' : 'Inactive'}</span>
                     </div>

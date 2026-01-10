@@ -6,6 +6,7 @@ import { getProjectFilterOptions, getProjects, ProjectFilters } from '@/lib/acti
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { ProjectModal } from '@/components/modals/ProjectModal'
 import { ProjectDetailModal } from '@/components/modals/ProjectDetailModal'
+import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 
 // Types
 interface FilterOptions {
@@ -126,6 +127,16 @@ export default function ProjectsPage() {
 
     // Table columns
     const columns = [
+        {
+            accessorKey: 'no',
+            header: 'No',
+            cell: ({ row }: any) => (
+                <div className="text-center text-sm text-slate-600 font-medium w-16">
+                    {row.index + 1}
+                </div>
+            ),
+            enableSorting: false
+        },
         {
             accessorKey: 'name',
             header: 'Project',
@@ -277,50 +288,78 @@ export default function ProjectsPage() {
                     </div>
 
                     {/* Customer */}
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Customer</label>
-                        <select
-                            value={filters.customerId}
-                            onChange={(e) => handleFilterChange('customerId', e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[180px]"
-                        >
-                            <option value="">All Customers</option>
-                            {filterOptions.customers.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
+                    <div className="min-w-[200px]">
+                        <SmartCombobox
+                            label="Customer"
+                            placeholder="All Customers"
+                            options={[
+                                { value: '', label: 'All Customers' },
+                                ...filterOptions.customers.map(c => ({
+                                    value: c.id,
+                                    label: c.name
+                                }))
+                            ]}
+                            value={filters.customerId ?
+                                filterOptions.customers.find(c => c.id === filters.customerId)
+                                    ? { value: filters.customerId, label: filterOptions.customers.find(c => c.id === filters.customerId)!.name }
+                                    : null
+                                : { value: '', label: 'All Customers' }
+                            }
+                            onChange={(option) => handleFilterChange('customerId', option?.value === '' ? '' : option?.value || '')}
+                            maxDisplayItems={10}
+                        />
                     </div>
 
                     {/* Project Manager */}
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Project Manager</label>
-                        <select
-                            value={filters.managerId}
-                            onChange={(e) => handleFilterChange('managerId', e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[150px]"
-                        >
-                            <option value="">All PMs</option>
-                            {filterOptions.managers.map(m => (
-                                <option key={m.id} value={m.id}>{m.name_th || m.name}</option>
-                            ))}
-                        </select>
+                    <div className="min-w-[180px]">
+                        <SmartCombobox
+                            label="Project Manager"
+                            placeholder="All PMs"
+                            options={[
+                                { value: '', label: 'All PMs' },
+                                ...filterOptions.managers.map(m => ({
+                                    value: m.id,
+                                    label: m.name_th || m.name
+                                }))
+                            ]}
+                            value={filters.managerId ?
+                                filterOptions.managers.find(m => m.id === filters.managerId)
+                                    ? { value: filters.managerId, label: (filterOptions.managers.find(m => m.id === filters.managerId)!.name_th || filterOptions.managers.find(m => m.id === filters.managerId)!.name) }
+                                    : null
+                                : { value: '', label: 'All PMs' }
+                            }
+                            onChange={(option) => handleFilterChange('managerId', option?.value === '' ? '' : option?.value || '')}
+                            maxDisplayItems={10}
+                        />
                     </div>
 
                     {/* Owner */}
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Owner</label>
-                        <select
-                            value={filters.ownerId}
-                            onChange={(e) => handleFilterChange('ownerId', e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[150px]"
-                        >
-                            <option value="">All Owners</option>
-                            {filterOptions.owners.map(o => (
-                                <option key={o.id} value={o.id}>
-                                    {o.name_th || o.name} {o.position_code && `(${o.position_code})`}
-                                </option>
-                            ))}
-                        </select>
+                    <div className="min-w-[200px]">
+                        <SmartCombobox
+                            label="Owner"
+                            placeholder="All Owners"
+                            options={[
+                                { value: '', label: 'All Owners' },
+                                ...filterOptions.owners.map(o => ({
+                                    value: o.id,
+                                    label: `${o.name_th || o.name}${o.position_code ? ` (${o.position_code})` : ''}`
+                                }))
+                            ]}
+                            value={filters.ownerId ?
+                                filterOptions.owners.find(o => o.id === filters.ownerId)
+                                    ? {
+                                        value: filters.ownerId,
+                                        label: (() => {
+                                            const owner = filterOptions.owners.find(o => o.id === filters.ownerId)!
+                                            return `${owner.name_th || owner.name}${owner.position_code ? ` (${owner.position_code})` : ''}`
+                                        })()
+                                    }
+                                    : null
+                                : { value: '', label: 'All Owners' }
+                            }
+                            onChange={(option) => handleFilterChange('ownerId', option?.value === '' ? '' : option?.value || '')}
+                            maxDisplayItems={10}
+                        />
                     </div>
 
                     {/* Status */}

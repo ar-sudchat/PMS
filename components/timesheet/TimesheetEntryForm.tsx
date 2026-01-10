@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import { mockActivityCodes, mockProjects, mockPhases, mockTasks } from "@/lib/mock-timesheet";
+// import { mockActivityCodes, mockProjects, mockPhases, mockTasks } from "@/lib/mock-timesheet";
 import { format } from "date-fns";
 
 interface TimesheetEntryFormProps {
@@ -24,6 +24,12 @@ interface TimesheetEntryFormProps {
 
 export function TimesheetEntryForm({ open, onOpenChange, entry, date }: TimesheetEntryFormProps) {
     const isEditing = !!entry;
+
+    // Mock data (empty arrays for now)
+    const mockProjects: any[] = [];
+    const mockPhases: any[] = [];
+    const mockTasks: any[] = [];
+    const mockActivityCodes: any[] = [];
 
     // Local state for form fields
     const [selectedProject, setSelectedProject] = useState(entry?.project_id || "");
@@ -103,7 +109,7 @@ export function TimesheetEntryForm({ open, onOpenChange, entry, date }: Timeshee
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Work Type *</Label>
-                            <Select value={workType} onValueChange={setWorkType}>
+                            <Select value={workType} onValueChange={(value) => setWorkType(value as typeof workType)}>
                                 <SelectTrigger className={workType !== 'normal' ? 'border-orange-300 bg-orange-50' : ''}>
                                     <SelectValue placeholder="Select Type" />
                                 </SelectTrigger>

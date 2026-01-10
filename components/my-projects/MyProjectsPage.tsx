@@ -22,7 +22,7 @@ interface Project {
     done_milestones: number
 }
 
-import { GanttData } from '@/lib/actions/gantt-actions'
+import { GanttData, GanttTask } from '@/lib/actions/gantt-actions'
 import { GanttChart } from '@/components/gantt/GanttChart'
 import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 import { GanttContextMenu } from '@/components/gantt/GanttContextMenu'
@@ -38,18 +38,18 @@ interface MyProjectsPageProps {
 }
 
 export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPageProps) {
-    const [zoomScale, setZoomScale] = useState<'day' | 'week' | 'month' | 'year'>('week')
+    const [zoomScale, setZoomScale] = useState<'day' | 'month'>('day')
 
     // Modals State
-    const [storyModal, setStoryModal] = useState<{ open: boolean; projectId: string; milestoneId?: string; storyId?: string }>({ open: false, projectId: '' })
-    const [taskModal, setTaskModal] = useState<{ open: boolean; projectId: string; storyId?: string; taskId?: string }>({ open: false, projectId: '' })
+    const [storyModal, setStoryModal] = useState<{ open: boolean; projectId: string; milestoneId?: string }>({ open: false, projectId: '' })
+    const [taskModal, setTaskModal] = useState<{ open: boolean; storyId: string }>({ open: false, storyId: '' })
 
     // Context Menu State
-    const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; id: string; type: string }>({
-        visible: false, x: 0, y: 0, id: '', type: ''
+    const [contextMenu, setContextMenu] = useState<{ task: GanttTask | null; position: { x: number; y: number } | null }>({
+        task: null, position: null
     })
 
-    const handleZoomChange = (scale: 'day' | 'week' | 'month' | 'year') => {
+    const handleZoomChange = (scale: 'day' | 'week' | 'month') => {
         setZoomScale(scale)
     }
 
@@ -58,41 +58,13 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
     }
 
     // Interaction Handlers
-    const handleTaskDblClick = (id: string) => {
-        const [type, realId] = id.split('_')
-        if (type === 'story') {
-            // Find project ID from data or pass it if possible. 
-            // For multi-project view, we might need to find which project this story belongs to. 
-            // Simplified: We try to find it from the gantt data parent.
-            // But here we might just pass empty projectId if the modal handles fetching by ID.
-            setStoryModal({ open: true, projectId: '', storyId: realId })
-        } else if (type === 'task') {
-            setTaskModal({ open: true, projectId: '', taskId: realId })
-        }
+    const handleTaskDblClick = (task: GanttTask) => {
+        // TaskModal and StoryModal don't support editing yet
+        // Double-click is disabled for now
     }
 
-    const handleContextMenu = (id: string, x: number, y: number) => {
-        const [type] = id.split('_')
-        setContextMenu({ visible: true, x, y, id, type })
-    }
-
-    // Context Menu Actions
-    const onAddStory = (projectId: string, milestoneId?: string) => {
-        // If projectId is missing (e.g. from milestone), we might need logic to find it.
-        // For 'project_' id, realId is projectId.
-        setStoryModal({ open: true, projectId: projectId, milestoneId: milestoneId })
-    }
-
-    const onAddTask = (storyId: string) => {
-        setTaskModal({ open: true, projectId: '', storyId: storyId })
-    }
-
-    const onEditStory = (storyId: string) => {
-        setStoryModal({ open: true, projectId: '', storyId: storyId })
-    }
-
-    const onEditTask = (taskId: string) => {
-        setTaskModal({ open: true, projectId: '', taskId: taskId })
+    const handleContextMenu = (task: GanttTask, position: { x: number; y: number }) => {
+        setContextMenu({ task, position })
     }
 
     return (
@@ -120,30 +92,40 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
                 />
                 <GanttChart
                     data={multiProjectGanttData}
-                    projectId="multi"
-                    zoomLevel={zoomScale}
+                    zoom={zoomScale}
                     onTaskDblClick={handleTaskDblClick}
                     onContextMenu={handleContextMenu}
-                    onTaskUpdate={handleRefresh}
+                    onDataChange={handleRefresh}
                 />
 
-                <GanttContextMenu
-                    {...contextMenu}
-                    onClose={() => setContextMenu({ ...contextMenu, visible: false })}
-                    onAddStory={(pid, mid) => {
-                        // If triggered from project node, pid is project id. 
-                        // If triggered from milestone node, we passed '' as pid in ContextMenu check, 
-                        // so we might need to rely on modal to require projectId or infer it? 
-                        // Actually Project ID is required for creation.
-                        // If regular "My Projects", we know the list of projects.
-                        // For simplicity, let's assume the user clicks on Project node to add story.
-                        setStoryModal({ open: true, projectId: pid, milestoneId: mid })
-                    }}
-                    onAddTask={onAddTask}
-                    onEditStory={onEditStory}
-                    onEditTask={onEditTask}
-                    onSuccess={handleRefresh}
-                />
+                {contextMenu.task && contextMenu.position && (
+                    <GanttContextMenu
+                        task={contextMenu.task}
+                        position={contextMenu.position}
+                        onClose={() => setContextMenu({ task: null, position: null })}
+                        onAddStory={(pid, mid) => {
+                            setStoryModal({ open: true, projectId: pid, milestoneId: mid })
+                            setContextMenu({ task: null, position: null })
+                        }}
+                        onAddTask={(storyId) => {
+                            setTaskModal({ open: true, storyId })
+                            setContextMenu({ task: null, position: null })
+                        }}
+                        onAssign={(task) => {
+                            // TODO: Implement assign functionality
+                            setContextMenu({ task: null, position: null })
+                        }}
+                        onEdit={(task) => {
+                            // TaskModal and StoryModal don't support editing yet
+                            // Edit functionality is disabled for now
+                            setContextMenu({ task: null, position: null })
+                        }}
+                        onDelete={(task) => {
+                            // TODO: Implement delete functionality
+                            setContextMenu({ task: null, position: null })
+                        }}
+                    />
+                )}
             </div>
 
             <StoryModal
@@ -151,16 +133,13 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
                 onClose={() => setStoryModal(prev => ({ ...prev, open: false }))}
                 projectId={storyModal.projectId}
                 milestoneId={storyModal.milestoneId}
-                storyId={storyModal.storyId}
                 onSuccess={handleRefresh}
             />
 
             <TaskModal
                 open={taskModal.open}
                 onClose={() => setTaskModal(prev => ({ ...prev, open: false }))}
-                projectId={taskModal.projectId}
                 storyId={taskModal.storyId}
-                taskId={taskModal.taskId}
                 onSuccess={handleRefresh}
             />
         </div>

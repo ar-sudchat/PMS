@@ -1,12 +1,14 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { mockPhases, mockProjects } from "@/lib/mock-timesheet";
+// import { mockPhases, mockProjects } from "@/lib/mock-timesheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export function EffortSummaryReport() {
+    const mockProjects: any[] = [];
+    const mockPhases: any[] = [];
     const projectSummaries = mockProjects.filter(p => p.id !== 'proj-non').map(project => {
         const phases = mockPhases.filter(ph => ph.project_id === project.id);
         const planned = phases.reduce((sum, ph) => sum + ph.planned_hours, 0);

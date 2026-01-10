@@ -161,7 +161,7 @@ export async function createSprint(data: {
 
         // Insert sprint
         const result = await pool.request()
-            .input('id', sql.UniqueIdentifier, sql.default)
+            .input('id', sql.UniqueIdentifier, null)
             .input('sprintCode', sql.NVarChar, sprintCode)
             .input('name', sql.NVarChar, data.name)
             .input('goal', sql.NVarChar, data.goal || null)

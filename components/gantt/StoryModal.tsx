@@ -66,11 +66,7 @@ export function StoryModal({ open, onClose, projectId, milestoneId, onSuccess }:
         const result = await createStory({
             project_id: projectId,
             milestone_id: formData.milestoneId || undefined,
-            title: formData.title,
-            description: formData.description || undefined,
-            start_date: formData.startDate || undefined,
-            due_date: formData.dueDate || undefined,
-            priority: formData.priority
+            title: formData.title
         })
 
         setIsSaving(false)

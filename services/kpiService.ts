@@ -7,13 +7,13 @@ export function calculateTimeToDelivery(project: Project): number {
     let totalWeightedScore = 0;
     let totalWeight = 0;
 
-    project.milestones.forEach(milestone => {
+    project.milestones?.forEach(milestone => {
         // Only calculate for completed milestones or passed deadlines
         // For simplicity, we use status 'completed'
-        if (milestone.status === 'completed') {
-            const ratio = milestone.time_delivery_ratio / 100;
+        if ((milestone as any).status === 'completed') {
+            const ratio = ((milestone as any).time_delivery_ratio || 0) / 100;
             // Score: 100% if on time, 0% if late
-            const score = milestone.is_on_time ? 100 : 0;
+            const score = (milestone as any).is_on_time ? 100 : 0;
 
             totalWeightedScore += ratio * score;
             totalWeight += ratio * 100; // Normalizing to weight base
@@ -29,12 +29,12 @@ export function calculateMandayControl(project: Project): number {
     let totalWeightedScore = 0;
     let totalWeight = 0;
 
-    project.milestones.forEach(milestone => {
-        if (milestone.status === 'completed') {
-            const ratio = milestone.manday_control_ratio / 100;
+    project.milestones?.forEach(milestone => {
+        if ((milestone as any).status === 'completed') {
+            const ratio = ((milestone as any).manday_control_ratio || 0) / 100;
             // Score: 100% if within budget, 0% if over budget
             // Advanced: Could be proportional, but pass/fail is standard CMMI base
-            const isWithinBudget = milestone.actual_mandays <= milestone.planned_mandays;
+            const isWithinBudget = (milestone.actual_mandays || 0) <= milestone.planned_mandays;
             const score = isWithinBudget ? 100 : 0;
 
             totalWeightedScore += ratio * score;

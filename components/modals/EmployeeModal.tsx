@@ -7,6 +7,7 @@ import {
     updateEmployee,
     getEmployeeFormOptions
 } from '@/lib/actions/employee-actions'
+import { SmartCombobox } from '@/components/shared/SmartCombobox'
 
 interface EmployeeModalProps {
     open: boolean
@@ -281,72 +282,57 @@ export function EmployeeModal({ open, onClose, mode, employee, onSuccess }: Empl
                             <h3 className="text-sm font-semibold text-slate-700 mb-3">องค์กร</h3>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        แผนก
-                                    </label>
-                                    <select
-                                        value={formData.department_id}
-                                        onChange={(e) => handleChange('department_id', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="">-- ไม่ระบุ --</option>
-                                        {options.departments.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name_th || d.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        ตำแหน่ง
-                                    </label>
-                                    <select
-                                        value={formData.position_id}
-                                        onChange={(e) => handleChange('position_id', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="">-- ไม่ระบุ --</option>
-                                        {filteredPositions.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name_th || p.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <SmartCombobox
+                                    label="แผนก"
+                                    placeholder="-- ไม่ระบุ --"
+                                    options={[
+                                        { value: '', label: '-- ไม่ระบุ --' },
+                                        ...options.departments.map(d => ({ value: d.id, label: d.name_th || d.name }))
+                                    ]}
+                                    value={formData.department_id ? options.departments.find(d => d.id === formData.department_id) ? { value: formData.department_id, label: options.departments.find(d => d.id === formData.department_id)!.name_th || options.departments.find(d => d.id === formData.department_id)!.name } : null : { value: '', label: '-- ไม่ระบุ --' }}
+                                    onChange={(option) => handleChange('department_id', option?.value === '' ? '' : option?.value as string || '')}
+                                    maxDisplayItems={10}
+                                />
+                                <SmartCombobox
+                                    label="ตำแหน่ง"
+                                    placeholder="-- ไม่ระบุ --"
+                                    options={[
+                                        { value: '', label: '-- ไม่ระบุ --' },
+                                        ...filteredPositions.map(p => ({ value: p.id, label: p.name_th || p.name }))
+                                    ]}
+                                    value={formData.position_id ? filteredPositions.find(p => p.id === formData.position_id) ? { value: formData.position_id, label: filteredPositions.find(p => p.id === formData.position_id)!.name_th || filteredPositions.find(p => p.id === formData.position_id)!.name } : null : { value: '', label: '-- ไม่ระบุ --' }}
+                                    onChange={(option) => handleChange('position_id', option?.value === '' ? '' : option?.value as string || '')}
+                                    maxDisplayItems={10}
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4 mt-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        หัวหน้า
-                                    </label>
-                                    <select
-                                        value={formData.manager_id}
-                                        onChange={(e) => handleChange('manager_id', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="">-- ไม่มี --</option>
-                                        {options.managers
-                                            .filter(m => m.id !== employee?.id) // ไม่แสดงตัวเอง
-                                            .map(m => (
-                                                <option key={m.id} value={m.id}>{m.name_th || m.name}</option>
-                                            ))
-                                        }
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        Role <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={formData.role}
-                                        onChange={(e) => handleChange('role', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        required
-                                    >
-                                        <option value="member">Member</option>
-                                        <option value="manager">Manager</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </div>
+                                <SmartCombobox
+                                    label="หัวหน้า"
+                                    placeholder="-- ไม่มี --"
+                                    options={[
+                                        { value: '', label: '-- ไม่มี --' },
+                                        ...options.managers
+                                            .filter(m => m.id !== employee?.id)
+                                            .map(m => ({ value: m.id, label: m.name_th || m.name }))
+                                    ]}
+                                    value={formData.manager_id ? options.managers.find(m => m.id === formData.manager_id) ? { value: formData.manager_id, label: options.managers.find(m => m.id === formData.manager_id)!.name_th || options.managers.find(m => m.id === formData.manager_id)!.name } : null : { value: '', label: '-- ไม่มี --' }}
+                                    onChange={(option) => handleChange('manager_id', option?.value === '' ? '' : option?.value as string || '')}
+                                    maxDisplayItems={10}
+                                />
+                                <SmartCombobox
+                                    label="Role"
+                                    required
+                                    placeholder="Select role"
+                                    options={[
+                                        { value: 'member', label: 'Member' },
+                                        { value: 'manager', label: 'Manager' },
+                                        { value: 'admin', label: 'Admin' }
+                                    ]}
+                                    value={{ value: formData.role, label: formData.role === 'member' ? 'Member' : formData.role === 'manager' ? 'Manager' : 'Admin' }}
+                                    onChange={(option) => handleChange('role', option?.value as string || 'member')}
+                                    maxDisplayItems={3}
+                                />
                             </div>
                         </div>
 
@@ -355,37 +341,33 @@ export function EmployeeModal({ open, onClose, mode, employee, onSuccess }: Empl
                             <h3 className="text-sm font-semibold text-slate-700 mb-3">การจ้างงาน</h3>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        ประเภท
-                                    </label>
-                                    <select
-                                        value={formData.employment_type}
-                                        onChange={(e) => handleChange('employment_type', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="full_time">Full Time</option>
-                                        <option value="part_time">Part Time</option>
-                                        <option value="contract">Contract</option>
-                                        <option value="intern">Intern</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                        สถานะ
-                                    </label>
-                                    <select
-                                        value={formData.employment_status}
-                                        onChange={(e) => handleChange('employment_status', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                        <option value="suspended">Suspended</option>
-                                        <option value="resigned">Resigned</option>
-                                        <option value="terminated">Terminated</option>
-                                    </select>
-                                </div>
+                                <SmartCombobox
+                                    label="ประเภท"
+                                    placeholder="Select type"
+                                    options={[
+                                        { value: 'full_time', label: 'Full Time' },
+                                        { value: 'part_time', label: 'Part Time' },
+                                        { value: 'contract', label: 'Contract' },
+                                        { value: 'intern', label: 'Intern' }
+                                    ]}
+                                    value={{ value: formData.employment_type, label: formData.employment_type === 'full_time' ? 'Full Time' : formData.employment_type === 'part_time' ? 'Part Time' : formData.employment_type === 'contract' ? 'Contract' : 'Intern' }}
+                                    onChange={(option) => handleChange('employment_type', option?.value as string || 'full_time')}
+                                    maxDisplayItems={4}
+                                />
+                                <SmartCombobox
+                                    label="สถานะ"
+                                    placeholder="Select status"
+                                    options={[
+                                        { value: 'active', label: 'Active' },
+                                        { value: 'inactive', label: 'Inactive' },
+                                        { value: 'suspended', label: 'Suspended' },
+                                        { value: 'resigned', label: 'Resigned' },
+                                        { value: 'terminated', label: 'Terminated' }
+                                    ]}
+                                    value={{ value: formData.employment_status, label: formData.employment_status === 'active' ? 'Active' : formData.employment_status === 'inactive' ? 'Inactive' : formData.employment_status === 'suspended' ? 'Suspended' : formData.employment_status === 'resigned' ? 'Resigned' : 'Terminated' }}
+                                    onChange={(option) => handleChange('employment_status', option?.value as string || 'active')}
+                                    maxDisplayItems={5}
+                                />
                             </div>
                         </div>
                     </div>

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Settings } from 'lucide-react'
 import { ProjectDetail } from '@/lib/actions/project-detail-actions'
-import { GanttData, getProjectGanttData } from '@/lib/actions/gantt-actions'
+import { GanttData, getGanttData } from '@/lib/actions/gantt-actions'
 import { GanttChart } from '@/components/gantt/GanttChart'
 import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 import { cn } from '@/lib/utils'
@@ -12,16 +12,45 @@ import { cn } from '@/lib/utils'
 interface ProjectGanttPageProps {
     project: ProjectDetail
     ganttData: GanttData | null
+    currentUser: {
+        id: string
+        role: 'admin' | 'manager' | 'member'
+        [key: string]: any
+    }
 }
 
-export function ProjectGanttPage({ project, ganttData: initialGanttData }: ProjectGanttPageProps) {
+export function ProjectGanttPage({ project, ganttData: initialGanttData, currentUser }: ProjectGanttPageProps) {
     const [ganttData, setGanttData] = useState(initialGanttData)
-    const [zoomScale, setZoomScale] = useState<'day' | 'week' | 'month' | 'year'>('week')
+    const [zoomScale, setZoomScale] = useState<'day' | 'month'>('day')
+
+    // Calculate if user can edit this project
+    const canEdit = useMemo(() => {
+        // Admin can edit everything
+        if (currentUser.role === 'admin') return true
+
+        // Manager/Owner can edit their own projects
+        if (currentUser.role === 'manager') {
+            return project.owner_id === currentUser.id
+        }
+
+        // Members cannot edit via Gantt (read-only)
+        return false
+    }, [currentUser, project])
 
     const handleRefresh = useCallback(async () => {
-        const result = await getProjectGanttData(project.id)
+        // Note: getGanttData doesn't support single project filtering yet
+        // For now we refresh all data and filter on client side
+        const result = await getGanttData({})
         if (result.success && result.data) {
-            setGanttData(result.data)
+            // Filter to only this project's data
+            const filteredData = {
+                ...result.data,
+                data: result.data.data.filter(item =>
+                    item.entity_type === 'project' ? item.entity_id === project.id :
+                    item.project_id === project.id
+                )
+            }
+            setGanttData(filteredData)
         }
     }, [project.id])
 
@@ -30,7 +59,7 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData }: Proje
         window.print()
     }
 
-    const handleZoomChange = (scale: 'day' | 'week' | 'month' | 'year') => {
+    const handleZoomChange = (scale: 'day' | 'week' | 'month') => {
         setZoomScale(scale)
         // Update gantt scale via event or ref
     }
@@ -116,11 +145,20 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData }: Proje
                     onExport={handleExport}
                 />
 
+                {!canEdit && (
+                    <div className="px-4 py-2 bg-amber-50 border-b border-amber-200">
+                        <p className="text-sm text-amber-700">
+                            🔒 Read-only mode - คุณสามารถดูและเลื่อนดูได้เท่านั้น (ไม่สามารถแก้ไขได้)
+                        </p>
+                    </div>
+                )}
+
                 {ganttData ? (
                     <GanttChart
                         data={ganttData}
-                        projectId={project.id}
-                        onTaskUpdate={handleRefresh}
+                        zoom={zoomScale}
+                        readOnly={!canEdit}
+                        onDataChange={handleRefresh}
                     />
                 ) : (
                     <div className="flex items-center justify-center h-96 text-slate-500">

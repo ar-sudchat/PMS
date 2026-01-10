@@ -161,6 +161,7 @@ export async function getProjectInfo(projectId: string): Promise<{
         id: string
         code: string
         name: string
+        owner_id: string
         milestones: { id: string; code: string; name: string }[]
         stories: { id: string; code: string; title: string }[]
     }
@@ -174,14 +175,14 @@ export async function getProjectInfo(projectId: string): Promise<{
 
         const projectResult = await pool.request()
             .input('projectId', sql.UniqueIdentifier, cleanId)
-            .query(`SELECT id, project_code AS code, name FROM pms.projects WHERE id = @projectId AND is_active = 1`)
+            .query(`SELECT id, project_code AS code, name, project_manager_id AS owner_id FROM pms.projects WHERE id = @projectId AND is_active = 1`)
 
         if (projectResult.recordset.length === 0) return { success: false, error: 'Project not found' }
 
         const milestonesResult = await pool.request()
             .input('projectId', sql.UniqueIdentifier, cleanId)
             .query(`
-        SELECT pm.id, mc.code, mc.name
+        SELECT pm.id, mc.code, mc.name, mc.color, pm.due_date, pm.status
         FROM pms.project_milestones pm
         INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
         WHERE pm.project_id = @projectId ORDER BY mc.sort_order

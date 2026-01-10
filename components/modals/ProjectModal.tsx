@@ -13,7 +13,7 @@ import {
     updateProject,
     generateProjectCode
 } from '@/lib/actions/project-actions'
-import { SmartCombobox } from '@/components/shared/SmartCombobox/SmartCombobox'
+import { SmartCombobox } from '@/components/shared/SmartCombobox'
 
 interface ProjectModalProps {
     open: boolean
@@ -328,20 +328,18 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
           */}
                         {/* Row 1: Year, Code, Status */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Project Year <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={formData.project_year}
-                                    onChange={(e) => setFormData({ ...formData, project_year: parseInt(e.target.value) })}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                    {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(year => (
-                                        <option key={year} value={year}>{year}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            <SmartCombobox
+                                label="Project Year"
+                                required
+                                placeholder="Select year"
+                                options={[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(year => ({
+                                    value: year,
+                                    label: year.toString()
+                                }))}
+                                value={formData.project_year ? { value: formData.project_year, label: formData.project_year.toString() } : null}
+                                onChange={(option) => setFormData({ ...formData, project_year: option ? Number(option.value) : new Date().getFullYear() })}
+                                maxDisplayItems={7}
+                            />
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">
                                     Project Code <span className="text-red-500">*</span>
@@ -357,21 +355,18 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                 />
                                 {errors.project_code && <p className="text-red-500 text-sm mt-1">{errors.project_code}</p>}
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Status <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={formData.status_id}
-                                    onChange={(e) => setFormData({ ...formData, status_id: e.target.value })}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                    <option value="">Select status</option>
-                                    {statusConfigs.map((s: any) => (
-                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            <SmartCombobox
+                                label="Status"
+                                required
+                                placeholder="Select status"
+                                options={[
+                                    { value: '', label: 'Select status' },
+                                    ...statusConfigs.map(s => ({ value: s.id, label: s.name }))
+                                ]}
+                                value={formData.status_id ? statusConfigs.find(s => s.id === formData.status_id) ? { value: formData.status_id, label: statusConfigs.find(s => s.id === formData.status_id)!.name } : null : { value: '', label: 'Select status' }}
+                                onChange={(option) => setFormData({ ...formData, status_id: option?.value === '' ? '' : option?.value as string || '' })}
+                                maxDisplayItems={10}
+                            />
                         </div>
 
                         {/* Row 2: Name EN */}
@@ -402,56 +397,48 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
 
                         {/* Row 4: Customer & PM */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Customer <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={formData.customer_id}
-                                    onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.customer_id ? 'border-red-500' : 'border-slate-300'}`}
-                                >
-                                    <option value="">Select customer</option>
-                                    {customers.map((c: any) => (
-                                        <option key={c.id} value={c.id}>[{c.code}] {c.name}</option>
-                                    ))}
-                                </select>
-                                {errors.customer_id && <p className="text-red-500 text-sm mt-1">{errors.customer_id}</p>}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Project Manager <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={formData.project_manager_id}
-                                    onChange={(e) => setFormData({ ...formData, project_manager_id: e.target.value })}
-                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.project_manager_id ? 'border-red-500' : 'border-slate-300'}`}
-                                >
-                                    <option value="">Select PM</option>
-                                    {employees.map((e: any) => (
-                                        <option key={e.id} value={e.id}>{e.full_name} {e.position_name ? `(${e.position_name})` : ''}</option>
-                                    ))}
-                                </select>
-                                {errors.project_manager_id && <p className="text-red-500 text-sm mt-1">{errors.project_manager_id}</p>}
-                            </div>
+                            <SmartCombobox
+                                label="Customer"
+                                required
+                                placeholder="Select customer"
+                                options={[
+                                    { value: '', label: 'Select customer' },
+                                    ...customers.map(c => ({ value: c.id, label: `[${c.code}] ${c.name}` }))
+                                ]}
+                                value={formData.customer_id ? customers.find(c => c.id === formData.customer_id) ? { value: formData.customer_id, label: `[${customers.find(c => c.id === formData.customer_id)!.code}] ${customers.find(c => c.id === formData.customer_id)!.name}` } : null : { value: '', label: 'Select customer' }}
+                                onChange={(option) => setFormData({ ...formData, customer_id: option?.value === '' ? '' : option?.value as string || '' })}
+                                error={errors.customer_id}
+                                maxDisplayItems={10}
+                            />
+                            <SmartCombobox
+                                label="Project Manager"
+                                required
+                                placeholder="Select PM"
+                                options={[
+                                    { value: '', label: 'Select PM' },
+                                    ...employees.map(e => ({ value: e.id, label: `${e.full_name}${e.position_name ? ` (${e.position_name})` : ''}` }))
+                                ]}
+                                value={formData.project_manager_id ? employees.find(e => e.id === formData.project_manager_id) ? { value: formData.project_manager_id, label: `${employees.find(e => e.id === formData.project_manager_id)!.full_name}${employees.find(e => e.id === formData.project_manager_id)!.position_name ? ` (${employees.find(e => e.id === formData.project_manager_id)!.position_name})` : ''}` } : null : { value: '', label: 'Select PM' }}
+                                onChange={(option) => setFormData({ ...formData, project_manager_id: option?.value === '' ? '' : option?.value as string || '' })}
+                                error={errors.project_manager_id}
+                                maxDisplayItems={10}
+                            />
                         </div>
 
                         {/* Row: Project Owner, Sold Mandays, Warranty End */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Project Owner
-                                </label>
-                                <select
-                                    value={formData.project_owner_id}
-                                    onChange={(e) => setFormData({ ...formData, project_owner_id: e.target.value })}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="">Select Owner</option>
-                                    {employees.map((e: any) => (
-                                        <option key={e.id} value={e.id}>{e.full_name} {e.position_name ? `(${e.position_name})` : ''}</option>
-                                    ))}
-                                </select>
+                                <SmartCombobox
+                                    label="Project Owner"
+                                    placeholder="Select Owner"
+                                    options={[
+                                        { value: '', label: 'Select Owner' },
+                                        ...employees.map(e => ({ value: e.id, label: `${e.full_name}${e.position_name ? ` (${e.position_name})` : ''}` }))
+                                    ]}
+                                    value={formData.project_owner_id ? employees.find(e => e.id === formData.project_owner_id) ? { value: formData.project_owner_id, label: `${employees.find(e => e.id === formData.project_owner_id)!.full_name}${employees.find(e => e.id === formData.project_owner_id)!.position_name ? ` (${employees.find(e => e.id === formData.project_owner_id)!.position_name})` : ''}` } : null : { value: '', label: 'Select Owner' }}
+                                    onChange={(option) => setFormData({ ...formData, project_owner_id: option?.value === '' ? '' : option?.value as string || '' })}
+                                    maxDisplayItems={10}
+                                />
                                 <p className="text-xs text-slate-500 mt-1">ผู้รับผิดชอบหลักของโครงการ</p>
                             </div>
                             <div>
@@ -528,21 +515,40 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                     <div className={`${activeTab === 'milestones' ? 'block' : 'hidden'} space-y-4`}>
                         {/* Header Row */}
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-4 flex-1">
                                 <label className="text-sm font-medium text-slate-700 whitespace-nowrap">Current Milestone:</label>
-                                <select
-                                    value={formData.current_milestone_id}
-                                    onChange={(e) => setFormData({ ...formData, current_milestone_id: e.target.value })}
-                                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm w-full md:w-auto"
-                                >
-                                    <option value="">Not started</option>
-                                    {milestones.map((m, i) => {
-                                        const config = milestoneConfigs.find((c: any) => c.id === m.milestone_config_id)
-                                        return config ? (
-                                            <option key={i} value={m.id || `temp-${i}`}>{config.name}</option>
-                                        ) : null
-                                    })}
-                                </select>
+                                <div className="flex-1 md:max-w-xs">
+                                    <SmartCombobox
+                                        placeholder="Not started"
+                                        options={[
+                                            { value: '', label: 'Not started' },
+                                            ...milestones.map((m, i) => {
+                                                const config = milestoneConfigs.find((c: any) => c.id === m.milestone_config_id)
+                                                return config ? { value: m.id || `temp-${i}`, label: config.name } : null
+                                            }).filter(Boolean) as { value: string, label: string }[]
+                                        ]}
+                                        value={(() => {
+                                            if (!formData.current_milestone_id) {
+                                                return { value: '', label: 'Not started' }
+                                            }
+
+                                            // Find milestone by id or temp id
+                                            const milestone = milestones.find((m, i) => {
+                                                if (m.id) return m.id === formData.current_milestone_id
+                                                return `temp-${i}` === formData.current_milestone_id
+                                            })
+
+                                            if (!milestone) return { value: '', label: 'Not started' }
+
+                                            const config = milestoneConfigs.find((c: any) => c.id === milestone.milestone_config_id)
+                                            return config
+                                                ? { value: formData.current_milestone_id, label: config.name }
+                                                : { value: '', label: 'Not started' }
+                                        })()}
+                                        onChange={(option) => setFormData({ ...formData, current_milestone_id: option?.value === '' ? '' : option?.value as string || '' })}
+                                        maxDisplayItems={10}
+                                    />
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 {/* Remove Auto Distribute MD button as requested */}
@@ -588,18 +594,22 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                             <tr key={index} className="hover:bg-slate-50">
                                                 {/* Milestone Select */}
                                                 <td className="px-4 py-2">
-                                                    <select
-                                                        value={milestone.milestone_config_id}
-                                                        onChange={(e) => handleUpdateMilestone(index, 'milestone_config_id', e.target.value)}
-                                                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                                                    >
-                                                        <option value="">Select milestone</option>
-                                                        {milestoneConfigs.map((mc: any) => (
-                                                            <option key={mc.id} value={mc.id}>
-                                                                {mc.name} - {mc.name_th}
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                    <SmartCombobox
+                                                        placeholder="Select milestone"
+                                                        options={[
+                                                            { value: '', label: 'Select milestone' },
+                                                            ...milestoneConfigs.map((mc: any) => ({
+                                                                value: mc.id,
+                                                                label: `${mc.name} - ${mc.name_th}`
+                                                            }))
+                                                        ]}
+                                                        value={milestone.milestone_config_id ? (() => {
+                                                            const config = milestoneConfigs.find((mc: any) => mc.id === milestone.milestone_config_id)
+                                                            return config ? { value: config.id, label: `${config.name} - ${config.name_th}` } : { value: '', label: 'Select milestone' }
+                                                        })() : { value: '', label: 'Select milestone' }}
+                                                        onChange={(option) => handleUpdateMilestone(index, 'milestone_config_id', option?.value === '' ? '' : option?.value as string || '')}
+                                                        maxDisplayItems={10}
+                                                    />
                                                 </td>
 
                                                 {/* Weight */}

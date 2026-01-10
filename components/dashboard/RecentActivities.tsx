@@ -57,7 +57,9 @@ export function RecentActivities() {
                         key={activity.id}
                         className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all cursor-pointer group"
                     >
-                        <Avatar className="h-9 w-9 shadow-sm" name={activity.userName} />
+                        <div className="h-9 w-9 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-medium shadow-sm">
+                            {activity.userName?.charAt(0).toUpperCase()}
+                        </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm text-slate-700 dark:text-slate-300">
                                 <span className="font-semibold text-slate-900 dark:text-white">{activity.userName}</span>{" "}

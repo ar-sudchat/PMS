@@ -222,7 +222,7 @@ export function PositionModal({ open, onClose, mode, position, onSuccess }: Posi
 
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
                     <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-                    <Button onClick={handleSubmit} loading={isLoading}>
+                    <Button onClick={handleSubmit} disabled={isLoading}>
                         {mode === 'create' ? 'บันทึก' : 'อัพเดท'}
                     </Button>
                 </div>

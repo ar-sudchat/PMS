@@ -9,7 +9,7 @@ import { GanttContextMenu } from '@/components/gantt/GanttContextMenu'
 import { StoryModal } from '@/components/gantt/StoryModal'
 import { TaskModal } from '@/components/gantt/TaskModal'
 import { AssignTaskModal } from '@/components/gantt/AssignTaskModal'
-import { QuickAddModal } from '@/components/gantt/QuickAddModal'
+import { WorkItemsModal } from '@/components/gantt/WorkItemsModal'
 import { TeamWorkloadView } from '@/components/workload/TeamWorkloadView'
 import { getProjectFilterOptions } from '@/lib/actions/project-actions'
 import {
@@ -76,8 +76,8 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
     const [isMilestoneDropdownOpen, setIsMilestoneDropdownOpen] = useState(false)
 
     // Derived Read-Only State
-    // Always Read-Only in My Projects page as per user request
-    const isReadOnly = true
+    // Admin and Manager can edit, Member is read-only
+    const isReadOnly = currentUser?.role === 'member'
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
@@ -102,7 +102,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         task: GanttTask | null
     }>({ open: false, task: null })
 
-    const [quickAddModal, setQuickAddModal] = useState<{
+    const [workItemsModal, setWorkItemsModal] = useState<{
         open: boolean
         projectId: string
     }>({ open: false, projectId: '' })
@@ -149,10 +149,22 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         loadData()
     }, [filters])
 
-    const handleRefresh = useCallback(() => {
-        setIsRefreshing(true)
-        loadData()
-    }, [loadData])
+    const handleRefresh = useCallback(async () => {
+        // Soft refresh: fetch new data and merge without full reload to prevent flickering
+        const result = await getGanttData({
+            year: filters.year || undefined,
+            customerId: filters.customerId || undefined,
+            managerId: filters.managerId || undefined,
+            ownerId: filters.ownerId || undefined,
+            statusId: filters.statusId || undefined,
+            milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
+            search: filters.search || undefined
+        })
+
+        if (result.success && result.data) {
+            setGanttData(result.data)
+        }
+    }, [filters])
 
 
     const handleFilterChange = (key: keyof Filters, value: any) => {
@@ -180,7 +192,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
     const handleQuickAdd = useCallback(() => {
         if (isReadOnly) return
         const firstProject = ganttData?.data.find(d => d.entity_type === 'project')
-        setQuickAddModal({ open: true, projectId: firstProject?.entity_id || '' })
+        setWorkItemsModal({ open: true, projectId: firstProject?.entity_id || '' })
     }, [ganttData, isReadOnly])
 
     // ... (rest of methods)
@@ -495,13 +507,18 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                 />
             )}
 
-            <QuickAddModal
-                open={quickAddModal.open}
-                onClose={() => setQuickAddModal({ ...quickAddModal, open: false })}
-                projectId={quickAddModal.projectId}
-                onSuccess={handleRefresh}
-                projects={projects}
-            />
+            {workItemsModal.open && (
+                <WorkItemsModal
+                    projectId={workItemsModal.projectId}
+                    projects={projects}
+                    currentUser={currentUser}
+                    onClose={() => setWorkItemsModal({ ...workItemsModal, open: false })}
+                    onChange={() => {
+                        // Refresh Gantt data when work items change
+                        handleRefresh()
+                    }}
+                />
+            )}
         </div>
     )
 }

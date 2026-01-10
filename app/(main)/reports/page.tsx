@@ -12,7 +12,7 @@ import {
     CheckCircle2,
     Clock
 } from "lucide-react"
-import { tasks, users, projects, sprints } from "@/lib/mock-data"
+import { tasks, users, projects } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 
 export default function ReportsPage() {

@@ -14,7 +14,7 @@ interface GanttToolbarProps {
 }
 
 export function GanttToolbar({
-    zoom = 'week',
+    zoom = 'day',
     onZoomChange,
     onRefresh,
     onExport,
@@ -23,7 +23,6 @@ export function GanttToolbar({
 }: GanttToolbarProps) {
     const zoomOptions: { value: ZoomLevel; label: string }[] = [
         { value: 'day', label: 'Day' },
-        { value: 'week', label: 'Week' },
         { value: 'month', label: 'Month' }
     ]
 
@@ -64,7 +63,7 @@ export function GanttToolbar({
                 <button
                     onClick={handlePrev}
                     className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                    title={`Previous ${zoom === 'day' ? 'Week' : zoom === 'week' ? 'Month' : 'Quarter'}`}
+                    title={`Previous ${zoom === 'day' ? 'Week' : 'Year'}`}
                 >
                     <ChevronLeft className="w-5 h-5 text-slate-600" />
                 </button>
@@ -80,7 +79,7 @@ export function GanttToolbar({
                 <button
                     onClick={handleNext}
                     className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                    title={`Next ${zoom === 'day' ? 'Week' : zoom === 'week' ? 'Month' : 'Quarter'}`}
+                    title={`Next ${zoom === 'day' ? 'Week' : 'Year'}`}
                 >
                     <ChevronRight className="w-5 h-5 text-slate-600" />
                 </button>
@@ -92,9 +91,10 @@ export function GanttToolbar({
                     <button
                         onClick={onQuickAdd}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                        title="View and manage milestones, stories, and tasks"
                     >
                         <Plus className="w-4 h-4" />
-                        <span className="text-sm font-medium">Quick Add</span>
+                        <span className="text-sm font-medium">Work Items</span>
                     </button>
                 )}
 

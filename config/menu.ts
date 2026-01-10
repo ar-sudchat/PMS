@@ -86,7 +86,6 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
-          { id: 'project-kanban', label: 'Kanban Board', labelTh: 'Kanban Board', path: '/projects/kanban', icon: Layers },
         ]
       },
       {

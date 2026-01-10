@@ -6,7 +6,7 @@ import { ProjectStatusConfig } from '@/types/project'
 import { createProjectStatusConfig, updateProjectStatusConfig } from '@/lib/actions/project-status-config-actions'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
-import { SmartCombobox } from '@/components/shared/SmartCombobox/SmartCombobox' // Reusing if needed for color? Or just input.
+import { SmartCombobox } from '@/components/shared/SmartCombobox' // Reusing if needed for color? Or just input.
 
 interface ProjectStatusConfigModalProps {
     open: boolean

@@ -53,9 +53,9 @@ export default function TimeTrackingPage() {
     const weeklyHours = [8, 7, 8, 6, 3, 0, 0]
     const totalWeeklyHours = weeklyHours.reduce((a, b) => a + b, 0)
 
-    // Group time entries by date
+    // Group time entries by date (using current date as fallback for mock data)
     const entriesByDate = timeEntries.reduce((acc, entry) => {
-        const date = entry.date
+        const date = new Date().toISOString().split('T')[0] // Mock: all entries today
         if (!acc[date]) acc[date] = []
         acc[date].push(entry)
         return acc
@@ -163,8 +163,8 @@ export default function TimeTrackingPage() {
                                 </span>
                             </div>
                             {entries.map((entry) => {
-                                const task = tasks.find(t => t.id === entry.taskId)
-                                const project = task ? getProjectById(task.projectId) : null
+                                const task = tasks.find(t => t.id === entry.task_id)
+                                const project = task ? getProjectById(task.project_id) : null
                                 return (
                                     <div key={entry.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                         <div className="flex-1 min-w-0">
@@ -172,10 +172,10 @@ export default function TimeTrackingPage() {
                                                 {entry.description}
                                             </p>
                                             <p className="text-xs text-slate-500">
-                                                {task?.title} • {project?.name}
+                                                {task?.title}
                                             </p>
                                         </div>
-                                        <Badge variant="secondary">{formatDuration(entry.duration)}</Badge>
+                                        <Badge variant="secondary">{formatDuration(entry.hours || 0)}</Badge>
                                         <button className="text-slate-400 hover:text-slate-600">
                                             <Edit2 className="h-4 w-4" />
                                         </button>

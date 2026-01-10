@@ -3,22 +3,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, FolderPlus, Wrench, Check, Loader2 } from 'lucide-react'
 import { createStory, createTask, getProjectInfo } from '@/lib/actions/gantt-actions'
+import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 
 interface QuickAddModalProps {
     open: boolean
     onClose: () => void
     projectId: string
-    onSuccess: () => void
+    onSuccess: (createdItems?: CreatedItem[]) => void
 }
 
-interface CreatedItem {
+export interface CreatedItem {
     id: string
     code: string
     title: string
     type: 'story' | 'task'
-    milestone?: string
+    milestone_id?: string
+    story_id?: string
     taskType?: string
     hours?: number
+    project_id?: string
 }
 
 export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = [] }: QuickAddModalProps & { projects?: { id: string; name: string }[] }) {
@@ -79,8 +82,14 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
         })
 
         if (result.success && result.data) {
-            const milestoneName = projectInfo.milestones.find((m: any) => m.id === storyMilestone)
-            setCreatedItems(prev => [{ id: result.data.id, code: result.data.story_code, title: result.data.title, type: 'story', milestone: milestoneName?.code }, ...prev])
+            setCreatedItems(prev => [{
+                id: result.data.id,
+                code: result.data.story_code,
+                title: result.data.title,
+                type: 'story',
+                milestone_id: storyMilestone,
+                project_id: projectInfo.id
+            }, ...prev])
             setProjectInfo((prev: any) => ({ ...prev, stories: [{ id: result.data.id, code: result.data.story_code, title: result.data.title }, ...prev.stories] }))
             setSelectedStory(result.data.id)
             setStoryTitle('')
@@ -103,7 +112,16 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
         })
 
         if (result.success && result.data) {
-            setCreatedItems(prev => [{ id: result.data.id, code: result.data.task_code, title: result.data.title, type: 'task', taskType, hours: parseFloat(taskHours) || undefined }, ...prev])
+            setCreatedItems(prev => [{
+                id: result.data.id,
+                code: result.data.task_code,
+                title: result.data.title,
+                type: 'task',
+                story_id: selectedStory,
+                project_id: projectInfo?.id,
+                taskType,
+                hours: parseFloat(taskHours) || undefined
+            }, ...prev])
             setTaskTitle('')
             taskInputRef.current?.focus()
         } else {
@@ -113,7 +131,7 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
     }, [taskTitle, selectedStory, taskType, taskHours])
 
     const handleClose = () => {
-        if (createdItems.length > 0) onSuccess()
+        if (createdItems.length > 0) onSuccess(createdItems)
         setCreatedItems([])
         setStoryTitle('')
         setTaskTitle('')
@@ -150,17 +168,20 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/* Project Selection */}
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Select Project</label>
-                        <select
-                            value={selectedProjectId}
-                            onChange={(e) => setSelectedProjectId(e.target.value)}
-                            className="w-full px-4 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500 font-medium"
-                        >
-                            <option value="" disabled>-- เลือกโครงการ --</option>
-                            {projects.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
+                        <SmartCombobox
+                            label="Select Project"
+                            placeholder="-- เลือกโครงการ --"
+                            options={projects.map(p => ({
+                                value: p.id,
+                                label: p.name
+                            }))}
+                            value={selectedProjectId ? projects.find(p => p.id === selectedProjectId) ? {
+                                value: selectedProjectId,
+                                label: projects.find(p => p.id === selectedProjectId)!.name
+                            } : null : null}
+                            onChange={(option) => setSelectedProjectId(option?.value as string || '')}
+                            maxDisplayItems={10}
+                        />
                     </div>
 
                     {isLoading ? (
@@ -187,16 +208,25 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-600 mb-1">Milestone <span className="text-red-500">*</span></label>
-                                        <select
-                                            value={storyMilestone}
-                                            onChange={(e) => setStoryMilestone(e.target.value)}
-                                            className={`w-full px-4 py-2.5 border rounded-lg ${!storyMilestone ? 'border-amber-300 bg-amber-50' : ''}`}
+                                        <SmartCombobox
+                                            label="Milestone"
+                                            required
+                                            placeholder="-- เลือก Milestone (จำเป็น) --"
+                                            options={[
+                                                { value: '', label: '-- เลือก Milestone (จำเป็น) --' },
+                                                ...(projectInfo?.milestones || []).map((m: any) => ({
+                                                    value: m.id,
+                                                    label: `${m.code}: ${m.name}`
+                                                }))
+                                            ]}
+                                            value={storyMilestone ? (() => {
+                                                const milestone = projectInfo?.milestones.find((m: any) => m.id === storyMilestone)
+                                                return milestone ? { value: milestone.id, label: `${milestone.code}: ${milestone.name}` } : { value: '', label: '-- เลือก Milestone (จำเป็น) --' }
+                                            })() : { value: '', label: '-- เลือก Milestone (จำเป็น) --' }}
+                                            onChange={(option) => setStoryMilestone(option?.value === '' ? '' : option?.value as string || '')}
                                             disabled={isCreatingStory}
-                                        >
-                                            <option value="">-- เลือก Milestone (จำเป็น) --</option>
-                                            {projectInfo?.milestones.map((m: any) => <option key={m.id} value={m.id}>{m.code}: {m.name}</option>)}
-                                        </select>
+                                            maxDisplayItems={10}
+                                        />
                                     </div>
                                     <div className="flex items-center justify-between pt-2">
                                         <p className="text-xs text-slate-500">💡 ต้องเลือก Milestone ก่อนจึงจะสร้างได้</p>
@@ -214,7 +244,6 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
                                                     <Check className="w-3.5 h-3.5 text-green-500" />
                                                     <span className="font-mono text-xs text-slate-400">{item.code}</span>
                                                     <span className="truncate flex-1">{item.title}</span>
-                                                    {item.milestone && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded">{item.milestone}</span>}
                                                 </div>
                                             ))}
                                         </div>
@@ -229,11 +258,25 @@ export function QuickAddModal({ open, onClose, projectId, onSuccess, projects = 
                                 </h3>
                                 <div className="space-y-3">
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-600 mb-1">Story <span className="text-red-500">*</span></label>
-                                        <select value={selectedStory} onChange={(e) => setSelectedStory(e.target.value)} className="w-full px-4 py-2.5 border rounded-lg" disabled={isCreatingTask}>
-                                            <option value="">-- เลือก Story --</option>
-                                            {projectInfo?.stories.map((s: any) => <option key={s.id} value={s.id}>{s.code}: {s.title}</option>)}
-                                        </select>
+                                        <SmartCombobox
+                                            label="Story"
+                                            required
+                                            placeholder="-- เลือก Story --"
+                                            options={[
+                                                { value: '', label: '-- เลือก Story --' },
+                                                ...(projectInfo?.stories || []).map((s: any) => ({
+                                                    value: s.id,
+                                                    label: `${s.code}: ${s.title}`
+                                                }))
+                                            ]}
+                                            value={selectedStory ? (() => {
+                                                const story = projectInfo?.stories.find((s: any) => s.id === selectedStory)
+                                                return story ? { value: story.id, label: `${story.code}: ${story.title}` } : { value: '', label: '-- เลือก Story --' }
+                                            })() : { value: '', label: '-- เลือก Story --' }}
+                                            onChange={(option) => setSelectedStory(option?.value === '' ? '' : option?.value as string || '')}
+                                            disabled={isCreatingTask}
+                                            maxDisplayItems={10}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-600 mb-1">Title <span className="text-red-500">*</span></label>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { mockWeeklyTimesheets } from "@/lib/mock-timesheet";
+// import { mockWeeklyTimesheets } from "@/lib/mock-timesheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,7 @@ export function TimesheetApprovalList() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
     // Mock cloning entries for more list items
-    const approvalQueue = [
-        { ...mockWeeklyTimesheets[0], id: 'wk-1', employee_name: 'John Doe', status: 'submitted' as const },
-        { ...mockWeeklyTimesheets[0], id: 'wk-2', employee_name: 'Sarah Smith', status: 'submitted' as const, total_actual_hours: 38 },
-        { ...mockWeeklyTimesheets[0], id: 'wk-3', employee_name: 'Mike Chen', status: 'submitted' as const, total_actual_hours: 42 },
-    ];
+    const approvalQueue: any[] = [];
 
     const handleSelect = (id: string, checked: boolean) => {
         setSelectedIds(prev =>
@@ -52,7 +48,7 @@ export function TimesheetApprovalList() {
                             <TableHead className="w-[50px]">
                                 <Checkbox
                                     checked={selectedIds.length === approvalQueue.length}
-                                    onCheckedChange={handleSelectAll}
+                                    onChange={() => handleSelectAll(selectedIds.length !== approvalQueue.length)}
                                 />
                             </TableHead>
                             <TableHead>Employee</TableHead>
@@ -69,7 +65,7 @@ export function TimesheetApprovalList() {
                                 <TableCell>
                                     <Checkbox
                                         checked={selectedIds.includes(ts.id)}
-                                        onCheckedChange={(c) => handleSelect(ts.id, !!c)}
+                                        onChange={() => handleSelect(ts.id, !selectedIds.includes(ts.id))}
                                     />
                                 </TableCell>
                                 <TableCell className="font-medium">

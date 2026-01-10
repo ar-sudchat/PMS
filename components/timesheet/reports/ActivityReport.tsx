@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { mockActivityCodes } from "@/lib/mock-timesheet";
+// import { mockActivityCodes } from "@/lib/mock-timesheet";
 
 export function ActivityReport() {
     // Mock aggregated data based on activity codes
@@ -36,7 +36,7 @@ export function ActivityReport() {
                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                 ))}
                             </Pie>
-                            <Tooltip formatter={(value: number) => [`${value}h`, 'Hours']} />
+                            <Tooltip formatter={(value: number | undefined) => [`${value || 0}h`, 'Hours']} />
                             <Legend />
                         </PieChart>
                     </ResponsiveContainer>

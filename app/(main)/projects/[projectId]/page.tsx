@@ -1,17 +1,23 @@
 import { getProjectDetail } from '@/lib/actions/project-detail-actions'
-import { getProjectGanttData } from '@/lib/actions/gantt-actions'
+import { getGanttData } from '@/lib/actions/gantt-actions'
 import { ProjectGanttPage } from '@/components/projects/detail/ProjectGanttPage'
 import { redirect, notFound } from 'next/navigation'
+import { getCurrentUser } from '@/lib/auth'
 
 interface Props {
     params: { projectId: string }
 }
 
 export default async function ProjectDetailRoute({ params }: Props) {
-    const [projectResult, ganttResult] = await Promise.all([
+    const [currentUser, projectResult, ganttResult] = await Promise.all([
+        getCurrentUser(),
         getProjectDetail(params.projectId),
-        getProjectGanttData(params.projectId)
+        getGanttData({}) // Get all data, will be filtered in component
     ])
+
+    if (!currentUser) {
+        redirect('/login')
+    }
 
     if (!projectResult.success) {
         if (projectResult.error === 'Unauthorized') {
@@ -28,6 +34,7 @@ export default async function ProjectDetailRoute({ params }: Props) {
         <ProjectGanttPage
             project={projectResult.data}
             ganttData={ganttResult.data}
+            currentUser={currentUser}
         />
     )
 }

@@ -135,15 +135,16 @@ BEGIN
     -- ============================================
     -- RESULT SET 1: PROJECTS
     -- ============================================
-    SELECT 
+    SELECT
         'project_' + CAST(p.id AS NVARCHAR(50)) AS id,
         p.project_code + ': ' + p.name AS text,
-        
-        FORMAT(pc.min_start, 'yyyy-MM-dd') AS start_date,
-        FORMAT(pc.max_end, 'yyyy-MM-dd') AS end_date,
-        
+
+        -- ใช้ COALESCE เพื่อไม่ให้โครงการหายเมื่อไม่มีวันที่
+        FORMAT(COALESCE(pc.min_start, CAST(p.created_at AS DATE)), 'yyyy-MM-dd') AS start_date,
+        FORMAT(COALESCE(pc.max_end, DATEADD(MONTH, 3, CAST(p.created_at AS DATE))), 'yyyy-MM-dd') AS end_date,
+
         -- Duration
-        DATEDIFF(DAY, pc.min_start, pc.max_end) AS duration,
+        DATEDIFF(DAY, COALESCE(pc.min_start, CAST(p.created_at AS DATE)), COALESCE(pc.max_end, DATEADD(MONTH, 3, CAST(p.created_at AS DATE)))) AS duration,
         
         -- Progress (Simplified)
         (SELECT AVG(progress) FROM #StoryCalculations sc WHERE sc.project_id = p.id) AS progress,
@@ -227,15 +228,20 @@ BEGIN
     -- ============================================
     -- RESULT SET 3: STORIES
     -- ============================================
-    SELECT 
+    SELECT
         'story_' + CAST(s.id AS NVARCHAR(50)) AS id,
         s.story_code + ': ' + s.title AS text,
-        
-        FORMAT(sc.start_date, 'yyyy-MM-dd') AS start_date,
-        FORMAT(sc.end_date, 'yyyy-MM-dd') AS end_date,
-        DATEDIFF(DAY, sc.start_date, sc.end_date) AS duration,
-        
-        sc.progress,
+
+        -- ใช้ COALESCE เพื่อไม่ให้ Story หายเมื่อไม่มีวันที่
+        FORMAT(COALESCE(sc.start_date, CAST(GETDATE() AS DATE)), 'yyyy-MM-dd') AS start_date,
+        FORMAT(COALESCE(sc.end_date, DATEADD(DAY, 1, CAST(GETDATE() AS DATE))), 'yyyy-MM-dd') AS end_date,
+        CASE
+            WHEN sc.start_date IS NOT NULL AND sc.end_date IS NOT NULL
+            THEN DATEDIFF(DAY, sc.start_date, sc.end_date)
+            ELSE 0  -- duration = 0 เพื่อไม่วาดแท่ง
+        END AS duration,
+
+        COALESCE(sc.progress, 0) AS progress,
         
         CASE 
             WHEN s.milestone_id IS NOT NULL THEN 'milestone_' + CAST(s.milestone_id AS NVARCHAR(50))
@@ -273,17 +279,19 @@ BEGIN
     -- ============================================
     -- RESULT SET 4: TASKS
     -- ============================================
-    SELECT 
+    SELECT
         'task_' + CAST(t.id AS NVARCHAR(50)) AS id,
         t.task_code + ': ' + t.title AS text,
-        
-        FORMAT(COALESCE(t.start_date, CAST(GETDATE() AS DATE)), 'yyyy-MM-dd') AS start_date,
-        FORMAT(COALESCE(t.due_date, DATEADD(DAY, 1, COALESCE(t.start_date, CAST(GETDATE() AS DATE)))), 'yyyy-MM-dd') AS end_date,
-        
-        CASE 
-            WHEN t.start_date IS NOT NULL AND t.due_date IS NOT NULL 
+
+        -- ส่ง NULL ถ้าไม่มีวันที่ (ไม่ใช้วันที่หลอก)
+        -- Frontend จะจัดการให้ task แสดงอยู่เสมอแม้ไม่มีวันที่
+        FORMAT(t.start_date, 'yyyy-MM-dd') AS start_date,
+        FORMAT(t.due_date, 'yyyy-MM-dd') AS end_date,
+
+        CASE
+            WHEN t.start_date IS NOT NULL AND t.due_date IS NOT NULL
             THEN DATEDIFF(DAY, t.start_date, t.due_date) + 1
-            ELSE 1
+            ELSE 0  -- duration = 0 สำหรับ task ที่ไม่มีวันที่
         END AS duration,
         
         CASE t.status
