@@ -3,6 +3,7 @@
 import { DashboardData } from '@/lib/actions/dashboard-actions'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { KPIOverviewSection } from './KPIOverviewSection'
 import {
     FolderKanban,
     ListTodo,
@@ -116,6 +117,9 @@ export function DashboardContent({ data }: DashboardContentProps) {
                     />
                 </div>
             )}
+
+            {/* KPI Overview (Manager/Admin only) */}
+            {isManager && <KPIOverviewSection className="mb-8" />}
 
             {/* Overdue Tasks Alert */}
             {data.overdueTasks.length > 0 && (

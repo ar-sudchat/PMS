@@ -176,16 +176,18 @@ export function WorkItemsModal({
         // Load stories if not already loaded
         if (!loadedMilestones.has(milestoneId) && selectedProjectId) {
             try {
-                const storyList = await getStories({
+                const result = await getStories({
                     projectId: selectedProjectId,
                     milestoneId
                 })
 
-                setStories(prev => {
-                    const newMap = new Map(prev)
-                    newMap.set(milestoneId, storyList as Story[])
-                    return newMap
-                })
+                if (result.success) {
+                    setStories(prev => {
+                        const newMap = new Map(prev)
+                        newMap.set(milestoneId, result.data as Story[])
+                        return newMap
+                    })
+                }
 
                 setLoadedMilestones(prev => new Set([...prev, milestoneId]))
             } catch (error) {
@@ -210,13 +212,15 @@ export function WorkItemsModal({
         // Load tasks if not already loaded
         if (!loadedStories.has(storyId)) {
             try {
-                const taskList = await getTasksByStory(storyId)
+                const result = await getTasksByStory(storyId)
 
-                setTasks(prev => {
-                    const newMap = new Map(prev)
-                    newMap.set(storyId, taskList as Task[])
-                    return newMap
-                })
+                if (result.success) {
+                    setTasks(prev => {
+                        const newMap = new Map(prev)
+                        newMap.set(storyId, result.data as Task[])
+                        return newMap
+                    })
+                }
 
                 setLoadedStories(prev => new Set([...prev, storyId]))
             } catch (error) {
@@ -336,16 +340,18 @@ export function WorkItemsModal({
 
             if (result.success) {
                 // Reload stories for this milestone
-                const storyList = await getStories({
+                const storyResult = await getStories({
                     projectId: selectedProjectId,
                     milestoneId
                 })
 
-                setStories(prev => {
-                    const newMap = new Map(prev)
-                    newMap.set(milestoneId, storyList as Story[])
-                    return newMap
-                })
+                if (storyResult.success) {
+                    setStories(prev => {
+                        const newMap = new Map(prev)
+                        newMap.set(milestoneId, storyResult.data as Story[])
+                        return newMap
+                    })
+                }
 
                 // Expand milestone to show new story
                 setExpandedMilestones(prev => new Set([...prev, milestoneId]))
@@ -402,18 +408,22 @@ export function WorkItemsModal({
         try {
             const result = await createTaskAPI({
                 story_id: storyId,
-                title
+                title,
+                task_type: 'TASK',
+                priority: 'medium'
             })
 
             if (result.success) {
                 // Reload tasks for this story
-                const taskList = await getTasksByStory(storyId)
+                const taskResult = await getTasksByStory(storyId)
 
-                setTasks(prev => {
-                    const newMap = new Map(prev)
-                    newMap.set(storyId, taskList as Task[])
-                    return newMap
-                })
+                if (taskResult.success) {
+                    setTasks(prev => {
+                        const newMap = new Map(prev)
+                        newMap.set(storyId, taskResult.data as Task[])
+                        return newMap
+                    })
+                }
 
                 // Expand story to show new task
                 setExpandedStories(prev => new Set([...prev, storyId]))
@@ -506,12 +516,10 @@ export function WorkItemsModal({
                         <div className="text-sm text-slate-600 mb-1">Project:</div>
                         {projectsList && projectsList.length > 0 ? (
                             <SmartCombobox
-                                items={projectsList}
-                                selectedId={selectedProjectId}
-                                onSelect={handleProjectChange}
+                                options={projectsList.map(p => ({ value: p.id, label: p.name }))}
+                                value={selectedProjectId ? { value: selectedProjectId, label: projectsList.find(p => p.id === selectedProjectId)?.name || '' } : null}
+                                onChange={(option) => handleProjectChange(option?.value as string || null)}
                                 placeholder="Select a project"
-                                getItemLabel={(project) => project.name}
-                                getItemValue={(project) => project.id}
                             />
                         ) : (
                             <div className="font-medium text-slate-800 font-mono text-xs bg-slate-100 px-3 py-2 rounded">

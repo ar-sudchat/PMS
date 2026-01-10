@@ -41,6 +41,7 @@ export interface ProjectMilestone {
     milestone_color?: string
     planned_mandays: number
     weight_percent: number
+    progress_percent?: number
     due_date?: string
     actual_mandays?: number
     completed_date?: string
@@ -66,6 +67,7 @@ export interface ProjectFormData {
     milestones: {
         milestone_config_id: string
         weight_percent: number
+        progress_percent?: number
         due_date?: string
         planned_mandays: number
         deliverable_ids: string[]

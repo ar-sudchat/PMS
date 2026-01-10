@@ -190,6 +190,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'รายงาน',
         children: [
           { id: 'reports-page', label: 'All Reports', labelTh: 'รายงานทั้งหมด', path: '/reports', icon: BarChart3 },
+          { id: 'kpi-dashboard', label: 'KPI Dashboard', labelTh: 'KPI Dashboard', path: '/reports/kpi', icon: TrendingUp, roles: ['admin', 'manager'] },
         ]
       }
     ]

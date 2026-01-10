@@ -30,6 +30,7 @@ interface MilestoneRow {
     due_date: string
     planned_mandays: number
     deliverable_ids: string[]
+    progress_percent?: number
 }
 
 export function ProjectModal({ open, onClose, mode, project, onSuccess }: ProjectModalProps) {
@@ -116,7 +117,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                     weight_percent: m.weight_percent,
                     due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
                     planned_mandays: m.planned_mandays,
-                    deliverable_ids: m.deliverable_ids || []
+                    deliverable_ids: m.deliverable_ids || [],
+                    progress_percent: m.progress_percent || 0
                 })))
             }
         } else if (mode === 'create' && open) {
@@ -176,10 +178,10 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
         })
         // Start with 4 empty milestone rows
         setMilestones([
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [] },
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [] },
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [] },
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [] },
+            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
+            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
+            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
+            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
         ])
         setActiveTab('info')
         setErrors({})
@@ -193,6 +195,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             due_date: '',
             planned_mandays: 0,
             deliverable_ids: [],
+            progress_percent: 0,
         }])
     }
 
@@ -569,6 +572,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                     <tr>
                                         <th className="px-4 py-3 text-left text-sm font-medium text-slate-700">Milestone</th>
                                         <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-24">Weight (%)</th>
+                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-24">Progress (%)</th>
                                         <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-36">Due Date</th>
                                         <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-24">Mandays</th>
                                         <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-32">Deliverables</th>
@@ -578,7 +582,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                 <tbody className="divide-y divide-slate-200">
                                     {milestones.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                            <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                                                 <p>No milestones added</p>
                                                 <button
                                                     type="button"
@@ -622,6 +626,27 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                                         min="0"
                                                         max="100"
                                                     />
+                                                </td>
+
+                                                {/* Progress (for KPI) */}
+                                                <td className="px-4 py-2">
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            value={milestone.progress_percent || 0}
+                                                            onChange={(e) => handleUpdateMilestone(index, 'progress_percent', Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                                                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm text-center"
+                                                            min="0"
+                                                            max="100"
+                                                        />
+                                                        {/* Progress bar indicator */}
+                                                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-200 rounded-b">
+                                                            <div
+                                                                className="h-full bg-blue-500 rounded-b transition-all"
+                                                                style={{ width: `${milestone.progress_percent || 0}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </td>
 
                                                 {/* Due Date */}

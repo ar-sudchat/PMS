@@ -50,7 +50,8 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
     })
 
     const handleZoomChange = (scale: 'day' | 'week' | 'month') => {
-        setZoomScale(scale)
+        // GanttChart only supports 'day' and 'month', treat 'week' as 'day'
+        setZoomScale(scale === 'week' ? 'day' : scale)
     }
 
     const handleRefresh = () => {

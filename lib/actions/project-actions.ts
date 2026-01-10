@@ -375,17 +375,18 @@ export async function getProjectById(id: string) {
             .input('project_id', sql.UniqueIdentifier, id)
             .input('current_ms_id', sql.UniqueIdentifier, project.current_milestone_id || null) // Add this here
             .query(`
-        SELECT 
+        SELECT
           pm.id,
           pm.milestone_config_id,
           pm.planned_mandays,
           pm.actual_mandays,
           pm.weight_percent,
+          pm.progress_percent,
           pm.due_date,
           pm.completed_date,
           pm.status,
           pm.sort_order,
-          
+
           mc.code as milestone_code,
           mc.name as milestone_name,
           mc.name_th as milestone_name_th,
@@ -530,12 +531,13 @@ export async function createProject(data: ProjectFormData) {
                 .input('weight_percent', m.weight_percent)
                 .input('due_date', m.due_date || null)
                 .input('sort_order', i + 1)
+                .input('progress_percent', m.progress_percent || 0)
                 .query(`
-            INSERT INTO pms.project_milestones 
-            (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order)
+            INSERT INTO pms.project_milestones
+            (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order, progress_percent)
             OUTPUT INSERTED.id
-            VALUES 
-            (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order)
+            VALUES
+            (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order, @progress_percent)
           `)
 
             const milestoneId = msResult.recordset[0].id
@@ -613,12 +615,14 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('weight_percent', m.weight_percent)
                     .input('due_date', m.due_date || null)
                     .input('sort_order', i + 1)
+                    .input('progress_percent', m.progress_percent || 0)
                     .query(`
                         UPDATE pms.project_milestones
                         SET planned_mandays = @planned_mandays,
                             weight_percent = @weight_percent,
                             due_date = @due_date,
-                            sort_order = @sort_order
+                            sort_order = @sort_order,
+                            progress_percent = @progress_percent
                         WHERE id = @id
                     `)
 
@@ -638,12 +642,13 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('weight_percent', m.weight_percent)
                     .input('due_date', m.due_date || null)
                     .input('sort_order', i + 1)
+                    .input('progress_percent', m.progress_percent || 0)
                     .query(`
-                        INSERT INTO pms.project_milestones 
-                        (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order)
+                        INSERT INTO pms.project_milestones
+                        (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order, progress_percent)
                         OUTPUT INSERTED.id
-                        VALUES 
-                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order)
+                        VALUES
+                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order, @progress_percent)
                     `)
                 milestoneId = msResult.recordset[0].id;
             }

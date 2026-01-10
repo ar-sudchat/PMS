@@ -60,8 +60,8 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
     }
 
     const handleZoomChange = (scale: 'day' | 'week' | 'month') => {
-        setZoomScale(scale)
-        // Update gantt scale via event or ref
+        // GanttChart only supports 'day' and 'month', treat 'week' as 'day'
+        setZoomScale(scale === 'week' ? 'day' : scale)
     }
 
     return (

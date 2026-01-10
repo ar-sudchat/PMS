@@ -59,8 +59,8 @@ export function TaskNode({ task, onFieldChange, isFieldModified, onDelete }: Tas
     }
 
     // Format date
-    const formatDate = (dateStr: string | null | undefined) => {
-        if (!dateStr) return 'Not set'
+    const formatDate = (dateStr: string | null | undefined): { formatted: string; isOverdue: boolean } => {
+        if (!dateStr) return { formatted: 'Not set', isOverdue: false }
         const date = new Date(dateStr)
         const now = new Date()
         const isOverdue = date < now && task.status !== 'done'
