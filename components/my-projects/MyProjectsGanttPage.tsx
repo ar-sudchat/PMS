@@ -19,13 +19,16 @@ import {
     deleteStory,
     deleteTask
 } from '@/lib/actions/gantt-actions'
+import { getGlobalWorkItems, ProjectWorkItemsGroup } from '@/lib/actions/work-items-actions'
+import { AllWorkItemsView } from './AllWorkItemsView'
+import { cn } from '@/lib/utils'
 
 interface MyProjectsGanttPageProps {
     initialData: GanttData
     currentUser: any
 }
 
-type ViewMode = 'gantt' | 'workload'
+type ViewMode = 'gantt' | 'workload' | 'work-items'
 
 interface Filters {
     year: number | ''
@@ -50,6 +53,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
     const [viewMode, setViewMode] = useState<ViewMode>('gantt')
     const [zoom, setZoom] = useState<ZoomLevel>('day') // Default to 'day'
     const [ganttData, setGanttData] = useState<GanttData | null>(initialData)
+    const [workItemsData, setWorkItemsData] = useState<ProjectWorkItemsGroup[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -122,49 +126,53 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
     // Load data
     const loadData = useCallback(async () => {
         setIsLoading(true)
-        // Pass filters to getGanttData
-        const result = await getGanttData({
-            year: filters.year || undefined,
-            customerId: filters.customerId || undefined,
-            managerId: filters.managerId || undefined,
-            ownerId: filters.ownerId || undefined,
-            statusId: filters.statusId || undefined,
-            milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
-            search: filters.search || undefined
-        })
 
-        if (result.success && result.data) {
-            setGanttData(result.data)
+        if (viewMode === 'gantt') {
+            const result = await getGanttData({
+                year: filters.year || undefined,
+                customerId: filters.customerId || undefined,
+                managerId: filters.managerId || undefined,
+                ownerId: filters.ownerId || undefined,
+                statusId: filters.statusId || undefined,
+                milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
+                search: filters.search || undefined
+            })
+            if (result.success && result.data) {
+                setGanttData(result.data)
+            }
+        } else if (viewMode === 'work-items') {
+            const result = await getGlobalWorkItems({
+                year: filters.year || undefined,
+                customerId: filters.customerId || undefined,
+                managerId: filters.managerId || undefined,
+                ownerId: filters.ownerId || undefined,
+                statusId: filters.statusId || undefined,
+                milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
+                search: filters.search || undefined
+            })
+            if (result.success && result.data) {
+                setWorkItemsData(result.data)
+            }
         }
+
+        // Workload view logic is handled inside TeamWorkloadView usually, or passed down?
+        // TeamWorkloadView handles its own fetching usually? 
+        // Checking TeamWorkloadView... it seems to fetch on its own but uses filters?
+        // Actually TeamWorkloadView is rendered without props in previous code.
+        // It likely has internal state/filter. 
+        // The user request is about Gantt/Work Items.
+
         setIsLoading(false)
         setIsRefreshing(false)
-    }, [filters]) // Reload when filters change
+    }, [filters, viewMode])
 
-    // Initial load with default filters (if they differ from initialData context) is tricky because initialData might be raw.
-    // But since we set default filters, we should probably fetch data matching those filters on mount?
-    // User wants "Default Owner = Me".
-    // If initialData didn't respect that, we should reload.
-    // Let's reload on mount or filter change.
     useEffect(() => {
         loadData()
-    }, [filters])
+    }, [loadData])
 
     const handleRefresh = useCallback(async () => {
-        // Soft refresh: fetch new data and merge without full reload to prevent flickering
-        const result = await getGanttData({
-            year: filters.year || undefined,
-            customerId: filters.customerId || undefined,
-            managerId: filters.managerId || undefined,
-            ownerId: filters.ownerId || undefined,
-            statusId: filters.statusId || undefined,
-            milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
-            search: filters.search || undefined
-        })
-
-        if (result.success && result.data) {
-            setGanttData(result.data)
-        }
-    }, [filters])
+        await loadData() // Reuse loadData logic
+    }, [loadData])
 
 
     const handleFilterChange = (key: keyof Filters, value: any) => {
@@ -366,15 +374,19 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                         <div className="flex bg-slate-100 p-1 rounded-lg shrink-0 h-[38px] items-center">
                             <button
                                 onClick={() => setViewMode('gantt')}
-                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center ${viewMode === 'gantt' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'
-                                    }`}
+                                className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center", viewMode === 'gantt' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700')}
                             >
                                 Gantt View
                             </button>
                             <button
+                                onClick={() => setViewMode('work-items')}
+                                className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center", viewMode === 'work-items' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700')}
+                            >
+                                Project Detail
+                            </button>
+                            <button
                                 onClick={() => setViewMode('workload')}
-                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center ${viewMode === 'workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'
-                                    }`}
+                                className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center", viewMode === 'workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700')}
                             >
                                 Team Workload
                             </button>
@@ -461,6 +473,12 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                             </div>
                         )}
                     </div>
+                ) : viewMode === 'work-items' ? (
+                    <AllWorkItemsView
+                        data={workItemsData}
+                        filters={filters}
+                        onRefresh={handleRefresh}
+                    />
                 ) : (
                     <div className="h-full overflow-y-auto">
                         <TeamWorkloadView />

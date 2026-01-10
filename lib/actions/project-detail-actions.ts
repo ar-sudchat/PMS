@@ -104,7 +104,6 @@ export async function getProjectDetail(projectId: string) {
           p.[actual_mandays],
           p.start_date,
           p.[end_date],
-          p.contract_end_date,
           
           -- Stories count
           (SELECT COUNT(*) FROM pms.stories s WHERE s.project_id = p.id AND s.[is_active] = 1) AS total_stories,

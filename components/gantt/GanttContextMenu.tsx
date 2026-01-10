@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, FolderPlus, User, Edit, Trash2 } from 'lucide-react'
+import { Plus, FolderPlus, User, Edit, Trash2, ExternalLink } from 'lucide-react'
 import { GanttTask } from '@/lib/actions/gantt-actions'
 
 interface GanttContextMenuProps {
@@ -70,6 +70,16 @@ export function GanttContextMenu({
                     onClose()
                 },
                 show: task.entity_type === 'project' || task.entity_type === 'milestone'
+            },
+            {
+                icon: <ExternalLink className="w-4 h-4" />,
+                label: 'Open Project Detail',
+                onClick: () => {
+                    const projectId = task.entity_type === 'project' ? task.entity_id : task.project_id
+                    window.location.href = `/projects/${projectId}`
+                    onClose()
+                },
+                show: task.entity_type === 'project'
             },
             {
                 icon: <Plus className="w-4 h-4" />,

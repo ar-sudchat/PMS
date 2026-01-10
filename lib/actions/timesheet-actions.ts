@@ -1,353 +1,379 @@
 'use server'
 
-import { getConnection } from '@/lib/db'
 import sql from 'mssql'
-import { revalidatePath } from 'next/cache'
+import { getConnection } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { revalidatePath } from 'next/cache'
 
+// Types
 export interface TimesheetEntry {
-  id: string
-  employee_id: string
-  entry_date: string
+  entry_id: string
   task_id: string
-  hours: number
-  is_overtime: boolean
-  description: string | null
-  status: 'draft' | 'submitted' | 'approved' | 'rejected'
   task_code: string
   task_title: string
-  task_type: string
-  task_type_name: string
-  task_type_color: string
-  story_id: string
-  story_code: string
-  story_title: string
-  milestone_id: string
-  milestone_code: string
-  milestone_name: string
-  milestone_color: string
-  project_id: string
   project_code: string
   project_name: string
+  entry_date: string
+  hours: number
+  work_description: string
+  activity_type: string
+  is_overtime: boolean
 }
 
 export interface WeeklyTimesheetData {
-  employee_id: string
-  employee_code: string
-  employee_name: string
-  nickname: string
-  position_code: string
-  department_name: string
-  entries: { [date: string]: TimesheetEntry[] }
-  daily_totals: { [date: string]: number }
-  total_hours: number
+  tasks: {
+    task_id: string
+    task_code: string
+    task_title: string
+    project_code: string
+    project_name: string
+    entries: Record<string, { entry_id: string; hours: number; description: string }> // key = date string
+    total_hours: number
+  }[]
+  daily_totals: Record<string, number> // key = date string
+  week_total: number
+  target_hours: number // 7 * 5 = 35
 }
 
-export async function getMyTimesheetEntries(startDate: string, endDate: string) {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: 'Unauthorized', data: [] }
-    }
-    
-    return await getTimesheetEntries({
-      employeeId: user.id,
-      startDate,
-      endDate
-    })
-  } catch (error: any) {
-    console.error('getMyTimesheetEntries error:', error)
-    return { success: false, error: error.message, data: [] }
+// Get weekly timesheet for current user
+export async function getWeeklyTimesheet(weekStart: string): Promise<WeeklyTimesheetData> {
+  const user = await getCurrentUser()
+  if (!user) {
+    return { tasks: [], daily_totals: {}, week_total: 0, target_hours: 35 }
   }
-}
 
-export async function getTimesheetEntries(filters: {
-  employeeId?: string
-  startDate: string
-  endDate: string
-  projectId?: string
-  status?: string
-}) {
   try {
     const pool = await getConnection()
-    
-    let query = `
-      SELECT 
-        te.id, te.employee_id, te.entry_date, te.task_id, te.hours,
-        te.is_overtime, te.description, te.status, te.created_at,
-        e.employee_code,
-        CONCAT(e.first_name_th, ' ', e.last_name_th) AS employee_name,
-        e.nickname,
-        pos.code AS position_code,
-        t.task_code, t.title AS task_title, t.task_type,
-        ttc.name_th AS task_type_name,
-        ttc.color AS task_type_color,
-        ttc.icon AS task_type_icon,
-        s.id AS story_id, s.story_code, s.title AS story_title,
-        pm.id AS milestone_id,
-        mc.code AS milestone_code,
-        mc.name AS milestone_name,
-        mc.color AS milestone_color,
-        p.id AS project_id,
-        p.project_code,
-        p.name AS project_name
-      FROM pms.timesheet_entries te
-      INNER JOIN pms.employees e ON te.employee_id = e.id
-      LEFT JOIN pms.positions pos ON e.position_id = pos.id
-      INNER JOIN pms.tasks t ON te.task_id = t.id
-      LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
-      INNER JOIN pms.stories s ON t.story_id = s.id
-      LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
-      LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
-      INNER JOIN pms.projects p ON s.project_id = p.id
-      WHERE te.is_active = 1
-        AND te.entry_date BETWEEN @startDate AND @endDate
-    `
-    
-    const request = pool.request()
-    request.input('startDate', sql.Date, new Date(filters.startDate))
-    request.input('endDate', sql.Date, new Date(filters.endDate))
-    
-    if (filters.employeeId) {
-      query += ` AND te.employee_id = @employeeId`
-      request.input('employeeId', sql.UniqueIdentifier, filters.employeeId)
-    }
-    
-    if (filters.projectId) {
-      query += ` AND p.id = @projectId`
-      request.input('projectId', sql.UniqueIdentifier, filters.projectId)
-    }
-    
-    if (filters.status) {
-      query += ` AND te.status = @status`
-      request.input('status', sql.NVarChar, filters.status)
-    }
-    
-    query += ` ORDER BY te.entry_date, te.created_at`
-    
-    const result = await request.query(query)
-    return { success: true, data: result.recordset }
-  } catch (error: any) {
-    console.error('getTimesheetEntries error:', error)
-    return { success: false, error: error.message, data: [] }
-  }
-}
+    const employeeId = (user as any).employeeId || user.id
 
-export async function getWeeklyTimesheetGrid(
-  yearWeek: string,
-  departmentId?: string,
-  projectId?: string
-) {
-  try {
-    const pool = await getConnection()
-    
-    const [year, week] = yearWeek.split('-W').map(Number)
-    const jan4 = new Date(year, 0, 4)
-    const dayOfWeek = jan4.getDay() || 7
-    const weekStart = new Date(jan4)
-    weekStart.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7)
-    
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekStart.getDate() + 6)
-    
-    const startDateStr = weekStart.toISOString().split('T')[0]
-    const endDateStr = weekEnd.toISOString().split('T')[0]
-    
-    let employeeQuery = `
-      SELECT 
-        e.id AS employee_id,
-        e.employee_code,
-        CONCAT(e.first_name_th, ' ', e.last_name_th) AS employee_name,
-        e.nickname,
-        pos.code AS position_code,
-        d.name AS department_name
-      FROM pms.employees e
-      LEFT JOIN pms.positions pos ON e.position_id = pos.id
-      LEFT JOIN pms.departments d ON e.department_id = d.id
-      WHERE e.is_active = 1
-    `
-    
-    const empRequest = pool.request()
-    
-    if (departmentId) {
-      employeeQuery += ` AND e.department_id = @departmentId`
-      empRequest.input('departmentId', sql.UniqueIdentifier, departmentId)
-    }
-    
-    employeeQuery += ` ORDER BY e.first_name_th`
-    
-    const employeesResult = await empRequest.query(employeeQuery)
-    const employees = employeesResult.recordset
-    
-    const entriesResult = await getTimesheetEntries({
-      startDate: startDateStr,
-      endDate: endDateStr,
-      projectId
-    })
-    
-    const entries = entriesResult.data || []
-    
-    const weeklyData: WeeklyTimesheetData[] = employees.map((emp: any) => {
-      const empEntries = entries.filter((e: any) => e.employee_id === emp.employee_id)
-      
-      const entriesByDate: { [date: string]: TimesheetEntry[] } = {}
-      const dailyTotals: { [date: string]: number } = {}
-      let totalHours = 0
-      
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(weekStart)
-        d.setDate(weekStart.getDate() + i)
-        const dateStr = d.toISOString().split('T')[0]
-        entriesByDate[dateStr] = []
-        dailyTotals[dateStr] = 0
-      }
-      
-      empEntries.forEach((entry: any) => {
-        const dateStr = new Date(entry.entry_date).toISOString().split('T')[0]
-        if (entriesByDate[dateStr]) {
-          entriesByDate[dateStr].push(entry)
-          dailyTotals[dateStr] += entry.hours
-          totalHours += entry.hours
-        }
-      })
-      
-      return {
-        ...emp,
-        entries: entriesByDate,
-        daily_totals: dailyTotals,
-        total_hours: totalHours
-      }
-    })
-    
-    const dates: string[] = []
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart)
-      d.setDate(weekStart.getDate() + i)
-      dates.push(d.toISOString().split('T')[0])
-    }
-    
-    return {
-      success: true,
-      data: {
-        year_week: yearWeek,
-        week_start: startDateStr,
-        week_end: endDateStr,
-        dates,
-        employees: weeklyData
-      }
-    }
-  } catch (error: any) {
-    console.error('getWeeklyTimesheetGrid error:', error)
-    return { success: false, error: error.message, data: null }
-  }
-}
-
-export async function createTimesheetEntry(data: {
-  entry_date: string
-  task_id: string
-  hours: number
-  is_overtime?: boolean
-  description?: string
-}) {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: 'Unauthorized' }
-    }
-    
-    const pool = await getConnection()
-    
-    const existingCheck = await pool.request()
-      .input('employeeId', sql.UniqueIdentifier, user.id)
-      .input('entryDate', sql.Date, new Date(data.entry_date))
-      .input('taskId', sql.UniqueIdentifier, data.task_id)
-      .query(`
-        SELECT id FROM pms.timesheet_entries
-        WHERE employee_id = @employeeId
-          AND entry_date = @entryDate
-          AND task_id = @taskId
-          AND is_active = 1
-      `)
-    
-    if (existingCheck.recordset.length > 0) {
-      await pool.request()
-        .input('id', sql.UniqueIdentifier, existingCheck.recordset[0].id)
-        .input('hours', sql.Decimal(4, 2), data.hours)
-        .input('isOvertime', sql.Bit, data.is_overtime || false)
-        .input('description', sql.NVarChar, data.description || null)
-        .query(`
-          UPDATE pms.timesheet_entries
-          SET hours = @hours,
-              is_overtime = @isOvertime,
-              description = @description,
-              updated_at = GETDATE()
-          WHERE id = @id
-        `)
-      
-      revalidatePath('/timesheet')
-      return { success: true, data: { id: existingCheck.recordset[0].id, action: 'updated' } }
-    }
-    
+    // Get all entries for the week
     const result = await pool.request()
-      .input('employeeId', sql.UniqueIdentifier, user.id)
-      .input('entryDate', sql.Date, new Date(data.entry_date))
-      .input('taskId', sql.UniqueIdentifier, data.task_id)
-      .input('hours', sql.Decimal(4, 2), data.hours)
-      .input('isOvertime', sql.Bit, data.is_overtime || false)
-      .input('description', sql.NVarChar, data.description || null)
-      .input('createdBy', sql.UniqueIdentifier, user.id)
-      .query(`
-        INSERT INTO pms.timesheet_entries (
-          employee_id, entry_date, task_id, hours, is_overtime, description, created_by
-        ) OUTPUT INSERTED.id VALUES (
-          @employeeId, @entryDate, @taskId, @hours, @isOvertime, @description, @createdBy
-        )
-      `)
-    
-    revalidatePath('/timesheet')
-    return { success: true, data: { id: result.recordset[0].id, action: 'created' } }
-  } catch (error: any) {
-    console.error('createTimesheetEntry error:', error)
-    return { success: false, error: error.message }
-  }
-}
-
-export async function getMyTasksForTimesheet() {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: 'Unauthorized', data: [] }
-    }
-    
-    const pool = await getConnection()
-    
-    const result = await pool.request()
-      .input('employeeId', sql.UniqueIdentifier, user.id)
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('weekStart', sql.Date, weekStart)
       .query(`
         SELECT 
-          t.id, t.task_code, t.title AS task_title, t.task_type,
-          ttc.name_th AS task_type_name,
-          ttc.color AS task_type_color,
-          s.story_code, s.title AS story_title,
-          mc.code AS milestone_code, mc.name AS milestone_name,
-          p.project_code, p.name AS project_name,
-          CONCAT(p.project_code, ' > ', s.story_code, ' > ', t.task_code, ' ', t.title) AS display_name
+          te.id AS entry_id,
+          te.task_id,
+          te.entry_date,
+          te.hours,
+          te.description AS work_description,
+          te.activity_type,
+          t.task_code,
+          t.title AS task_title,
+          p.project_code,
+          p.name AS project_name
+        FROM pms.timesheet_entries te
+        INNER JOIN pms.tasks t ON te.task_id = t.id
+        INNER JOIN pms.stories s ON t.story_id = s.id
+        INNER JOIN pms.projects p ON s.project_id = p.id
+        WHERE te.employee_id = @employeeId
+          AND te.entry_date >= @weekStart
+          AND te.entry_date < DATEADD(day, 7, @weekStart)
+          AND te.is_active = 1
+        ORDER BY te.entry_date, t.task_code
+      `)
+
+    // Also get assigned tasks (to show tasks even without entries)
+    // Filter out canceled or completed if too old? 
+    // Usually only active tasks ('todo', 'in_progress', 'review'). 'done' might be needed if I logged time this week?
+    // The previous query (entries) covers tasks with time logged.
+    // This query covers tasks WITHOUT time logged but assigned.
+    const tasksResult = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .query(`
+        SELECT DISTINCT
+          t.id AS task_id,
+          t.task_code,
+          t.title AS task_title,
+          p.project_code,
+          p.name AS project_name
         FROM pms.tasks t
         INNER JOIN pms.stories s ON t.story_id = s.id
         INNER JOIN pms.projects p ON s.project_id = p.id
-        LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
-        LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
-        LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
         WHERE t.assignee_id = @employeeId
+          AND t.status IN ('todo', 'in_progress', 'review')
           AND t.is_active = 1
-          AND t.status NOT IN ('done', 'cancelled')
-          AND p.is_active = 1
-        ORDER BY p.project_code, s.story_code, t.task_code
+        ORDER BY p.project_code, t.task_code
       `)
-    
-    return { success: true, data: result.recordset }
-  } catch (error: any) {
-    console.error('getMyTasksForTimesheet error:', error)
-    return { success: false, error: error.message, data: [] }
+
+    // Build the data structure
+    const taskMap = new Map<string, WeeklyTimesheetData['tasks'][0]>()
+    const dailyTotals: Record<string, number> = {}
+    let weekTotal = 0
+
+    // Initialize with assigned tasks
+    tasksResult.recordset.forEach((task: any) => {
+      taskMap.set(task.id || task.task_id, { // Check if alias worked. SQL says t.id AS task_id
+        task_id: task.task_id,
+        task_code: task.task_code,
+        task_title: task.task_title,
+        project_code: task.project_code,
+        project_name: task.project_name,
+        entries: {},
+        total_hours: 0
+      })
+    })
+
+    // Fill in entries
+    result.recordset.forEach((entry: any) => {
+      const dateKey = entry.entry_date.toISOString().split('T')[0]
+
+      // Add task if not exists (e.g. task is done but has entry this week)
+      if (!taskMap.has(entry.task_id)) {
+        taskMap.set(entry.task_id, {
+          task_id: entry.task_id,
+          task_code: entry.task_code,
+          task_title: entry.task_title,
+          project_code: entry.project_code,
+          project_name: entry.project_name,
+          entries: {},
+          total_hours: 0
+        })
+      }
+
+      const task = taskMap.get(entry.task_id)!
+      task.entries[dateKey] = {
+        entry_id: entry.entry_id,
+        hours: entry.hours,
+        description: entry.work_description || ''
+      }
+      task.total_hours += entry.hours
+
+      // Daily totals
+      dailyTotals[dateKey] = (dailyTotals[dateKey] || 0) + entry.hours
+      weekTotal += entry.hours
+    })
+
+    return {
+      tasks: Array.from(taskMap.values()),
+      daily_totals: dailyTotals,
+      week_total: weekTotal,
+      target_hours: 35
+    }
+  } catch (error) {
+    console.error('Error fetching weekly timesheet:', error)
+    return { tasks: [], daily_totals: {}, week_total: 0, target_hours: 35 }
+  }
+}
+
+// Log time entry
+export async function logTimeEntry(data: {
+  taskId: string
+  entryDate: string
+  hours: number
+  description?: string
+  activityType?: string
+  isOvertime?: boolean
+}): Promise<{ success: boolean; entryId?: string; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+
+  if (data.hours <= 0 || data.hours > 24) {
+    return { success: false, error: 'Hours must be between 0 and 24' }
+  }
+
+  try {
+    const pool = await getConnection()
+    const employeeId = (user as any).employeeId || user.id
+
+    // Check if entry exists for this task/date
+    const existing = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('taskId', sql.UniqueIdentifier, data.taskId)
+      .input('entryDate', sql.Date, data.entryDate)
+      .query(`
+        SELECT id FROM pms.timesheet_entries 
+        WHERE employee_id = @employeeId 
+          AND task_id = @taskId 
+          AND entry_date = @entryDate
+          AND is_active = 1
+      `)
+
+    let entryId: string
+
+    if (existing.recordset.length > 0) {
+      // Update existing entry
+      entryId = existing.recordset[0].id
+      await pool.request()
+        .input('id', sql.UniqueIdentifier, entryId)
+        .input('hours', sql.Decimal(10, 2), data.hours)
+        .input('description', sql.NVarChar, data.description || null)
+        .input('activityType', sql.NVarChar, data.activityType || 'development')
+        .input('isOvertime', sql.Bit, data.isOvertime || false)
+        .query(`
+          UPDATE pms.timesheet_entries 
+          SET hours = @hours,
+              description = @description,
+              activity_type = @activityType,
+              is_overtime = @isOvertime,
+              updated_at = GETDATE()
+          WHERE id = @id
+        `)
+    } else {
+      // Create new entry
+      const result = await pool.request()
+        .input('employeeId', sql.UniqueIdentifier, employeeId)
+        .input('taskId', sql.UniqueIdentifier, data.taskId)
+        .input('entryDate', sql.Date, data.entryDate)
+        .input('hours', sql.Decimal(10, 2), data.hours)
+        .input('description', sql.NVarChar, data.description || null)
+        .input('activityType', sql.NVarChar, data.activityType || 'development')
+        .input('isOvertime', sql.Bit, data.isOvertime || false)
+        .query(`
+          INSERT INTO pms.timesheet_entries 
+          (id, employee_id, task_id, entry_date, hours, description, activity_type, is_overtime, is_billable, status, is_active, created_at, updated_at)
+          OUTPUT INSERTED.id
+          VALUES (NEWID(), @employeeId, @taskId, @entryDate, @hours, @description, @activityType, @isOvertime, 1, 'logged', 1, GETDATE(), GETDATE())
+        `)
+      entryId = result.recordset[0].id
+    }
+
+    // Update task actual_hours AND milestone actual_mandays
+    // Re-use connection? Yes.
+    // Helper function needs to use SAME pool to be efficient? Or separate. 
+    // getConnection returns same pool singleton.
+
+    await updateTaskActualHours(pool, data.taskId)
+    await updateMilestoneActualMandays(pool, data.taskId)
+
+    revalidatePath('/timesheet')
+    revalidatePath('/my-tasks')
+    revalidatePath('/my-projects') // Update Gantt/Lists
+
+    return { success: true, entryId }
+  } catch (error) {
+    console.error('Error logging time:', error)
+    return { success: false, error: 'Database error' }
+  }
+}
+
+// Delete time entry
+export async function deleteTimeEntry(entryId: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+
+  try {
+    const pool = await getConnection()
+    const employeeId = (user as any).employeeId || user.id
+
+    // Get task_id before deleting
+    const entry = await pool.request()
+      .input('entryId', sql.UniqueIdentifier, entryId)
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .query(`
+        SELECT task_id FROM pms.timesheet_entries 
+        WHERE id = @entryId AND employee_id = @employeeId
+      `)
+
+    if (entry.recordset.length === 0) {
+      return { success: false, error: 'Entry not found' }
+    }
+
+    const taskId = entry.recordset[0].task_id
+
+    // Soft delete
+    await pool.request()
+      .input('entryId', sql.UniqueIdentifier, entryId)
+      .query(`
+        UPDATE pms.timesheet_entries 
+        SET is_active = 0, updated_at = GETDATE()
+        WHERE id = @entryId
+      `)
+
+    // Update task actual_hours
+    await updateTaskActualHours(pool, taskId)
+
+    // Update milestone actual_mandays
+    await updateMilestoneActualMandays(pool, taskId)
+
+    revalidatePath('/timesheet')
+    revalidatePath('/my-tasks')
+    revalidatePath('/my-projects')
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting time entry:', error)
+    return { success: false, error: 'Database error' }
+  }
+}
+
+// Helper: Update task actual_hours from timesheet
+async function updateTaskActualHours(pool: sql.ConnectionPool, taskId: string) {
+  await pool.request()
+    .input('taskId', sql.UniqueIdentifier, taskId)
+    .query(`
+      UPDATE pms.tasks 
+      SET actual_hours = (
+        SELECT ISNULL(SUM(hours), 0) 
+        FROM pms.timesheet_entries 
+        WHERE task_id = @taskId AND is_active = 1
+      ),
+      updated_at = GETDATE()
+      WHERE id = @taskId
+    `)
+}
+
+// Helper: Update milestone actual_mandays from timesheet
+async function updateMilestoneActualMandays(pool: sql.ConnectionPool, taskId: string) {
+  await pool.request()
+    .input('taskId', sql.UniqueIdentifier, taskId)
+    .query(`
+      UPDATE pm
+      SET pm.actual_mandays = calc.total_mandays,
+          pm.updated_at = GETDATE()
+      FROM pms.project_milestones pm
+      INNER JOIN (
+        SELECT 
+          s.milestone_id,
+          ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS total_mandays
+        FROM pms.tasks t
+        INNER JOIN pms.stories s ON t.story_id = s.id
+        LEFT JOIN pms.timesheet_entries te ON te.task_id = t.id AND te.is_active = 1
+        WHERE s.milestone_id = (SELECT milestone_id FROM pms.stories s2 JOIN pms.tasks t2 ON s2.id = t2.story_id WHERE t2.id = @taskId)
+        GROUP BY s.milestone_id
+      ) calc ON pm.id = calc.milestone_id
+    `)
+  // Note: The subquery `calc` complexity: need to group ALL tasks in that milestone, not just the single task.
+  // The query above filters by `WHERE s.milestone_id = ...`.
+  // It sums hours for ALL tasks in that milestone. This is correct.
+}
+
+// Get available tasks for timesheet (to add new task row)
+export async function getAvailableTasksForTimesheet(): Promise<{
+  task_id: string
+  task_code: string
+  task_title: string
+  project_code: string
+  project_name: string
+}[]> {
+  const user = await getCurrentUser()
+  if (!user) return []
+
+  try {
+    const pool = await getConnection()
+    const employeeId = (user as any).employeeId || user.id
+
+    const result = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .query(`
+        SELECT 
+          t.id AS task_id,
+          t.task_code,
+          t.title AS task_title,
+          p.project_code,
+          p.name AS project_name
+        FROM pms.tasks t
+        INNER JOIN pms.stories s ON t.story_id = s.id
+        INNER JOIN pms.projects p ON s.project_id = p.id
+        WHERE t.assignee_id = @employeeId
+          AND t.status NOT IN ('done', 'cancelled')
+          AND t.is_active = 1
+        ORDER BY p.project_code, t.task_code
+      `)
+
+    return result.recordset
+  } catch (error) {
+    console.error('Error fetching available tasks:', error)
+    return []
   }
 }

@@ -1,0 +1,180 @@
+import { getKPIOperationalSummary, getWeeklyKPIRecords, getLateMeetingRecords, WeeklyKPIRecord, deleteLateMeetingRecord } from "@/lib/actions/kpi-records-actions"
+import { KPIOperationalCards } from "@/components/kpi/KPIOperationalCards"
+import { WeeklyRecordsTable } from "@/components/kpi/WeeklyRecordsTable"
+import { LateMeetingTable } from "@/components/kpi/LateMeetingTable"
+import { WeeklyRecordModal } from "@/components/kpi/WeeklyRecordModal"
+import { LateMeetingModal } from "@/components/kpi/LateMeetingModal"
+import { Button } from "@/components/ui/button"
+import { Plus, BarChart3, Clock } from "lucide-react"
+import { useState, useEffect } from "react"
+import { format } from "date-fns"
+
+export const dynamic = 'force-dynamic'
+
+export default async function KPIRecordsPage() {
+    // This is server component initial fetch for SEO/Performance
+    const summary = await getKPIOperationalSummary()
+    const initialRecords = await getWeeklyKPIRecords()
+    const initialLateRecords = await getLateMeetingRecords()
+
+    return (
+        <KPIRecordsView
+            initialSummary={summary}
+            initialRecords={initialRecords}
+            initialLateRecords={initialLateRecords}
+        />
+    )
+}
+
+// Client Component Wrapper for Interactivity
+'use client'
+
+function KPIRecordsView({ initialSummary, initialRecords, initialLateRecords }: any) {
+    const [summary, setSummary] = useState(initialSummary)
+    const [records, setRecords] = useState(initialRecords)
+    const [lateRecords, setLateRecords] = useState(initialLateRecords)
+
+    const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false)
+    const [isLateModalOpen, setIsLateModalOpen] = useState(false)
+    const [selectedRecord, setSelectedRecord] = useState<WeeklyKPIRecord | null>(null)
+
+    const refreshData = async () => {
+        // In a real app we might re-fetch or rely on revalidatePath + router.refresh() 
+        // But for client component state update without full reload:
+        // We can use server actions again
+        try {
+            // For simplicity, force a full page refresh logic or use router
+            // But let's fetch manual for smooth UX
+            const { getKPIOperationalSummary, getWeeklyKPIRecords, getLateMeetingRecords } = await import("@/lib/actions/kpi-records-actions")
+            setSummary(await getKPIOperationalSummary())
+            setRecords(await getWeeklyKPIRecords())
+            setLateRecords(await getLateMeetingRecords())
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    const handleEditWeekly = (record: WeeklyKPIRecord) => {
+        setSelectedRecord(record)
+        setIsWeeklyModalOpen(true)
+    }
+
+    const handleNewWeekly = () => {
+        // Find next empty week or current week?
+        // Prompt says "Weekly Record" modal. 
+        // Let's passed 'null' or a default object and let modal handle logic or just open blank.
+        // Actually the table shows weeks. We usually click a week row to "Record".
+        // But a "+ Weekly Record" button might imply creating a record for a specific week or just open modal.
+        // Let's pass null and let user select week? 
+        // Or if we look at the UI design: "[+ บันทึกประจำสัปดาห์]"
+        // Since we list all weeks in table (generated view), maybe we just filtering for the current week or next unrecorded?
+        // Let's just pass null and let modal handle (modal will likely need a week selector if passed null, but my modal implementation above took `record` object which implies it edits existing row).
+        // BUT my view returns ALL weeks (even unrecorded ones). So clicking "Record" on the row is the primary way.
+        // The button might just open the modal for the *Current Week* or *First Unrecorded Week*.
+
+        // Let's find first unrecorded week or current week.
+        const currentWeekNum = getWeekNumber(new Date()) // Helper needed
+        // Just Use the first unrecorded week in the list as default?
+        const firstUnrecorded = records.find((r: any) => !r.is_recorded) || records[0]
+        setSelectedRecord(firstUnrecorded)
+        setIsWeeklyModalOpen(true)
+    }
+
+    const handleDeleteLate = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this record?")) return
+        const { deleteLateMeetingRecord } = await import("@/lib/actions/kpi-records-actions")
+        await deleteLateMeetingRecord(id)
+        refreshData()
+    }
+
+    return (
+        <div className="space-y-6 h-full p-6 max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                        KPI Weekly Records {new Date().getFullYear()}
+                    </h1>
+                    <p className="text-slate-500">
+                        Monitor operational excellence: Deployments, Backups, and Meeting Efficiency.
+                    </p>
+                </div>
+                <div className="flex gap-3">
+                    <Button onClick={handleNewWeekly} className="shadow-sm">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Weekly Record
+                    </Button>
+                    <Button variant="outline" onClick={() => setIsLateModalOpen(true)} className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Record Late MoM
+                    </Button>
+                </div>
+            </div>
+
+            {/* Summary Cards */}
+            {summary && <KPIOperationalCards summary={summary} />}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Weekly Records (Main Table) */}
+                <div className="lg:col-span-2 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold flex items-center">
+                            <BarChart3 className="w-5 h-5 mr-2 text-indigo-600" />
+                            Weekly Deployment & Backup
+                        </h2>
+                    </div>
+
+                    <WeeklyRecordsTable
+                        records={records}
+                        onEdit={handleEditWeekly}
+                    />
+                </div>
+
+                {/* Late MoM (Side List) */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold flex items-center">
+                            <Clock className="w-5 h-5 mr-2 text-amber-600" />
+                            Late Meeting Minutes
+                        </h2>
+                        <span className="text-xs font-medium bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                            {lateRecords.length} Records
+                        </span>
+                    </div>
+
+                    <LateMeetingTable
+                        records={lateRecords}
+                        onDelete={handleDeleteLate}
+                    />
+                </div>
+            </div>
+
+            {/* Modals */}
+            <WeeklyRecordModal
+                record={selectedRecord}
+                isOpen={isWeeklyModalOpen}
+                onClose={() => setIsWeeklyModalOpen(false)}
+                onSaved={refreshData}
+            />
+
+            <LateMeetingModal
+                isOpen={isLateModalOpen}
+                onClose={() => setIsLateModalOpen(false)}
+                onSaved={refreshData}
+            />
+        </div>
+    )
+}
+
+// Helper for week number
+function getWeekNumber(d: Date) {
+    // Copy date so don't modify original
+    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    // Set to nearest Thursday: current date + 4 - current day number
+    // Make Sunday's day number 7
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    // Get first day of year
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    // Calculate full weeks to nearest Thursday
+    var weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return weekNo;
+}

@@ -6,9 +6,13 @@ import { getCurrentUser } from '@/lib/auth'
 
 interface Props {
     params: { projectId: string }
+    searchParams: { tab?: string }
 }
 
-export default async function ProjectDetailRoute({ params }: Props) {
+export default async function ProjectDetailRoute(props: { params: Promise<{ projectId: string }>, searchParams: Promise<{ tab?: string }> }) {
+    const params = await props.params;
+    const searchParams = await props.searchParams;
+
     const [currentUser, projectResult, ganttResult] = await Promise.all([
         getCurrentUser(),
         getProjectDetail(params.projectId),
@@ -35,6 +39,7 @@ export default async function ProjectDetailRoute({ params }: Props) {
             project={projectResult.data}
             ganttData={ganttResult.data}
             currentUser={currentUser}
+            activeTab={searchParams.tab || 'gantt'}
         />
     )
 }
