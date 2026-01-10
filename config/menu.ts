@@ -112,7 +112,7 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Work Tracking',
         titleTh: 'ติดตามงาน',
         children: [
-          { id: 'tasks', label: 'Tasks', labelTh: 'งาน', path: '/tasks', icon: CheckSquare },
+          { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
           { id: 'sprints', label: 'Sprints', labelTh: 'Sprints', path: '/sprints', icon: Zap },
         ]
       }
@@ -140,6 +140,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'รายงาน',
         children: [
           { id: 'timesheet-reports', label: 'Time Reports', labelTh: 'รายงานเวลา', path: '/timesheet/reports', icon: FileBarChart },
+          { id: 'kpi-records', label: 'KPI Records', labelTh: 'บันทึก KPI', path: '/kpi/records', icon: CheckSquare, roles: ['admin', 'manager'] },
         ]
       }
     ]
