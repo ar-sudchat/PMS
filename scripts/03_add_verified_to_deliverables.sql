@@ -1,0 +1,16 @@
+
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'project_deliverables' AND COLUMN_NAME = 'is_verified')
+BEGIN
+    ALTER TABLE pms.project_deliverables ADD is_verified BIT NOT NULL DEFAULT 0;
+END
+
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'project_deliverables' AND COLUMN_NAME = 'verified_at')
+BEGIN
+    ALTER TABLE pms.project_deliverables ADD verified_at DATETIME2 NULL;
+END
+
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'project_deliverables' AND COLUMN_NAME = 'verified_by')
+BEGIN
+    ALTER TABLE pms.project_deliverables ADD verified_by UNIQUEIDENTIFIER NULL;
+END
+

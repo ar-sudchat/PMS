@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { getMilestoneApprovalStatus, approveMilestone, MilestoneApprovalStatus } from '@/lib/actions/milestone-approval-actions'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, AlertTriangle, Calendar, Clock, ListTodo } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, Calendar, Clock, ListTodo, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ApproveMilestoneModalProps {
@@ -140,7 +140,57 @@ export function ApproveMilestoneModal({ open, onOpenChange, milestoneId, onAppro
                                     </span>
                                 </div>
                             </div>
+
+
+                            <div className="bg-slate-50 border border-slate-200 rounded p-3 mt-3 space-y-2">
+                                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Documents (Required)</h4>
+
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Submitted:</span>
+                                    <span className={cn("font-medium",
+                                        status.summary.missing_docs_count === 0 ? "text-green-600" : "text-amber-600"
+                                    )}>
+                                        {status.summary.required_docs_count - status.summary.missing_docs_count}/{status.summary.required_docs_count}
+                                    </span>
+                                </div>
+
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Verified:</span>
+                                    <span className={cn("font-medium",
+                                        status.summary.unverified_docs_count === 0 && status.summary.missing_docs_count === 0 ? "text-green-600" : "text-red-600"
+                                    )}>
+                                        {status.summary.required_docs_count - status.summary.missing_docs_count - status.summary.unverified_docs_count}/{status.summary.required_docs_count - status.summary.missing_docs_count}
+                                    </span>
+                                </div>
+
+                                <div className="flex justify-between text-sm border-t border-slate-200 pt-2 mt-1">
+                                    <span className="text-slate-700 font-medium">KPI: On-time</span>
+                                    <span className={cn("font-bold",
+                                        status.summary.docs_on_time_count === status.summary.required_docs_count ? "text-green-600" : "text-red-600"
+                                    )}>
+                                        {status.summary.docs_on_time_count}/{status.summary.required_docs_count}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
+
+                        {/* Blocker Warning */}
+                        {(!status.can_approve && !status.is_approved) && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                                <strong>Cannot Approve Yet:</strong>
+                                <ul className="list-disc list-inside mt-1 text-xs space-y-1">
+                                    {status.summary.done_tasks < status.summary.total_tasks && (
+                                        <li>Tasks are not all completed ({status.summary.done_tasks}/{status.summary.total_tasks})</li>
+                                    )}
+                                    {status.summary.missing_docs_count > 0 && (
+                                        <li>Missing required documents ({status.summary.missing_docs_count})</li>
+                                    )}
+                                    {status.summary.unverified_docs_count > 0 && (
+                                        <li>Some documents are not verified ({status.summary.unverified_docs_count})</li>
+                                    )}
+                                </ul>
+                            </div>
+                        )}
 
                         {/* Completed Date Input */}
                         <div>
@@ -192,8 +242,8 @@ export function ApproveMilestoneModal({ open, onOpenChange, milestoneId, onAppro
                     </Button>
                     <Button
                         onClick={handleApprove}
-                        disabled={!confirmed || submitting || loading}
-                        className="bg-green-600 hover:bg-green-700"
+                        disabled={!confirmed || submitting || loading || !status?.can_approve}
+                        className="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                     >
                         {submitting ? (
                             <>
@@ -209,6 +259,6 @@ export function ApproveMilestoneModal({ open, onOpenChange, milestoneId, onAppro
                     </Button>
                 </DialogFooter>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     )
 }

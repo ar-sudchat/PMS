@@ -5,7 +5,7 @@ import { FileText, CheckCircle2, AlertCircle, Upload, Link as LinkIcon, Lock, X,
 import { MilestoneRow, ProjectDeliverable } from '@/types/project'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
-import { createCustomDeliverable, deleteProjectDeliverable } from '@/lib/actions/project-actions'
+import { createCustomDeliverable, deleteProjectDeliverable, verifyDeliverable } from '@/lib/actions/project-actions'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -16,9 +16,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 interface DeliverablesTabProps {
     milestones: MilestoneRow[]
     onRefresh?: () => void
+    deliverableChanges?: Record<string, any>
+    onDeliverableChange?: (id: string, field: string, value: any) => void
 }
 
-export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps) {
+export function DeliverablesTab({ milestones, onRefresh, deliverableChanges = {}, onDeliverableChange }: DeliverablesTabProps) {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null)
     const [newDocData, setNewDocData] = useState({ name: '', is_required: true })
@@ -40,6 +42,19 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
         setSelectedMilestoneId(msId)
         setNewDocData({ name: '', is_required: true })
         setIsAddModalOpen(true)
+    }
+
+    // handleVerify replaced by onDeliverableChange prop logic in render
+    // keeping generic handler if needed, but UI will direct call onDeliverableChange
+
+    const handleVerify = async (id: string, isVerified: boolean) => {
+        const result = await verifyDeliverable(id, isVerified)
+        if (result.success) {
+            toast.success(isVerified ? 'Document Verified' : 'Verification Revoked')
+            onRefresh?.()
+        } else {
+            toast.error(result.error)
+        }
     }
 
     const handleCreateCustom = async () => {
@@ -101,8 +116,9 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                                         <th className="px-4 py-2 text-left font-medium w-10">#</th>
                                         <th className="px-4 py-2 text-left font-medium">Document</th>
                                         <th className="px-4 py-2 text-center font-medium w-24">Required</th>
-                                        <th className="px-4 py-2 text-center font-medium w-32">Submitted</th>
+                                        <th className="px-4 py-2 text-center font-medium w-24">Submitted</th>
                                         <th className="px-4 py-2 text-center font-medium w-24">On-time</th>
+                                        <th className="px-4 py-2 text-center font-medium w-20">Verified</th>
                                         <th className="px-4 py-2 text-right font-medium w-32">Action</th>
                                     </tr>
                                 </thead>
@@ -115,16 +131,23 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                                         </tr>
                                     ) : (
                                         m.deliverables.map((d, idx) => {
-                                            const isSubmitted = !!d.submitted_date
+                                            // Merge current DB data with pending changes
+                                            const changes = deliverableChanges[d.id] || {}
+                                            // Handle submitted_date: if in changes use it (can be null), otherwise DB
+                                            // If changes.submitted_date is explicitly null/empty string, it means cleared.
+                                            // DB submitted_date is string or null.
+                                            const submittedDateValue = changes.submitted_date !== undefined ? changes.submitted_date : d.submitted_date
+                                            const isSubmitted = !!submittedDateValue
+                                            const verifiedValue = changes.is_verified !== undefined ? changes.is_verified : d.is_verified
 
                                             // On-time Calculation
                                             let onTimeElement = <span className="text-slate-300">-</span>
 
                                             if (isSubmitted && m.due_date) {
-                                                const subDate = new Date(d.submitted_date!)
+                                                const subDate = new Date(submittedDateValue)
                                                 const dueDate = new Date(m.due_date)
                                                 if (subDate <= dueDate) {
-                                                    onTimeElement = <span className="text-green-600 font-bold">✓</span>
+                                                    onTimeElement = <span className="text-green-600 font-bold">✓ On-time</span>
                                                 } else {
                                                     onTimeElement = <span className="text-red-500 font-bold">Late</span>
                                                 }
@@ -153,17 +176,27 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                                                             <span className="text-slate-300">-</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-center text-slate-600 text-xs">
-                                                        {d.submitted_date ? (
-                                                            <span className="text-blue-600 font-medium">
-                                                                {format(new Date(d.submitted_date), 'dd MMM yyyy')}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-slate-300">Pending</span>
-                                                        )}
+                                                    <td className="px-4 py-3 text-center text-slate-600 text-xs text-center">
+                                                        <Input
+                                                            type="date"
+                                                            value={submittedDateValue ? format(new Date(submittedDateValue), 'yyyy-MM-dd') : ''}
+                                                            onChange={(e) => onDeliverableChange?.(d.id, 'submitted_date', e.target.value || null)}
+                                                            disabled={m.is_locked}
+                                                            className="h-8 w-32 mx-auto text-xs"
+                                                        />
                                                     </td>
                                                     <td className="px-4 py-3 text-center text-xs">
                                                         {onTimeElement}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <div className="flex justify-center">
+                                                            <Checkbox
+                                                                checked={!!verifiedValue}
+                                                                onChange={(e) => onDeliverableChange?.(d.id, 'is_verified', e.target.checked)}
+                                                                disabled={!isSubmitted || m.is_locked}
+                                                                className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                                            />
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3 text-right">
                                                         <div className="flex items-center justify-end gap-2">
@@ -206,7 +239,7 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                                         <tr>
                                             <td colSpan={6} className="px-4 py-2 border-t border-slate-100 bg-slate-50/30">
                                                 <button
-                                                    onClick={() => handleOpenAddModal(m.id)}
+                                                    onClick={() => m.id && handleOpenAddModal(m.id)}
                                                     className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
                                                 >
                                                     <Plus className="w-3 h-3" /> Add Custom Document
@@ -217,9 +250,48 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Summary Dashboard */}
+                        {(() => {
+                            const activeDeliverables = m.deliverables || []
+                            const totalRequired = activeDeliverables.filter(d => d.is_required).length
+                            const submittedRequired = activeDeliverables.filter(d => d.is_required && d.submitted_date).length
+
+                            // On-time (Required & Submitted & On-time)
+                            const onTimeCount = activeDeliverables.filter(d =>
+                                d.is_required &&
+                                d.submitted_date &&
+                                m.due_date &&
+                                new Date(d.submitted_date) <= new Date(m.due_date)
+                            ).length
+
+                            // Verified (All Active)
+                            const verifiedCount = activeDeliverables.filter(d => d.is_verified).length
+                            const totalCount = activeDeliverables.length
+
+                            return (
+                                <div className="bg-slate-50 px-4 py-2 border-t flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium">
+                                    <span className={cn("flex items-center gap-1.5", submittedRequired === totalRequired ? "text-green-700" : "text-amber-600")}>
+                                        {submittedRequired === totalRequired ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                                        {submittedRequired}/{totalRequired} Required Submitted
+                                    </span>
+
+                                    <span className={cn("flex items-center gap-1.5", m.due_date && onTimeCount === totalRequired ? "text-green-700" : "text-amber-600")}>
+                                        {onTimeCount === totalRequired ? <CheckCircle2 className="w-3.5 h-3.5" /> : (m.due_date ? <span className="text-[10px] w-3.5 text-center">-</span> : null)}
+                                        {onTimeCount}/{submittedRequired} On-time
+                                    </span>
+
+                                    <span className={cn("flex items-center gap-1.5", verifiedCount === totalCount && totalCount > 0 ? "text-green-700" : "text-amber-600")}>
+                                        {verifiedCount === totalCount && totalCount > 0 ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                                        {verifiedCount}/{totalCount} Verified
+                                    </span>
+                                </div>
+                            )
+                        })()}
                     </div>
                 ))
-            )}
+            )
+            }
 
             <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
                 <DialogContent>
@@ -239,7 +311,7 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                             <Checkbox
                                 id="custom-req"
                                 checked={newDocData.is_required}
-                                onCheckedChange={(c) => setNewDocData({ ...newDocData, is_required: !!c })}
+                                onChange={(e) => setNewDocData({ ...newDocData, is_required: e.target.checked })}
                             />
                             <Label htmlFor="custom-req">Required (Counts for KPI)</Label>
                         </div>
@@ -253,6 +325,6 @@ export function DeliverablesTab({ milestones, onRefresh }: DeliverablesTabProps)
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }

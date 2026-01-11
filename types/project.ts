@@ -83,12 +83,19 @@ export interface ProjectDeliverable {
     sort_order: number
     is_active: boolean
     status?: 'pending' | 'submitted' | 'approved' | 'rejected' // Virtual status
+
+    // Verified Status
+    is_verified?: boolean
+    verified_at?: string
+    verified_by?: string
 }
 
 export interface MilestoneRow extends ProjectMilestone {
     // Extended properties for UI usage if any
     deliverable_count?: number
     submitted_count?: number
+    required_docs?: number
+    submitted_required_docs?: number
     required_docs_pass?: boolean
 }
 

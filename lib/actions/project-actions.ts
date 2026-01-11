@@ -3,6 +3,7 @@
 import { getConnection } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import sql from 'mssql'
+import { getCurrentUser } from '@/lib/auth'
 import { ProjectFormData } from '@/types/project'
 
 // Generate Project Code
@@ -640,6 +641,42 @@ export async function updateProject(id: string, data: ProjectFormData) {
         await transaction.begin()
         console.log('[UPDATE_PROJECT] Transaction begun');
 
+        // 0. Update Project Core Data
+        await transaction.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .input('project_year', sql.Int, data.project_year)
+            .input('name', sql.NVarChar, data.name)
+            .input('name_th', sql.NVarChar, data.name_th)
+            .input('customer_id', sql.UniqueIdentifier, data.customer_id)
+            .input('project_manager_id', sql.UniqueIdentifier, data.project_manager_id)
+            .input('project_owner_id', sql.UniqueIdentifier, data.project_owner_id || null)
+            .input('description', sql.NVarChar, data.description)
+            .input('sold_mandays', sql.Decimal(10, 2), data.sold_mandays)
+            .input('manday_rate', sql.Decimal(10, 2), data.manday_rate)
+            .input('total_value', sql.Decimal(18, 2), data.sold_mandays * data.manday_rate)
+            .input('warranty_end_date', sql.Date, data.warranty_end_date || null)
+            .input('status_id', sql.UniqueIdentifier, data.status_id || null)
+            .input('current_milestone_id', sql.UniqueIdentifier, data.current_milestone_id || null) // Added
+            .query(`
+                UPDATE pms.projects
+                SET 
+                    project_year = @project_year,
+                    name = @name,
+                    name_th = @name_th,
+                    customer_id = @customer_id,
+                    project_manager_id = @project_manager_id,
+                    project_owner_id = @project_owner_id,
+                    description = @description,
+                    sold_mandays = @sold_mandays,
+                    manday_rate = @manday_rate,
+                    total_value = @total_value,
+                    warranty_end_date = @warranty_end_date,
+                    status_id = @status_id,
+                    current_milestone_id = @current_milestone_id,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+
         // 1. Get existing milestones to diff
         const existingResult = await transaction.request()
             .input('project_id', id)
@@ -692,8 +729,9 @@ export async function updateProject(id: string, data: ProjectFormData) {
                             progress_percent = @progress_percent,
                             weight_ttd = @weight_ttd,
                             weight_mdc = @weight_mdc,
-                            completed_date = @completed_date
-                        WHERE id = @id
+                            completed_date = @completed_date,
+                            updated_at = GETDATE()
+                        WHERE id = @id AND is_locked = 0
                     `)
 
                 // Refresh Deliverables (Simpler to delete all for this MS and re-insert)
@@ -903,3 +941,159 @@ export async function createCustomDeliverable(data: {
     }
 }
 
+
+// ============================================
+// VERIFY DELIVERABLE
+// ============================================
+
+export async function verifyDeliverable(
+    deliverableId: string,
+    isVerified: boolean
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // 1. Check if milestone is locked & document is submitted
+        const checkResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, deliverableId)
+            .query(`
+                SELECT 
+                    pd.id, pd.submitted_date,
+                    pm.is_locked, pm.status as milestone_status
+                FROM pms.project_deliverables pd
+                LEFT JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
+                WHERE pd.id = @id
+            `)
+
+        if (checkResult.recordset.length === 0) {
+            return { success: false, error: 'Deliverable not found' }
+        }
+
+        const deliverable = checkResult.recordset[0]
+
+        // Allow un-verify even if locked? No, usually lock means frozen.
+        // But user might need to unlock milestone first.
+        if (deliverable.is_locked) {
+            return { success: false, error: 'Milestone is locked. Cannot update verification.' }
+        }
+
+        // Must be submitted to verify (unless un-verifying)
+        if (isVerified && !deliverable.submitted_date) {
+            return { success: false, error: 'Cannot verify: Document has not been submitted.' }
+        }
+
+        // 2. Update DB
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, deliverableId)
+            .input('isVerified', sql.Bit, isVerified)
+            .input('verifiedBy', sql.UniqueIdentifier, isVerified ? user.id : null)
+            .input('verifiedAt', sql.DateTime2, isVerified ? new Date() : null)
+            .query(`
+                UPDATE pms.project_deliverables
+                SET 
+                    is_verified = @isVerified,
+                    verified_at = @verifiedAt,
+                    verified_by = @verifiedBy,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+
+        revalidatePath('/projects')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('verifyDeliverable error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// ============================================
+// UPDATE DELIVERABLE (Batch/Individual)
+// ============================================
+
+export async function updateDeliverable(
+    deliverableId: string,
+    data: {
+        submitted_date?: string | null
+        is_verified?: boolean
+    }
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+
+        // 1. Get current deliverable & milestone lock status
+        const checkResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, deliverableId)
+            .query(`
+                SELECT 
+                    pd.id, pd.project_milestone_id, pd.is_verified, pd.verified_at, pd.verified_by,
+                    pm.is_locked, pm.due_date
+                FROM pms.project_deliverables pd
+                LEFT JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
+                WHERE pd.id = @id
+            `)
+
+        if (checkResult.recordset.length === 0) {
+            return { success: false, error: 'Deliverable not found' }
+        }
+
+        const current = checkResult.recordset[0]
+
+        if (current.is_locked) {
+            return { success: false, error: 'Milestone is locked. Cannot update.' }
+        }
+
+        // 2. Prepare updates
+        let updateSql = `UPDATE pms.project_deliverables SET updated_at = GETDATE()`
+        const request = pool.request().input('id', sql.UniqueIdentifier, deliverableId)
+
+        if (data.submitted_date !== undefined) {
+            request.input('submittedDate', sql.Date, data.submitted_date)
+            updateSql += `, submitted_date = @submittedDate`
+
+            // Recalc On-Time
+            // If we have a submitted date and a due date
+            if (data.submitted_date && current.due_date) {
+                const isLate = new Date(data.submitted_date) > new Date(current.due_date)
+                request.input('isOnTime', sql.Bit, !isLate)
+                updateSql += `, is_on_time = @isOnTime`
+            } else if (data.submitted_date === null) {
+                // Cleared submission
+                updateSql += `, is_on_time = NULL`
+            }
+        }
+
+        if (data.is_verified !== undefined) {
+            // Logic: Update verified info
+            const isVerified = data.is_verified
+            request.input('isVerified', sql.Bit, isVerified)
+
+            if (isVerified) {
+                request.input('verifiedAt', sql.DateTime2, new Date())
+                request.input('verifiedBy', sql.UniqueIdentifier, user.id)
+                updateSql += `, is_verified = 1, verified_at = @verifiedAt, verified_by = @verifiedBy`
+            } else {
+                updateSql += `, is_verified = 0, verified_at = NULL, verified_by = NULL`
+            }
+        }
+
+        updateSql += ` WHERE id = @id`
+
+        await request.query(updateSql)
+
+        revalidatePath('/projects')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('updateDeliverable error:', error)
+        return { success: false, error: error.message }
+    }
+}

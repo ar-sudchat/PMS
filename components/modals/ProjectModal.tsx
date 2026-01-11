@@ -12,7 +12,8 @@ import {
     createProject,
     updateProject,
     generateProjectCode,
-    getProjectById
+    getProjectById,
+    updateDeliverable
 } from '@/lib/actions/project-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { MilestonesTab } from './ProjectModal/MilestonesTab'
@@ -61,6 +62,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
     const [isLoading, setIsLoading] = useState(false)
     const [errors, setErrors] = useState<Record<string, string>>({})
 
+    // Batch Deliverable Changes
+    const [deliverableChanges, setDeliverableChanges] = useState<Record<string, any>>({})
+
     // Computed Values
     const totalValue = formData.sold_mandays * formData.manday_rate
     const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
@@ -85,67 +89,72 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             // So we pre-fill it. If user changes it, fine.
             handleGenerateCode(formData.project_year)
         }
+
+
     }, [formData.project_year, mode, open])
+
+    // Fetch Project Details
+    const fetchProjectDetails = async (id: string) => {
+        setIsLoading(true)
+        try {
+            const res = await getProjectById(id)
+            if (res.success && res.data) {
+                const projectData = res.data
+                setFormData({
+                    project_year: projectData.project_year,
+                    project_code: projectData.project_code,
+                    name: projectData.name,
+                    name_th: projectData.name_th || '',
+                    customer_id: projectData.customer_id,
+                    project_manager_id: projectData.project_manager_id,
+                    description: projectData.description || '',
+                    sold_mandays: projectData.sold_mandays,
+                    manday_rate: projectData.manday_rate,
+                    warranty_end_date: projectData.warranty_end_date ? new Date(projectData.warranty_end_date).toISOString().split('T')[0] : '',
+                    status_id: projectData.status_id || '',
+                    current_milestone_id: projectData.current_milestone_id || '',
+                    project_owner_id: projectData.project_owner_id || '',
+                })
+
+                if (projectData.milestones) {
+                    setMilestones(projectData.milestones.map((m: any) => ({
+                        id: m.id,
+                        milestone_config_id: m.milestone_config_id,
+                        milestone_name: m.milestone_name,
+                        milestone_color: m.milestone_color,
+                        weight_percent: m.weight_percent, // Legacy
+                        weight_ttd: m.weight_ttd,
+                        weight_mdc: m.weight_mdc,
+                        due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
+                        completed_date: m.completed_date ? new Date(m.completed_date).toISOString().split('T')[0] : '',
+                        planned_mandays: m.planned_mandays,
+                        actual_mandays: m.actual_mandays,
+                        deliverable_ids: m.deliverable_ids || [],
+                        deliverables: m.deliverables || [], // New
+                        progress_percent: m.progress_percent || 0,
+                        is_locked: m.is_locked,
+                        is_approved: m.is_approved,
+                        kpi_ttd_pass: m.kpi_ttd_pass,
+                        kpi_mdc_pass: m.kpi_mdc_pass,
+                        sort_order: m.sort_order,
+                        status: m.status,
+                        // Derived UI props
+                        deliverable_count: m.deliverables?.length || 0,
+                        submitted_count: m.deliverables?.filter((d: any) => d.submitted_date).length || 0,
+                        required_docs: m.deliverables?.filter((d: any) => d.is_required).length || 0,
+                        submitted_required_docs: m.deliverables?.filter((d: any) => d.is_required && d.submitted_date).length || 0
+                    })))
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load project details:', error)
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
     // Load data when edit mode
     useEffect(() => {
-        const fetchProjectDetails = async (id: string) => {
-            setIsLoading(true)
-            try {
-                const res = await getProjectById(id)
-                if (res.success && res.data) {
-                    const projectData = res.data
-                    setFormData({
-                        project_year: projectData.project_year,
-                        project_code: projectData.project_code,
-                        name: projectData.name,
-                        name_th: projectData.name_th || '',
-                        customer_id: projectData.customer_id,
-                        project_manager_id: projectData.project_manager_id,
-                        description: projectData.description || '',
-                        sold_mandays: projectData.sold_mandays,
-                        manday_rate: projectData.manday_rate,
-                        warranty_end_date: projectData.warranty_end_date ? new Date(projectData.warranty_end_date).toISOString().split('T')[0] : '',
-                        status_id: projectData.status_id || '',
-                        current_milestone_id: projectData.current_milestone_id || '',
-                        project_owner_id: projectData.project_owner_id || '',
-                    })
-
-                    if (projectData.milestones) {
-                        setMilestones(projectData.milestones.map((m: any) => ({
-                            id: m.id,
-                            milestone_config_id: m.milestone_config_id,
-                            milestone_name: m.milestone_name,
-                            milestone_color: m.milestone_color,
-                            weight_percent: m.weight_percent, // Legacy
-                            weight_ttd: m.weight_ttd,
-                            weight_mdc: m.weight_mdc,
-                            due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
-                            completed_date: m.completed_date ? new Date(m.completed_date).toISOString().split('T')[0] : '',
-                            planned_mandays: m.planned_mandays,
-                            actual_mandays: m.actual_mandays,
-                            deliverable_ids: m.deliverable_ids || [],
-                            deliverables: m.deliverables || [], // New
-                            progress_percent: m.progress_percent || 0,
-                            is_locked: m.is_locked,
-                            is_approved: m.is_approved,
-                            kpi_ttd_pass: m.kpi_ttd_pass,
-                            kpi_mdc_pass: m.kpi_mdc_pass,
-                            sort_order: m.sort_order,
-                            status: m.status,
-                            // Derived UI props
-                            deliverable_count: m.deliverable_count,
-                            submitted_count: m.submitted_count
-                        })))
-                    }
-                }
-            } catch (error) {
-                console.error('Failed to load project details:', error)
-            } finally {
-                setIsLoading(false)
-            }
-        }
-
         if (mode === 'edit' && project && open) {
             // Initial simple populate from props to avoid flickering empty
             setFormData(prev => ({
@@ -213,7 +222,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             manday_rate: 15000,
             warranty_end_date: '',
             status_id: '',
-            current_milestone_id: '',
+            current_milestone_id: '', // Reset
             project_owner_id: '',
         })
         // Start with 4 empty milestone rows
@@ -289,6 +298,15 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                 await createProject(payload)
             } else {
                 await updateProject(project!.id, payload)
+
+                // Process batch deliverable updates
+                if (Object.keys(deliverableChanges).length > 0) {
+                    await Promise.all(
+                        Object.entries(deliverableChanges).map(([id, changes]) =>
+                            updateDeliverable(id, changes)
+                        )
+                    )
+                }
             }
 
             onSuccess()
@@ -578,6 +596,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                             milestones={milestones}
                             setMilestones={setMilestones}
                             milestoneConfigs={milestoneConfigs}
+                            currentMilestoneId={formData.current_milestone_id}
+                            onCurrentMilestoneChange={(id) => setFormData({ ...formData, current_milestone_id: id })}
                         />
                     </div>
 
@@ -587,6 +607,16 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                             milestones={milestones}
                             onRefresh={() => {
                                 if (project?.id) fetchProjectDetails(project.id)
+                            }}
+                            deliverableChanges={deliverableChanges}
+                            onDeliverableChange={(id, field, value) => {
+                                setDeliverableChanges(prev => ({
+                                    ...prev,
+                                    [id]: {
+                                        ...prev[id],
+                                        [field]: value
+                                    }
+                                }))
                             }}
                         />
                     </div>

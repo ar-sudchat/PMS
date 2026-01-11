@@ -12,9 +12,11 @@ interface MilestonesTabProps {
     milestones: MilestoneRow[]
     setMilestones: (milestones: MilestoneRow[]) => void
     milestoneConfigs: any[]
+    currentMilestoneId?: string
+    onCurrentMilestoneChange?: (id: string) => void
 }
 
-export function MilestonesTab({ milestones, setMilestones, milestoneConfigs }: MilestonesTabProps) {
+export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, currentMilestoneId, onCurrentMilestoneChange }: MilestonesTabProps) {
 
     // --- Computed Totals & Validation ---
     const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
@@ -64,8 +66,38 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs }: M
         setMilestones(updated)
     }
 
+    // Filter milestones that have IDs (saved) for the "Current Milestone" dropdown
+    const availableForCurrent = milestones.filter(m => m.id)
+
     return (
         <div className="space-y-6">
+            {/* Current Milestone Selector */}
+            {onCurrentMilestoneChange && (
+                <div className="flex items-center gap-4 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <div className="flex-1">
+                        <label className="block text-sm font-medium text-blue-900 mb-1">
+                            Current Project Milestone
+                        </label>
+                        <SmartCombobox
+                            options={[
+                                { value: '', label: 'Select Current Milestone' },
+                                ...availableForCurrent.map(m => ({
+                                    value: m.id!,
+                                    label: `${m.milestone_name} (${m.progress_percent}%)`
+                                }))
+                            ]}
+                            value={currentMilestoneId ? availableForCurrent.find(m => m.id === currentMilestoneId) ? { value: currentMilestoneId, label: `${availableForCurrent.find(m => m.id === currentMilestoneId)?.milestone_name} (${availableForCurrent.find(m => m.id === currentMilestoneId)?.progress_percent}%)` } : null : null}
+                            onChange={(opt) => onCurrentMilestoneChange(opt?.value as string || '')}
+                            placeholder="Select current active milestone..."
+                        />
+                    </div>
+                    <div className="text-sm text-blue-700 max-w-md">
+                        <AlertCircle className="w-4 h-4 inline mr-1 mb-0.5" />
+                        Setting the current milestone highlights it in the Gantt chart and tracks overall project stage.
+                    </div>
+                </div>
+            )}
+
             <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -100,8 +132,14 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs }: M
                                     const devCount = m.deliverable_count || 0
                                     const docStatus = m.submitted_count === devCount && devCount > 0
 
+                                    const isCurrent = m.id === currentMilestoneId
+
                                     return (
-                                        <tr key={m.id || i} className={cn("hover:bg-slate-50/50", isLocked && "bg-slate-50 opacity-90")}>
+                                        <tr key={m.id || i} className={cn(
+                                            "hover:bg-slate-50/50 transition-colors",
+                                            isLocked && "bg-slate-50 opacity-90",
+                                            isCurrent && "bg-blue-50 ring-2 ring-inset ring-blue-200"
+                                        )}>
                                             {/* Lock / Approve Checkbox */}
                                             <td className="px-3 py-2 text-center">
                                                 {isLocked ? (
@@ -120,7 +158,14 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs }: M
 
                                             {/* Milestone Name */}
                                             <td className="px-3 py-2">
-                                                <div className="font-medium text-slate-900">{m.milestone_name || 'New Milestone'}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-medium text-slate-900">{m.milestone_name || 'New Milestone'}</div>
+                                                    {isCurrent && (
+                                                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] uppercase font-bold tracking-wider rounded">
+                                                            Current
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* TTD Weight */}
@@ -187,9 +232,9 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs }: M
                                             <td className="px-2 py-2 text-center text-xs">
                                                 <span className={cn(
                                                     "px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5",
-                                                    docStatus ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
+                                                    (m.submitted_required_docs === m.required_docs && (m.required_docs || 0) > 0) ? "bg-green-100 text-green-700" : "bg-amber-50 text-amber-600"
                                                 )}>
-                                                    {m.submitted_count || 0}/{m.deliverable_count || 0}
+                                                    {m.submitted_required_docs || 0}/{m.required_docs || 0}
                                                 </span>
                                             </td>
 

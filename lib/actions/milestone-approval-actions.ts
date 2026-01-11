@@ -25,7 +25,12 @@ export interface MilestoneApprovalStatus {
         plan_mandays: number
         actual_mandays: number
         is_on_time: boolean
+
         is_within_budget: boolean
+        required_docs_count: number
+        missing_docs_count: number
+        unverified_docs_count: number
+        docs_on_time_count: number
     }
 }
 
@@ -36,10 +41,10 @@ export async function isMilestoneLocked(milestoneId: string): Promise<boolean> {
         const result = await pool.request()
             .input('milestoneId', sql.UniqueIdentifier, milestoneId)
             .query(`
-        SELECT ISNULL(is_locked, 0) AS is_locked 
-        FROM pms.project_milestones 
-        WHERE id = @milestoneId
-      `)
+    SELECT ISNULL(is_locked, 0) AS is_locked 
+    FROM pms.project_milestones 
+    WHERE id = @milestoneId
+  `)
         return result.recordset[0]?.is_locked === true
     } catch (error) {
         console.error('Error checking milestone lock:', error)
@@ -54,12 +59,12 @@ export async function isMilestoneLockedByTaskId(taskId: string): Promise<boolean
         const result = await pool.request()
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`
-        SELECT ISNULL(pm.is_locked, 0) AS is_locked 
-        FROM pms.tasks t
-        INNER JOIN pms.stories s ON t.story_id = s.id
-        INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
-        WHERE t.id = @taskId
-      `)
+    SELECT ISNULL(pm.is_locked, 0) AS is_locked 
+    FROM pms.tasks t
+    INNER JOIN pms.stories s ON t.story_id = s.id
+    INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+    WHERE t.id = @taskId
+  `)
         return result.recordset[0]?.is_locked === true
     } catch (error) {
         console.error('Error checking milestone lock by task:', error)
@@ -74,11 +79,11 @@ export async function isMilestoneLockedByStoryId(storyId: string): Promise<boole
         const result = await pool.request()
             .input('storyId', sql.UniqueIdentifier, storyId)
             .query(`
-        SELECT ISNULL(pm.is_locked, 0) AS is_locked 
-        FROM pms.stories s
-        INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
-        WHERE s.id = @storyId
-      `)
+    SELECT ISNULL(pm.is_locked, 0) AS is_locked 
+    FROM pms.stories s
+    INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+    WHERE s.id = @storyId
+  `)
         return result.recordset[0]?.is_locked === true
     } catch (error) {
         console.error('Error checking milestone lock by story:', error)
@@ -94,38 +99,45 @@ export async function getMilestoneApprovalStatus(milestoneId: string): Promise<M
         const result = await pool.request()
             .input('milestoneId', sql.UniqueIdentifier, milestoneId)
             .query(`
-        SELECT 
-          pm.id AS milestone_id,
-          pm.name AS milestone_name,
-          ISNULL(pm.is_approved, 0) AS is_approved,
-          ISNULL(pm.is_locked, 0) AS is_locked,
-          pm.approved_at,
-          e.first_name + ' ' + ISNULL(e.last_name, '') AS approved_by_name,
-          pm.approval_notes,
-          pm.due_date,
-          pm.completed_date,
-          pm.planned_mandays AS plan_mandays,
-          ISNULL(pm.actual_mandays, 0) AS actual_mandays,
-          
-          -- Story counts
-          (SELECT COUNT(*) FROM pms.stories WHERE milestone_id = pm.id AND is_active = 1) AS total_stories,
-          (SELECT COUNT(*) FROM pms.stories WHERE milestone_id = pm.id AND is_active = 1 AND status = 'done') AS done_stories,
-          
-          -- Task counts
-          (SELECT COUNT(*) FROM pms.tasks t INNER JOIN pms.stories s ON t.story_id = s.id 
-           WHERE s.milestone_id = pm.id AND t.is_active = 1) AS total_tasks,
-          (SELECT COUNT(*) FROM pms.tasks t INNER JOIN pms.stories s ON t.story_id = s.id 
-           WHERE s.milestone_id = pm.id AND t.is_active = 1 AND t.status = 'done') AS done_tasks
-           
-        FROM pms.project_milestones pm
-        LEFT JOIN pms.employees e ON pm.approved_by = e.id
-        WHERE pm.id = @milestoneId
-      `)
+    SELECT 
+      pm.id AS milestone_id,
+      pm.name AS milestone_name,
+      ISNULL(pm.is_approved, 0) AS is_approved,
+      ISNULL(pm.is_locked, 0) AS is_locked,
+      pm.approved_at,
+      e.first_name + ' ' + ISNULL(e.last_name, '') AS approved_by_name,
+      pm.approval_notes,
+      pm.due_date,
+      pm.completed_date,
+      pm.planned_mandays AS plan_mandays,
+      ISNULL(pm.actual_mandays, 0) AS actual_mandays,
+      
+      -- Story counts
+      (SELECT COUNT(*) FROM pms.stories WHERE milestone_id = pm.id AND is_active = 1) AS total_stories,
+      (SELECT COUNT(*) FROM pms.stories WHERE milestone_id = pm.id AND is_active = 1 AND status = 'done') AS done_stories,
+      
+      -- Task counts
+      (SELECT COUNT(*) FROM pms.tasks t INNER JOIN pms.stories s ON t.story_id = s.id 
+       WHERE s.milestone_id = pm.id AND t.is_active = 1) AS total_tasks,
+      (SELECT COUNT(*) FROM pms.tasks t INNER JOIN pms.stories s ON t.story_id = s.id 
+       WHERE s.milestone_id = pm.id AND t.is_active = 1 AND t.status = 'done') AS done_tasks,
+
+      -- Document counts
+      (SELECT COUNT(*) FROM pms.project_deliverables WHERE project_milestone_id = pm.id AND is_required = 1 AND is_active = 1) AS required_docs_count,
+      (SELECT COUNT(*) FROM pms.project_deliverables WHERE project_milestone_id = pm.id AND is_required = 1 AND is_active = 1 AND submitted_date IS NULL) AS missing_docs_count,
+      (SELECT COUNT(*) FROM pms.project_deliverables WHERE project_milestone_id = pm.id AND is_required = 1 AND is_active = 1 AND submitted_date IS NOT NULL AND is_verified = 0) AS unverified_docs_count,
+      (SELECT COUNT(*) FROM pms.project_deliverables WHERE project_milestone_id = pm.id AND is_required = 1 AND is_active = 1 AND submitted_date IS NOT NULL AND is_on_time = 1) AS docs_on_time_count
+       
+    FROM pms.project_milestones pm
+    LEFT JOIN pms.employees e ON pm.approved_by = e.id
+    WHERE pm.id = @milestoneId
+  `)
 
         if (result.recordset.length === 0) return null
 
         const data = result.recordset[0]
         const allTasksDone = data.total_tasks > 0 && data.done_tasks === data.total_tasks
+        const allDocsReady = data.missing_docs_count === 0 && data.unverified_docs_count === 0
 
         return {
             milestone_id: data.milestone_id,
@@ -135,7 +147,7 @@ export async function getMilestoneApprovalStatus(milestoneId: string): Promise<M
             approved_at: data.approved_at?.toISOString() || null,
             approved_by_name: data.approved_by_name,
             approval_notes: data.approval_notes,
-            can_approve: allTasksDone && !data.is_approved,
+            can_approve: allTasksDone && allDocsReady && !data.is_approved,
             due_date: data.due_date?.toISOString()?.split('T')[0] || null,
             completed_date: data.completed_date?.toISOString()?.split('T')[0] || null,
             summary: {
@@ -146,7 +158,11 @@ export async function getMilestoneApprovalStatus(milestoneId: string): Promise<M
                 plan_mandays: data.plan_mandays || 0,
                 actual_mandays: data.actual_mandays || 0,
                 is_on_time: !data.completed_date || !data.due_date || new Date(data.completed_date) <= new Date(data.due_date),
-                is_within_budget: data.actual_mandays <= (data.plan_mandays || 0)
+                is_within_budget: data.actual_mandays <= (data.plan_mandays || 0),
+                required_docs_count: data.required_docs_count,
+                missing_docs_count: data.missing_docs_count,
+                unverified_docs_count: data.unverified_docs_count,
+                docs_on_time_count: data.docs_on_time_count || 0
             }
         }
     } catch (error) {
