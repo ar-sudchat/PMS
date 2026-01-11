@@ -149,8 +149,6 @@ export async function getTeamWorkloadForDateRange(
              )`
         }
 
-        console.log('Final Employee Query:', employeeQuery)
-
         if (filters?.employeeIds && filters.employeeIds.length > 0) {
             employeeQuery += ` AND e.id IN ('${filters.employeeIds.join("','")}')`
         }
@@ -161,35 +159,41 @@ export async function getTeamWorkloadForDateRange(
         const employeesRaw = employeeResult.recordset
 
         // 2. Get Tasks for these employees in date range
-        // Note: Using LEFT JOIN to get all tasks assigned to these employees in range
-        const taskQuery = `
-            SELECT 
-                t.id,
-                t.task_code,
-                t.title,
-                t.estimated_hours,
-                t.due_date,
-                t.status,
-                t.priority,
-                t.assignee_id,
-                p.project_code,
-                p.name as project_name,
-                ISNULL(pm.is_locked, 0) as milestone_locked
-            FROM pms.tasks t
-            LEFT JOIN pms.stories s ON t.story_id = s.id
-            LEFT JOIN pms.projects p ON s.project_id = p.id
-            LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
-            WHERE t.assignee_id IN (SELECT id FROM pms.employees WHERE is_active = 1)
-              AND t.due_date BETWEEN @startDate AND @endDate
-              AND t.status NOT IN ('done', 'cancelled')
-        `
+        let tasks: any[] = []
 
-        const tasksResult = await pool.request()
-            .input('startDate', sql.Date, new Date(startDate))
-            .input('endDate', sql.Date, new Date(endDate))
-            .query(taskQuery)
+        if (employeesRaw.length > 0) {
+            const employeeIds = employeesRaw.map((e: any) => `'${e.employee_id}'`).join(',')
 
-        const tasks = tasksResult.recordset
+            // Note: Using LEFT JOIN to get all tasks assigned to these employees in range
+            const taskQuery = `
+                SELECT 
+                    t.id,
+                    t.task_code,
+                    t.title,
+                    t.estimated_hours,
+                    t.due_date,
+                    t.status,
+                    t.priority,
+                    t.assignee_id,
+                    p.project_code,
+                    p.name as project_name,
+                    ISNULL(pm.is_locked, 0) as milestone_locked
+                FROM pms.tasks t
+                LEFT JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.projects p ON s.project_id = p.id
+                LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+                WHERE t.assignee_id IN (${employeeIds})
+                  AND t.due_date BETWEEN @startDate AND @endDate
+                  AND t.status NOT IN ('done', 'cancelled')
+            `
+
+            const tasksResult = await pool.request()
+                .input('startDate', sql.Date, new Date(startDate))
+                .input('endDate', sql.Date, new Date(endDate))
+                .query(taskQuery)
+
+            tasks = tasksResult.recordset
+        }
 
         // 3. Generate Date Range
         const dates: Date[] = []
