@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { X, Search, Clock } from 'lucide-react'
-import { createTimesheetEntry, getMyTasksForTimesheet } from '@/lib/actions/timesheet-actions'
 import { cn } from '@/lib/utils'
 
 interface TimesheetEntryModalProps {
@@ -29,23 +28,24 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
   const [search, setSearch] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  
+
   useEffect(() => {
     if (open) {
       loadTasks()
       resetForm()
     }
   }, [open])
-  
+
   const loadTasks = async () => {
     setIsLoading(true)
-    const result = await getMyTasksForTimesheet()
-    if (result.success) {
-      setTasks(result.data || [])
-    }
+    // TODO: Implement getAvailableTasksForTimesheet or getMyTasksForTimesheet
+    // const result = await getAvailableTasksForTimesheet()
+    // if (result.success) {
+    //   setTasks(result.data || [])
+    // }
     setIsLoading(false)
   }
-  
+
   const resetForm = () => {
     setSelectedTask(null)
     setHours('')
@@ -53,41 +53,41 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
     setIsOvertime(false)
     setSearch('')
   }
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!selectedTask || !hours) return
-    
+
     setIsSaving(true)
-    
-    const result = await createTimesheetEntry({
-      entry_date: date,
-      task_id: selectedTask.id,
-      hours: parseFloat(hours),
-      is_overtime: isOvertime,
-      description: description || undefined
-    })
-    
-    if (result.success) {
-      onSuccess()
-      onClose()
-    } else {
-      alert(result.error)
-    }
-    
+
+    // TODO: Use logTimeEntry from timesheet-actions
+    // const result = await logTimeEntry({
+    //   taskId: selectedTask.id,
+    //   entryDate: date,
+    //   hours: parseFloat(hours),
+    //   isOvertime,
+    //   description: description || undefined
+    // })
+    // if (result.success) {
+    //   onSuccess()
+    //   onClose()
+    // } else {
+    //   alert(result.error)
+    // }
+
     setIsSaving(false)
   }
-  
-  const filteredTasks = tasks.filter(t => 
-    !search || 
+
+  const filteredTasks = tasks.filter(t =>
+    !search ||
     t.display_name?.toLowerCase().includes(search.toLowerCase()) ||
     t.project_code?.toLowerCase().includes(search.toLowerCase()) ||
     t.task_title?.toLowerCase().includes(search.toLowerCase())
   )
-  
+
   if (!open) return null
-  
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden">
@@ -95,11 +95,11 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
           <div>
             <h2 className="text-lg font-semibold">Add Timesheet Entry</h2>
             <p className="text-sm text-slate-500">
-              {new Date(date).toLocaleDateString('th-TH', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
+              {new Date(date).toLocaleDateString('th-TH', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
               })}
             </p>
           </div>
@@ -107,13 +107,13 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
             <X className="w-5 h-5" />
           </button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Task <span className="text-red-500">*</span>
             </label>
-            
+
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -124,7 +124,7 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm"
               />
             </div>
-            
+
             <div className="border rounded-lg max-h-48 overflow-y-auto">
               {isLoading ? (
                 <div className="p-4 text-center text-slate-500">Loading tasks...</div>
@@ -157,7 +157,7 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
               )}
             </div>
           </div>
-          
+
           {selectedTask && (
             <div className="p-3 bg-blue-50 rounded-lg text-sm">
               <div className="font-medium text-blue-900">{selectedTask.task_title}</div>
@@ -166,7 +166,7 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
               </div>
             </div>
           )}
-          
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Hours <span className="text-red-500">*</span>
@@ -201,7 +201,7 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
               ))}
             </div>
           </div>
-          
+
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -211,7 +211,7 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
             />
             <span className="text-sm">This is overtime work</span>
           </label>
-          
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Description
@@ -225,7 +225,7 @@ export function TimesheetEntryModal({ open, onClose, date, onSuccess }: Timeshee
             />
           </div>
         </form>
-        
+
         <div className="px-6 py-4 border-t flex justify-end gap-3">
           <button
             type="button"

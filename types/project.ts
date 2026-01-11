@@ -59,6 +59,12 @@ export interface ProjectMilestone {
     kpi_mdc_pass?: boolean
     kpi_docs_pass?: boolean
 
+    // Verification (new)
+    is_verified?: boolean
+    verified_at?: string
+    verified_by?: string
+    support_end_date?: string
+
     // UI state
     will_approve?: boolean
 
@@ -146,6 +152,7 @@ export interface DeliverableConfig {
     name: string
     name_th?: string
     sort_order: number
+    is_required: boolean
 }
 
 export interface ProjectStatusConfig {

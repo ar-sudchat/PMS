@@ -68,6 +68,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'ภาพรวม',
         children: [
           { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
+          { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
           { id: 'activities', label: 'Activities', labelTh: 'กิจกรรม', path: '/activities', icon: Activity },
         ]
       }

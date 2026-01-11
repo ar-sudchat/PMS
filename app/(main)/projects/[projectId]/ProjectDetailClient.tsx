@@ -7,9 +7,10 @@ import { StoryCard } from '@/components/projects/detail/StoryCard'
 interface ProjectDetailClientProps {
     project: any
     stories: any[]
+    currentUserId: string
 }
 
-export function ProjectDetailClient({ project, stories: initialStories }: ProjectDetailClientProps) {
+export function ProjectDetailClient({ project, stories: initialStories, currentUserId }: ProjectDetailClientProps) {
     const router = useRouter()
 
     const handleRefresh = () => {
@@ -100,6 +101,7 @@ export function ProjectDetailClient({ project, stories: initialStories }: Projec
                                 story={story}
                                 tasks={story.tasks || []}
                                 projectId={project.id}
+                                currentUserId={currentUserId}
                                 onRefresh={handleRefresh}
                             />
                         ))

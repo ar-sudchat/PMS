@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
+import { isMilestoneLocked } from './milestone-actions'
 
 export interface Story {
   id: string
@@ -196,6 +197,14 @@ export async function createStory(data: {
 
     const pool = await getConnection()
 
+    // Check if milestone is locked
+    if (data.milestone_id) {
+      const isLocked = await isMilestoneLocked(data.milestone_id)
+      if (isLocked) {
+        return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถเพิ่ม Story ได้' }
+      }
+    }
+
     const codeResult = await pool.request()
       .input('projectId', sql.UniqueIdentifier, data.project_id)
       .query(`
@@ -263,6 +272,28 @@ export async function updateStory(id: string, data: Partial<Story>) {
     }
 
     const pool = await getConnection()
+
+    // Check if milestone is locked (for existing or new milestone)
+    if (data.milestone_id) {
+      const isLocked = await isMilestoneLocked(data.milestone_id)
+      if (isLocked) {
+        return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถย้าย Story ได้' }
+      }
+    }
+
+    // Also check current milestone of the story
+    const currentStoryResult = await pool.request()
+      .input('id', sql.UniqueIdentifier, id)
+      .query('SELECT milestone_id FROM pms.stories WHERE id = @id')
+
+    if (currentStoryResult.recordset.length > 0 && currentStoryResult.recordset[0].milestone_id) {
+      const currentMilestoneId = currentStoryResult.recordset[0].milestone_id
+      const isLocked = await isMilestoneLocked(currentMilestoneId)
+      if (isLocked) {
+        return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถแก้ไข Story ได้' }
+      }
+    }
+
     const updates: string[] = []
     const request = pool.request()
     request.input('id', sql.UniqueIdentifier, id)
@@ -318,6 +349,19 @@ export async function deleteStory(id: string) {
     }
 
     const pool = await getConnection()
+
+    // Check if parent milestone is locked
+    const storyResult = await pool.request()
+      .input('id', sql.UniqueIdentifier, id)
+      .query('SELECT milestone_id FROM pms.stories WHERE id = @id')
+
+    if (storyResult.recordset.length > 0 && storyResult.recordset[0].milestone_id) {
+      const milestoneId = storyResult.recordset[0].milestone_id
+      const isLocked = await isMilestoneLocked(milestoneId)
+      if (isLocked) {
+        return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถลบ Story ได้' }
+      }
+    }
 
     const projectResult = await pool.request()
       .input('id', sql.UniqueIdentifier, id)

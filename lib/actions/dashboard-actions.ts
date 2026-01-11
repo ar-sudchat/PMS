@@ -508,3 +508,331 @@ export async function getKpiSummary() {
         return { success: false, error: error.message, data: null }
     }
 }
+
+// ============================================
+// PROJECT HEALTH (OEE-STYLE) FUNCTIONS
+// ============================================
+
+import { calculateOverallHealth } from '@/lib/utils/health-calculator'
+
+export interface ProjectHealthSummary {
+    project_id: string
+    project_code: string
+    project_name: string
+    customer_name: string
+    status: string
+    current_milestone_name?: string
+    time_score: number | null
+    resource_score: number | null
+    docs_score: number | null
+    overall_health: number
+    health_status: 'on-track' | 'at-risk' | 'critical'
+}
+
+export interface ProjectsOverviewSummary {
+    total: number
+    onTrack: number
+    atRisk: number
+    critical: number
+    avgHealth: number
+}
+
+export interface MilestoneHealth {
+    id: string
+    milestone_name: string
+    milestone_code: string
+    due_date: string
+    completed_date?: string
+    is_verified: boolean
+    is_locked: boolean
+    time_score: number | null
+    resource_score: number | null
+    docs_score: number | null
+    overall_health: number
+    planned_mandays: number
+    actual_mandays: number
+    required_docs: number
+    submitted_docs: number
+}
+
+/**
+ * Level 1: Get projects health overview for portfolio view
+ */
+export async function getProjectsHealthOverview(filters?: {
+    year?: number
+    status?: string
+    pmId?: string
+}): Promise<{
+    success: boolean
+    summary: ProjectsOverviewSummary
+    projects: ProjectHealthSummary[]
+}> {
+    try {
+        const pool = await getConnection()
+
+        let query = `
+            SELECT 
+                p.id AS project_id,
+                p.project_code,
+                p.name AS project_name,
+                ISNULL(c.name, '-') AS customer_name,
+                ps.name AS status,
+                mc.name AS current_milestone_name,
+                -- Calculate scores from verified milestones
+                (SELECT 
+                    CASE WHEN COUNT(CASE WHEN pm.is_verified = 1 THEN 1 END) = 0 THEN NULL
+                    ELSE ROUND(CAST(SUM(CASE WHEN pm.kpi_ttd_pass = 1 AND pm.is_verified = 1 THEN pm.weight_ttd ELSE 0 END) AS FLOAT) / 
+                         NULLIF(SUM(CASE WHEN pm.is_verified = 1 THEN pm.weight_ttd ELSE 0 END), 0) * 100, 0)
+                    END
+                 FROM pms.project_milestones pm WHERE pm.project_id = p.id
+                ) AS time_score,
+                (SELECT 
+                    CASE WHEN COUNT(CASE WHEN pm.is_verified = 1 THEN 1 END) = 0 THEN NULL
+                    ELSE ROUND(CAST(SUM(CASE WHEN pm.kpi_mdc_pass = 1 AND pm.is_verified = 1 THEN pm.weight_mdc ELSE 0 END) AS FLOAT) / 
+                         NULLIF(SUM(CASE WHEN pm.is_verified = 1 THEN pm.weight_mdc ELSE 0 END), 0) * 100, 0)
+                    END
+                 FROM pms.project_milestones pm WHERE pm.project_id = p.id
+                ) AS resource_score,
+                (SELECT 
+                    CASE WHEN COUNT(CASE WHEN pd.is_required = 1 THEN 1 END) = 0 THEN NULL
+                    ELSE ROUND(CAST(COUNT(CASE WHEN pd.is_required = 1 AND pd.submitted_date IS NOT NULL THEN 1 END) AS FLOAT) / 
+                         NULLIF(COUNT(CASE WHEN pd.is_required = 1 THEN 1 END), 0) * 100, 0)
+                    END
+                 FROM pms.project_deliverables pd 
+                 INNER JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
+                 WHERE pm.project_id = p.id
+                ) AS docs_score
+            FROM pms.projects p
+            LEFT JOIN pms.customers c ON p.customer_id = c.id
+            LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
+            LEFT JOIN pms.project_milestones cm ON p.current_milestone_id = cm.id
+            LEFT JOIN pms.milestone_configs mc ON cm.milestone_config_id = mc.id
+            WHERE 1=1
+        `
+
+        const request = pool.request()
+
+        if (filters?.year) {
+            query += ` AND p.project_year = @year`
+            request.input('year', sql.Int, filters.year)
+        }
+
+        if (filters?.status) {
+            query += ` AND ps.name = @status`
+            request.input('status', sql.NVarChar, filters.status)
+        }
+
+        query += ` ORDER BY p.project_code`
+
+        const result = await request.query(query)
+
+        const projects: ProjectHealthSummary[] = result.recordset.map((p: any) => {
+            const overall = calculateOverallHealth(p.time_score, p.resource_score, p.docs_score)
+            let health_status: 'on-track' | 'at-risk' | 'critical' = 'critical'
+            if (overall >= 80) health_status = 'on-track'
+            else if (overall >= 60) health_status = 'at-risk'
+
+            return {
+                project_id: p.project_id,
+                project_code: p.project_code,
+                project_name: p.project_name,
+                customer_name: p.customer_name,
+                status: p.status,
+                current_milestone_name: p.current_milestone_name,
+                time_score: p.time_score,
+                resource_score: p.resource_score,
+                docs_score: p.docs_score,
+                overall_health: overall,
+                health_status
+            }
+        })
+
+        const total = projects.length
+        const onTrack = projects.filter(p => p.health_status === 'on-track').length
+        const atRisk = projects.filter(p => p.health_status === 'at-risk').length
+        const critical = projects.filter(p => p.health_status === 'critical').length
+        const avgHealth = total > 0 ? Math.round(projects.reduce((sum, p) => sum + p.overall_health, 0) / total) : 0
+
+        return {
+            success: true,
+            summary: { total, onTrack, atRisk, critical, avgHealth },
+            projects
+        }
+    } catch (error) {
+        console.error('Error getting projects health overview:', error)
+        return {
+            success: false,
+            summary: { total: 0, onTrack: 0, atRisk: 0, critical: 0, avgHealth: 0 },
+            projects: []
+        }
+    }
+}
+
+/**
+ * Level 2: Get project health detail with milestone breakdown
+ */
+export async function getProjectHealthDetail(projectId: string): Promise<{
+    success: boolean
+    project?: any
+    overallHealth?: { time: number | null; resource: number | null; docs: number | null; overall: number }
+    milestones?: MilestoneHealth[]
+}> {
+    try {
+        const pool = await getConnection()
+
+        const projectResult = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT 
+                    p.id, p.project_code AS code, p.name, c.name AS customer_name,
+                    p.status, p.start_date, p.target_end_date
+                FROM pms.projects p
+                LEFT JOIN pms.customers c ON p.customer_id = c.id
+                WHERE p.id = @projectId
+            `)
+
+        if (projectResult.recordset.length === 0) {
+            return { success: false }
+        }
+
+        const milestonesResult = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT 
+                    pm.id, mc.name AS milestone_name, mc.code AS milestone_code,
+                    pm.due_date, pm.completed_date, pm.is_verified, pm.is_locked,
+                    pm.kpi_ttd_pass, pm.kpi_mdc_pass, pm.kpi_docs_pass,
+                    pm.planned_mandays, pm.actual_mandays, pm.weight_ttd, pm.weight_mdc,
+                    (SELECT COUNT(*) FROM pms.project_deliverables pd WHERE pd.project_milestone_id = pm.id AND pd.is_required = 1) AS required_docs,
+                    (SELECT COUNT(*) FROM pms.project_deliverables pd WHERE pd.project_milestone_id = pm.id AND pd.is_required = 1 AND pd.submitted_date IS NOT NULL) AS submitted_docs
+                FROM pms.project_milestones pm
+                INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                WHERE pm.project_id = @projectId AND pm.is_active = 1
+                ORDER BY pm.sort_order
+            `)
+
+        const milestones: MilestoneHealth[] = milestonesResult.recordset.map((m: any) => {
+            const time_score = m.is_verified ? (m.kpi_ttd_pass ? 100 : 0) : null
+            const resource_score = m.is_verified ? (m.kpi_mdc_pass ? 100 : 0) : null
+            const docs_score = m.is_verified ? (m.required_docs > 0 ? Math.round((m.submitted_docs / m.required_docs) * 100) : 100) : null
+
+            return {
+                id: m.id,
+                milestone_name: m.milestone_name,
+                milestone_code: m.milestone_code,
+                due_date: m.due_date,
+                completed_date: m.completed_date,
+                is_verified: m.is_verified,
+                is_locked: m.is_locked,
+                time_score, resource_score, docs_score,
+                overall_health: calculateOverallHealth(time_score, resource_score, docs_score),
+                planned_mandays: m.planned_mandays || 0,
+                actual_mandays: m.actual_mandays || 0,
+                required_docs: m.required_docs || 0,
+                submitted_docs: m.submitted_docs || 0
+            }
+        })
+
+        // Calculate overall project health from verified milestones
+        const verified = milestones.filter(m => m.is_verified)
+        const time = verified.length ? Math.round(verified.filter(m => m.time_score === 100).length / verified.length * 100) : null
+        const resource = verified.length ? Math.round(verified.filter(m => m.resource_score === 100).length / verified.length * 100) : null
+        const docs = verified.length ? Math.round(verified.reduce((s, m) => s + (m.docs_score || 0), 0) / verified.length) : null
+
+        return {
+            success: true,
+            project: projectResult.recordset[0],
+            overallHealth: { time, resource, docs, overall: calculateOverallHealth(time, resource, docs) },
+            milestones
+        }
+    } catch (error) {
+        console.error('Error getting project health detail:', error)
+        return { success: false }
+    }
+}
+
+/**
+ * Level 3: Get milestone health detail
+ */
+export async function getMilestoneHealthDetail(milestoneId: string): Promise<{
+    success: boolean
+    milestone?: any
+    health?: any
+    tasks?: any[]
+    deliverables?: any[]
+    resources?: any[]
+}> {
+    try {
+        const pool = await getConnection()
+
+        const msResult = await pool.request()
+            .input('milestoneId', sql.UniqueIdentifier, milestoneId)
+            .query(`
+                SELECT pm.id, mc.name, mc.code, p.name AS project_name, pm.due_date, pm.completed_date,
+                       pm.support_end_date, pm.is_verified, pm.planned_mandays, pm.actual_mandays,
+                       pm.kpi_ttd_pass, pm.kpi_mdc_pass, pm.kpi_docs_pass
+                FROM pms.project_milestones pm
+                INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                INNER JOIN pms.projects p ON pm.project_id = p.id
+                WHERE pm.id = @milestoneId
+            `)
+
+        if (msResult.recordset.length === 0) return { success: false }
+        const m = msResult.recordset[0]
+
+        const tasksResult = await pool.request()
+            .input('milestoneId', sql.UniqueIdentifier, milestoneId)
+            .query(`
+                SELECT t.id, t.task_code, t.title, CONCAT(e.first_name_th, ' ', e.last_name_th) AS assignee_name,
+                       t.estimated_hours, t.actual_hours, t.progress_percent AS progress, t.status
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.employees e ON t.assignee_id = e.id
+                WHERE s.milestone_id = @milestoneId AND t.is_active = 1
+                ORDER BY t.sort_order
+            `)
+
+        const docsResult = await pool.request()
+            .input('milestoneId', sql.UniqueIdentifier, milestoneId)
+            .query(`
+                SELECT id, name, is_required, submitted_date,
+                       CASE WHEN submitted_date IS NOT NULL AND submitted_date <= (SELECT due_date FROM pms.project_milestones WHERE id = @milestoneId) THEN 1 ELSE 0 END AS is_on_time
+                FROM pms.project_deliverables WHERE project_milestone_id = @milestoneId AND is_active = 1
+                ORDER BY sort_order
+            `)
+
+        const resourcesResult = await pool.request()
+            .input('milestoneId', sql.UniqueIdentifier, milestoneId)
+            .query(`
+                SELECT e.id AS employee_id, CONCAT(e.first_name_th, ' ', e.last_name_th) AS employee_name, p.code AS position,
+                       SUM(t.estimated_hours) AS planned_hours, SUM(t.actual_hours) AS actual_hours,
+                       CASE WHEN SUM(t.estimated_hours) > 0 THEN ROUND((SUM(t.actual_hours) / SUM(t.estimated_hours)) * 100, 0) ELSE 0 END AS utilization
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                INNER JOIN pms.employees e ON t.assignee_id = e.id
+                INNER JOIN pms.positions p ON e.position_id = p.id
+                WHERE s.milestone_id = @milestoneId AND t.is_active = 1
+                GROUP BY e.id, e.first_name_th, e.last_name_th, p.code
+            `)
+
+        const daysRemaining = m.due_date ? Math.ceil((new Date(m.due_date).getTime() - new Date().getTime()) / 86400000) : 0
+        const totalDocs = docsResult.recordset.filter((d: any) => d.is_required).length
+        const submittedDocs = docsResult.recordset.filter((d: any) => d.is_required && d.submitted_date).length
+
+        return {
+            success: true,
+            milestone: { id: m.id, name: m.name, code: m.code, project_name: m.project_name, due_date: m.due_date, completed_date: m.completed_date, support_end_date: m.support_end_date, is_verified: m.is_verified, planned_mandays: m.planned_mandays || 0, actual_mandays: m.actual_mandays || 0 },
+            health: {
+                time: { score: m.is_verified ? (m.kpi_ttd_pass ? 100 : 0) : null, daysRemaining, status: daysRemaining > 0 ? 'On track' : 'Overdue' },
+                resource: { score: m.is_verified ? (m.kpi_mdc_pass ? 100 : 0) : null, planned: m.planned_mandays || 0, actual: m.actual_mandays || 0, status: (m.actual_mandays || 0) <= (m.planned_mandays || 0) ? 'On budget' : 'Over budget' },
+                docs: { score: m.is_verified ? (m.kpi_docs_pass ? 100 : 0) : null, submitted: submittedDocs, total: totalDocs, status: submittedDocs === totalDocs ? 'Complete' : 'Pending' }
+            },
+            tasks: tasksResult.recordset,
+            deliverables: docsResult.recordset,
+            resources: resourcesResult.recordset
+        }
+    } catch (error) {
+        console.error('Error getting milestone health detail:', error)
+        return { success: false }
+    }
+}

@@ -8,42 +8,59 @@ import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface DeliverableConfigModalProps {
-    open: boolean
+    isOpen: boolean
     onClose: () => void
-    config?: DeliverableConfig
+    mode?: 'create' | 'edit'
+    milestoneConfigId?: string
+    milestoneName?: string
+    initialData?: DeliverableConfig | null
+    onSuccess?: () => void
 }
 
-export default function DeliverableConfigModal({ open, onClose, config }: DeliverableConfigModalProps) {
+export default function DeliverableConfigModal({
+    isOpen,
+    onClose,
+    mode,
+    milestoneConfigId,
+    milestoneName,
+    initialData,
+    onSuccess
+}: DeliverableConfigModalProps) {
     const [formData, setFormData] = useState({
         code: '',
         name: '',
         name_th: '',
-        sort_order: 0
+        sort_order: 0,
+        is_required: true
     })
     const [isLoading, setIsLoading] = useState(false)
     const [errors, setErrors] = useState<{ [key: string]: string }>({})
 
     useEffect(() => {
-        if (config) {
+        if (initialData) {
             setFormData({
-                code: config.code,
-                name: config.name,
-                name_th: config.name_th || '',
-                sort_order: config.sort_order
+                code: initialData.code || '',
+                name: initialData.name,
+                name_th: initialData.name_th || '',
+                sort_order: initialData.sort_order,
+                is_required: initialData.is_required ?? true
             })
         } else {
             setFormData({
                 code: '',
                 name: '',
                 name_th: '',
-                sort_order: 0
+                sort_order: 0,
+                is_required: true
             })
         }
         setErrors({})
-    }, [config, open])
+    }, [initialData, isOpen])
 
     const validate = () => {
         const newErrors: { [key: string]: string } = {}
+        // Code might not be used by action but UI has it? Action didn't show code usage.
+        // But let's keep validation if UI has it. 
         if (!formData.code.trim()) newErrors.code = 'Code is required'
         if (!formData.name.trim()) newErrors.name = 'Name is required'
 
@@ -58,14 +75,22 @@ export default function DeliverableConfigModal({ open, onClose, config }: Delive
         setIsLoading(true)
         try {
             let result
-            if (config) {
-                result = await updateDeliverableConfig(config.id, formData)
+            if (initialData) {
+                result = await updateDeliverableConfig(initialData.id, formData)
             } else {
-                result = await createDeliverableConfig(formData)
+                if (!milestoneConfigId) {
+                    toast.error('Milestone context missing')
+                    return
+                }
+                result = await createDeliverableConfig({
+                    ...formData,
+                    milestone_config_id: milestoneConfigId
+                })
             }
 
             if (result.success) {
-                toast.success(config ? 'Deliverable updated successfully' : 'Deliverable created successfully')
+                toast.success(initialData ? 'Deliverable updated successfully' : 'Deliverable created successfully')
+                if (onSuccess) onSuccess()
                 onClose()
             } else {
                 toast.error(result.error || 'Operation failed')
@@ -77,7 +102,7 @@ export default function DeliverableConfigModal({ open, onClose, config }: Delive
         }
     }
 
-    if (!open) return null
+    if (!isOpen) return null
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -90,7 +115,7 @@ export default function DeliverableConfigModal({ open, onClose, config }: Delive
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
                     <h2 className="text-lg font-semibold text-slate-800">
-                        {config ? 'Edit Deliverable' : 'New Deliverable'}
+                        {initialData ? 'Edit Deliverable' : `New Deliverable: ${milestoneName || ''}`}
                     </h2>
                     <button
                         onClick={onClose}
@@ -159,6 +184,19 @@ export default function DeliverableConfigModal({ open, onClose, config }: Delive
                         />
                     </div>
 
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="is_required"
+                            checked={formData.is_required}
+                            onChange={(e) => setFormData({ ...formData, is_required: e.target.checked })}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                        />
+                        <label htmlFor="is_required" className="text-sm font-medium text-slate-700 select-none cursor-pointer">
+                            Required by default
+                        </label>
+                    </div>
+
                 </form>
 
                 {/* Footer */}
@@ -181,7 +219,7 @@ export default function DeliverableConfigModal({ open, onClose, config }: Delive
                         ) : (
                             <Save size={16} />
                         )}
-                        {config ? 'Update' : 'Create'}
+                        {initialData ? 'Update' : 'Create'}
                     </button>
                 </div>
             </motion.div>

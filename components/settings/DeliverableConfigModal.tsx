@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import { createDeliverableConfig, updateDeliverableConfig } from '@/lib/actions/deliverable-config-actions'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
@@ -133,10 +132,12 @@ export function DeliverableConfigModal({
                     </div>
 
                     <div className="flex items-center space-x-2 pt-2">
-                        <Checkbox
+                        <input
+                            type="checkbox"
                             id="is_required"
                             checked={formData.is_required}
-                            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_required: checked as boolean }))}
+                            onChange={(e) => setFormData(prev => ({ ...prev, is_required: e.target.checked }))}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                         />
                         <div className="grid gap-1.5 leading-none">
                             <Label htmlFor="is_required" className="cursor-pointer">

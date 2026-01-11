@@ -7,6 +7,7 @@ import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 
 interface GanttTabContentProps {
     data: GanttData | null
+    projectId: string
     readOnly: boolean
     onRefresh: () => void
     onAddStory?: (projectId: string, milestoneId?: string) => void
@@ -16,6 +17,7 @@ interface GanttTabContentProps {
 
 export function GanttTabContent({
     data,
+    projectId,
     readOnly,
     onRefresh,
     onAddStory,
@@ -41,7 +43,7 @@ export function GanttTabContent({
                     onZoomChange={handleZoomChange}
                     onRefresh={onRefresh}
                     onExport={handleExport}
-                    onQuickAdd={onAddStory ? () => onAddStory(data?.projectId || '') : undefined}
+                    onQuickAdd={onAddStory ? () => onAddStory(projectId) : undefined}
                 />
 
                 {!readOnly && (

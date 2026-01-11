@@ -3,16 +3,17 @@
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { TaskCard } from './TaskCard'
-import { TaskCreateModal } from './TaskCreateModal'
+import { NewTaskModal } from '@/components/modals/NewTaskModal'
 
 interface StoryCardProps {
     story: any
     tasks: any[]
     projectId: string
+    currentUserId: string
     onRefresh: () => void
 }
 
-export function StoryCard({ story, tasks, projectId, onRefresh }: StoryCardProps) {
+export function StoryCard({ story, tasks, projectId, currentUserId, onRefresh }: StoryCardProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [showAddTask, setShowAddTask] = useState(false)
 
@@ -111,11 +112,12 @@ export function StoryCard({ story, tasks, projectId, onRefresh }: StoryCardProps
                 </div>
             )}
 
-            <TaskCreateModal
-                open={showAddTask}
+            <NewTaskModal
+                isOpen={showAddTask}
                 onClose={() => setShowAddTask(false)}
                 storyId={story.id}
-                projectId={projectId}
+                mode="create"
+                currentUserId={currentUserId}
                 onSuccess={() => {
                     setShowAddTask(false)
                     onRefresh()

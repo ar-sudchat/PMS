@@ -37,8 +37,8 @@ export default async function DeliverablesSettingsPage() {
 
             <Suspense fallback={<div>Loading configs...</div>}>
                 <DeliverableConfigList
-                    configs={configsResult.data}
-                    milestoneConfigs={milestonesResult.data}
+                    configs={configsResult.data || []}
+                    milestoneConfigs={milestonesResult.data || []}
                 />
             </Suspense>
         </div>

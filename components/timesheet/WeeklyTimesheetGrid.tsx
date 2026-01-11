@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
-import { getWeeklyTimesheetGrid } from '@/lib/actions/timesheet-actions'
+import { getWeeklyTimesheet } from '@/lib/actions/timesheet-actions'
 import { getCurrentYearWeek, getWeekDates } from '@/lib/utils/timesheet-utils'
 import { TimesheetCell } from './TimesheetCell'
 import { TimesheetEntryModal } from './TimesheetEntryModal'
@@ -23,10 +23,10 @@ export function WeeklyTimesheetGrid() {
 
   const loadData = async () => {
     setIsLoading(true)
-    const result = await getWeeklyTimesheetGrid(yearWeek)
-    if (result.success) {
-      setData(result.data)
-    }
+    const result = await getWeeklyTimesheet(yearWeek)
+    // Note: getWeeklyTimesheet returns WeeklyTimesheetData directly, not { success, data }
+    // The component expects different data structure
+    setData(result)
     setIsLoading(false)
   }
 

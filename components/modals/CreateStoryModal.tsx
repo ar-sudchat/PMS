@@ -141,7 +141,7 @@ export function CreateStoryModal({
                 if (closeAfter) {
                     onClose()
                 } else {
-                    const code = (result.data as any)?.code || 'Story'
+                    const code = ((result as any).data)?.code || 'Story'
                     setSuccessMessage(`Success! Created ${code}: ${formData.title}`)
                     resetFormAfterCreate()
 

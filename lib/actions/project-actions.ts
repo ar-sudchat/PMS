@@ -653,10 +653,9 @@ export async function updateProject(id: string, data: ProjectFormData) {
             .input('description', sql.NVarChar, data.description)
             .input('sold_mandays', sql.Decimal(10, 2), data.sold_mandays)
             .input('manday_rate', sql.Decimal(10, 2), data.manday_rate)
-            .input('total_value', sql.Decimal(18, 2), data.sold_mandays * data.manday_rate)
             .input('warranty_end_date', sql.Date, data.warranty_end_date || null)
             .input('status_id', sql.UniqueIdentifier, data.status_id || null)
-            .input('current_milestone_id', sql.UniqueIdentifier, data.current_milestone_id || null) // Added
+            .input('current_milestone_id', sql.UniqueIdentifier, data.current_milestone_id || null)
             .query(`
                 UPDATE pms.projects
                 SET 
@@ -669,7 +668,6 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     description = @description,
                     sold_mandays = @sold_mandays,
                     manday_rate = @manday_rate,
-                    total_value = @total_value,
                     warranty_end_date = @warranty_end_date,
                     status_id = @status_id,
                     current_milestone_id = @current_milestone_id,

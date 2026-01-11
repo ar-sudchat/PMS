@@ -196,6 +196,7 @@ export function AssignTaskModal({
                                         isSelected={selectedEmployee === emp.employee_id}
                                         onSelect={() => handleSelectEmployee(emp.employee_id)}
                                         config={config}
+                                        dates={[]} // TODO: Pass actual dates array
                                     />
                                 ))}
                             </div>

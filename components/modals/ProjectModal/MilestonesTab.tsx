@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/Switch'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { VerifyMilestoneModal } from '@/components/modals/VerifyMilestoneModal'
 
 interface MilestonesTabProps {
     milestones: MilestoneRow[]
@@ -17,6 +18,14 @@ interface MilestonesTabProps {
 }
 
 export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, currentMilestoneId, onCurrentMilestoneChange }: MilestonesTabProps) {
+    // State for Verify Milestone Modal
+    const [verifyModal, setVerifyModal] = useState<{
+        open: boolean
+        milestoneId?: string
+        milestoneName?: string
+        completedDate?: string
+        dueDate?: string
+    }>({ open: false })
 
     // --- Computed Totals & Validation ---
     const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
@@ -111,8 +120,10 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                 <th className="px-2 py-3 w-16 text-center text-xs">Act MD</th>
                                 <th className="px-3 py-3 w-28 text-center">Due Date</th>
                                 <th className="px-3 py-3 w-28 text-center">Completed</th>
+                                <th className="px-3 py-3 w-28 text-center">Support End</th>
                                 <th className="px-2 py-3 w-16 text-center text-xs">Docs</th>
                                 <th className="px-2 py-3 w-12 text-center text-xs">KPI</th>
+                                <th className="px-2 py-3 w-16 text-center text-xs">Verified</th>
                                 <th className="px-2 py-3 w-20 text-center">Status</th>
                                 <th className="px-2 py-3 w-10"></th>
                             </tr>
@@ -120,7 +131,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                         <tbody className="divide-y divide-slate-100">
                             {milestones.length === 0 ? (
                                 <tr>
-                                    <td colSpan={12} className="px-4 py-8 text-center text-slate-400">
+                                    <td colSpan={14} className="px-4 py-8 text-center text-slate-400">
                                         No milestones added.
                                     </td>
                                 </tr>
@@ -228,6 +239,17 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                 />
                                             </td>
 
+                                            {/* Support End Date */}
+                                            <td className="px-3 py-2">
+                                                {m.is_verified ? (
+                                                    <div className="text-xs text-center text-slate-700">
+                                                        {m.support_end_date ? new Date(m.support_end_date).toLocaleDateString('th-TH') : '-'}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-xs text-center text-slate-400">-</div>
+                                                )}
+                                            </td>
+
                                             {/* Docs Badge */}
                                             <td className="px-2 py-2 text-center text-xs">
                                                 <span className={cn(
@@ -275,6 +297,35 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                 )}
                                             </td>
 
+                                            {/* Verified Checkbox */}
+                                            <td className="px-2 py-2 text-center">
+                                                {m.is_verified ? (
+                                                    <div className="flex items-center justify-center gap-1 text-green-600">
+                                                        <CheckCircle2 className="w-4 h-4" />
+                                                        <Lock className="w-3 h-3" />
+                                                    </div>
+                                                ) : (
+                                                    <input
+                                                        type="checkbox"
+                                                        className="rounded border-slate-300 cursor-pointer"
+                                                        checked={false}
+                                                        onChange={() => {
+                                                            if (m.id && m.milestone_name) {
+                                                                setVerifyModal({
+                                                                    open: true,
+                                                                    milestoneId: m.id,
+                                                                    milestoneName: m.milestone_name,
+                                                                    completedDate: m.completed_date,
+                                                                    dueDate: m.due_date
+                                                                })
+                                                            }
+                                                        }}
+                                                        disabled={!m.completed_date || isLocked}
+                                                        title={m.completed_date ? "Click to verify and lock this milestone" : "Please set Completed Date first"}
+                                                    />
+                                                )}
+                                            </td>
+
                                             {/* Delete */}
                                             <td className="px-2 py-2 text-center">
                                                 {!isLocked && (
@@ -315,6 +366,22 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                     <AlertCircle className="w-4 h-4" />
                     Total TTD and MDC weights must each assume to 100%.
                 </div>
+            )}
+            {/* Verify Milestone Modal */}
+            {verifyModal.open && verifyModal.milestoneId && (
+                <VerifyMilestoneModal
+                    isOpen={verifyModal.open}
+                    onClose={() => setVerifyModal({ open: false })}
+                    milestoneId={verifyModal.milestoneId}
+                    milestoneName={verifyModal.milestoneName || ''}
+                    completedDate={verifyModal.completedDate}
+                    dueDate={verifyModal.dueDate}
+                    onSuccess={() => {
+                        // Refresh milestone data - parent should handle this
+                        // For now, just close the modal, parent will refresh via save
+                        setVerifyModal({ open: false })
+                    }}
+                />
             )}
         </div>
     )

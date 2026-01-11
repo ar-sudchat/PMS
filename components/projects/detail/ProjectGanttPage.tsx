@@ -193,6 +193,7 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
             {activeTab === 'gantt' ? (
                 <GanttTabContent
                     data={ganttData}
+                    projectId={project.id}
                     readOnly={!canEdit}
                     onRefresh={handleGanttRefresh}
                     onAddStory={handleAddStory}
