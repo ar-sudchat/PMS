@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { FolderKanban, BarChart3, Settings, Search, Building, ChevronDown, Check } from 'lucide-react'
 import Link from 'next/link'
 import { GanttChart, ZoomLevel } from '@/components/gantt/GanttChart'
 import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 import { GanttContextMenu } from '@/components/gantt/GanttContextMenu'
-import { StoryModal } from '@/components/gantt/StoryModal'
-import { TaskModal } from '@/components/gantt/TaskModal'
+import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryModal'
+import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
 import { AssignTaskModal } from '@/components/gantt/AssignTaskModal'
 import { WorkItemsModal } from '@/components/gantt/WorkItemsModal'
 import { TeamWorkloadView } from '@/components/workload/TeamWorkloadView'
@@ -155,13 +155,6 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
             }
         }
 
-        // Workload view logic is handled inside TeamWorkloadView usually, or passed down?
-        // TeamWorkloadView handles its own fetching usually? 
-        // Checking TeamWorkloadView... it seems to fetch on its own but uses filters?
-        // Actually TeamWorkloadView is rendered without props in previous code.
-        // It likely has internal state/filter. 
-        // The user request is about Gantt/Work Items.
-
         setIsLoading(false)
         setIsRefreshing(false)
     }, [filters, viewMode])
@@ -202,8 +195,6 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         const firstProject = ganttData?.data.find(d => d.entity_type === 'project')
         setWorkItemsModal({ open: true, projectId: firstProject?.entity_id || '' })
     }, [ganttData, isReadOnly])
-
-    // ... (rest of methods)
 
     // ... (rest of methods)
 
@@ -269,6 +260,14 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
 
     // Count projects
     const projectCount = ganttData?.data.filter(t => t.entity_type === 'project').length || 0
+
+    // Derive Milestones for active project in StoryModal
+    const activeProjectMilestones = useMemo(() => {
+        if (!ganttData || !storyModal.projectId) return []
+        return ganttData.data
+            .filter(t => t.entity_type === 'milestone' && t.project_id === storyModal.projectId)
+            .map(t => ({ id: t.entity_id, name: t.text }))
+    }, [ganttData, storyModal.projectId])
 
     return (
         <div className="flex flex-col h-screen bg-slate-50">
@@ -502,18 +501,22 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
 
             {/* Modals */}
             <StoryModal
-                open={storyModal.open}
+                isOpen={storyModal.open}
                 onClose={() => setStoryModal({ ...storyModal, open: false })}
                 projectId={storyModal.projectId}
                 milestoneId={storyModal.milestoneId}
+                milestones={activeProjectMilestones}
                 onSuccess={handleRefresh}
+                mode="create"
             />
 
             <TaskModal
-                open={taskModal.open}
+                isOpen={taskModal.open}
                 onClose={() => setTaskModal({ ...taskModal, open: false })}
                 storyId={taskModal.storyId}
                 onSuccess={handleRefresh}
+                mode="create"
+                currentUserId={currentUser?.id}
             />
 
             {assignModal.task && (

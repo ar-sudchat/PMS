@@ -284,7 +284,7 @@ export async function getProjectMilestones(projectId: string) {
         FROM pms.project_milestones pm
         INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
         WHERE pm.project_id = @projectId
-        ORDER BY mc.[sequence]
+        ORDER BY mc.sort_order
       `)
 
         const milestones = result.recordset.map((m: any) => ({
@@ -594,5 +594,116 @@ export async function updateTaskField(
         return { success: true }
     } catch (error: any) {
         return { success: false, error: error.message }
+    }
+}
+
+export interface StorySimple {
+    id: string
+    code: string
+    title: string
+    status: string
+    priority: string
+    task_count: number
+    percent_complete: number
+}
+
+export interface MilestoneWithStories {
+    id: string
+    code: string
+    name: string
+    color: string
+    progress: number
+    stories: StorySimple[]
+}
+
+// ============================================
+// NEW: GET MILESTONES WITH STORIES (Tree)
+// ============================================
+
+export async function getProjectMilestonesWithStories(projectId: string): Promise<{ success: boolean; data: MilestoneWithStories[]; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // 1. Get Milestones
+        const milestonesRes = await getProjectMilestones(projectId)
+        if (!milestonesRes.success) throw new Error(milestonesRes.error)
+
+        const milestones = milestonesRes.data
+
+        // 2. Get Stories for Project
+        const request = pool.request()
+        request.input('projectId', sql.UniqueIdentifier, projectId)
+
+        const storiesQuery = `
+            SELECT 
+                s.id,
+                s.story_code AS code,
+                s.title,
+                s.status,
+                s.priority,
+                s.milestone_id,
+                (SELECT COUNT(*) FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) as task_count,
+                (SELECT COUNT(*) FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1 AND t.status = 'done') as completed_task_count
+            FROM pms.stories s
+            WHERE s.project_id = @projectId AND s.is_active = 1
+            ORDER BY s.story_code
+        `
+        const storiesResult = await request.query(storiesQuery)
+        const stories = storiesResult.recordset
+
+        // 3. Merge
+        const mappedMilestones: MilestoneWithStories[] = milestones.map((m: any) => {
+            const milestoneStories = stories
+                .filter((s: any) => s.milestone_id === m.id)
+                .map((s: any) => ({
+                    id: s.id,
+                    code: s.code,
+                    title: s.title,
+                    status: s.status,
+                    priority: s.priority,
+                    task_count: s.task_count,
+                    percent_complete: s.task_count > 0 ? Math.round((s.completed_task_count / s.task_count) * 100) : 0
+                }))
+
+            return {
+                id: m.id,
+                code: m.milestone_code,
+                name: m.milestone_name,
+                color: m.milestone_color,
+                progress: m.progress_percent,
+                stories: milestoneStories
+            }
+        })
+
+        // 4. Handle "Unassigned" Stories (No milestone or milestone not found)
+        const assignedStoryIds = new Set(mappedMilestones.flatMap(m => m.stories.map(s => s.id)))
+        const unassignedStories = stories
+            .filter((s: any) => !assignedStoryIds.has(s.id))
+            .map((s: any) => ({
+                id: s.id,
+                code: s.code,
+                title: s.title,
+                status: s.status,
+                priority: s.priority,
+                task_count: s.task_count,
+                percent_complete: s.task_count > 0 ? Math.round((s.completed_task_count / s.task_count) * 100) : 0
+            }))
+
+        if (unassignedStories.length > 0) {
+            mappedMilestones.push({
+                id: 'unassigned',
+                code: 'N/A',
+                name: 'Unassigned',
+                color: '#64748b', // Slate-500
+                progress: 0,
+                stories: unassignedStories
+            })
+        }
+
+        return { success: true, data: mappedMilestones }
+
+    } catch (error: any) {
+        console.error('getProjectMilestonesWithStories error:', error)
+        return { success: false, data: [], error: error.message }
     }
 }

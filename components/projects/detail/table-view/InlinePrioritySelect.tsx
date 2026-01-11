@@ -12,10 +12,10 @@ interface InlinePrioritySelectProps {
 }
 
 const PRIORITIES = [
-    { value: 'critical', label: 'Critical', color: 'text-red-600', icon: AlertCircle },
-    { value: 'high', label: 'High', color: 'text-orange-500', icon: ArrowUp },
-    { value: 'medium', label: 'Medium', color: 'text-yellow-600', icon: AlertTriangle },
-    { value: 'low', label: 'Low', color: 'text-slate-500', icon: ArrowDown },
+    { value: 'critical', label: 'Critical', color: 'bg-red-100 text-red-600', icon: AlertCircle },
+    { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-600', icon: ArrowUp },
+    { value: 'medium', label: 'Medium', color: 'bg-yellow-100 text-yellow-700', icon: AlertTriangle },
+    { value: 'low', label: 'Low', color: 'bg-slate-100 text-slate-600', icon: ArrowDown },
 ]
 
 export function InlinePrioritySelect({ currentPriority, onUpdate }: InlinePrioritySelectProps) {
@@ -46,8 +46,8 @@ export function InlinePrioritySelect({ currentPriority, onUpdate }: InlinePriori
 
     return (
         <Select value={priority} onValueChange={handleValueChange} disabled={isLoading}>
-            <SelectTrigger className={cn("h-7 px-2 text-xs border-0 font-medium w-[90px] bg-transparent hover:bg-slate-50", currentConfig.color)}>
-                <div className="flex items-center gap-1.5">
+            <SelectTrigger className={cn("h-7 px-2.5 text-xs border-0 font-medium w-auto min-w-[95px] rounded-full", currentConfig.color)}>
+                <div className="flex items-center gap-1.5 mx-auto">
                     <Icon className="w-3.5 h-3.5" />
                     <span>{currentConfig.label}</span>
                 </div>
@@ -55,8 +55,8 @@ export function InlinePrioritySelect({ currentPriority, onUpdate }: InlinePriori
             <SelectContent>
                 {PRIORITIES.map(p => (
                     <SelectItem key={p.value} value={p.value}>
-                        <div className={cn("flex items-center gap-2", p.color)}>
-                            <p.icon className="w-4 h-4" />
+                        <div className="flex items-center gap-2">
+                            <div className={cn("w-2 h-2 rounded-full", p.color.replace('text-', 'bg-').split(' ')[1] || 'bg-slate-400')} />
                             {p.label}
                         </div>
                     </SelectItem>

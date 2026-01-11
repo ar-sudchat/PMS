@@ -6,8 +6,8 @@ import { StoriesTable } from './StoriesTable'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from '@/components/ui/button'
-import { Plus, Search, Filter } from 'lucide-react'
-import { AddStoryModal } from '../work-items/AddStoryModal' // Reuse existing
+import { Plus, Search } from 'lucide-react'
+import { CreateStoryModal as AddStoryModal } from '@/components/modals/CreateStoryModal'
 
 interface StoriesTabProps {
     projectId: string
@@ -52,7 +52,6 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
     }, [fetchStories])
 
     useEffect(() => {
-        // Load milestones for filter
         getProjectMilestones(projectId).then(res => {
             if (res.success) setMilestones(res.data)
         })
@@ -68,21 +67,21 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
     return (
         <div className="space-y-4">
             {/* Filter Bar */}
-            <div className="flex flex-col md:flex-row gap-4 justify-between bg-white p-4 rounded-lg border shadow-sm">
-                <div className="flex flex-wrap gap-2 items-center flex-1">
-                    <div className="relative w-full md:w-64">
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-2 rounded-lg border shadow-sm">
+                <div className="flex flex-wrap gap-2 items-center flex-1 w-full">
+                    <div className="relative flex-1 min-w-[200px] max-w-sm">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
                         <Input
                             placeholder="Search stories..."
-                            className="pl-9 bg-slate-50 border-slate-200"
+                            className="pl-9 h-9 bg-slate-50 border-slate-200"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
 
                     <Select value={milestoneFilter} onValueChange={setMilestoneFilter}>
-                        <SelectTrigger className="w-[160px] bg-slate-50">
-                            <SelectValue placeholder="All Milestones" />
+                        <SelectTrigger className="w-[160px] h-9 bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Milestone" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Milestones</SelectItem>
@@ -93,8 +92,8 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
                     </Select>
 
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-[140px] bg-slate-50">
-                            <SelectValue placeholder="All Status" />
+                        <SelectTrigger className="w-[130px] h-9 bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Status</SelectItem>
@@ -106,8 +105,8 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
                     </Select>
 
                     <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                        <SelectTrigger className="w-[140px] bg-slate-50">
-                            <SelectValue placeholder="All Priority" />
+                        <SelectTrigger className="w-[130px] h-9 bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Priority" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Priority</SelectItem>
@@ -118,10 +117,10 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
                         </SelectContent>
                     </Select>
                 </div>
-                <div>
-                    <Button onClick={() => setIsAddOpen(true)} className="shadow-sm">
+                <div className="w-full md:w-auto">
+                    <Button onClick={() => setIsAddOpen(true)} className="shadow-sm h-9 w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white">
                         <Plus className="w-4 h-4 mr-2" />
-                        Add Story
+                        Story
                     </Button>
                 </div>
             </div>
@@ -136,8 +135,8 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
             />
 
             <AddStoryModal
-                open={isAddOpen}
-                onOpenChange={setIsAddOpen}
+                isOpen={isAddOpen}
+                onClose={() => setIsAddOpen(false)}
                 projectId={projectId}
                 milestones={milestones.map(m => ({ id: m.id, name: m.milestone_name }))}
                 onSuccess={fetchStories}
@@ -146,7 +145,6 @@ export function StoriesTab({ projectId }: StoriesTabProps) {
     )
 }
 
-// Simple debounce hook if not exists
 function useDebounce<T>(value: T, delay?: number): T {
     const [debouncedValue, setDebouncedValue] = useState<T>(value)
     useEffect(() => {

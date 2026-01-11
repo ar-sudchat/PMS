@@ -2,13 +2,15 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { ProjectDetail } from '@/lib/actions/project-detail-actions'
-import { GanttData, getGanttData } from '@/lib/actions/gantt-actions'
+import { GanttData, getGanttData, GanttTask } from '@/lib/actions/gantt-actions'
 import { GanttTabContent } from './GanttTabContent'
 import { ProjectDetailView } from './table-view/ProjectDetailView'
 import { ProjectTabs } from './ProjectTabs'
 import { cn } from '@/lib/utils'
+import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
+import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryModal'
 
 interface ProjectGanttPageProps {
     project: ProjectDetail
@@ -23,7 +25,14 @@ interface ProjectGanttPageProps {
 
 export function ProjectGanttPage({ project, ganttData: initialGanttData, currentUser, activeTab }: ProjectGanttPageProps) {
     const [ganttData, setGanttData] = useState(initialGanttData)
-    // Zoom state moved to GanttTabContent or kept here? GanttTabContent has its own.
+
+    // Modal States
+    const [taskModal, setTaskModal] = useState<{ open: boolean, storyId?: string, task?: any, mode: 'create' | 'edit' }>({
+        open: false, mode: 'create'
+    })
+    const [storyModal, setStoryModal] = useState<{ open: boolean, milestoneId?: string, story?: any, mode: 'create' | 'edit' }>({
+        open: false, mode: 'create'
+    })
 
     // Calculate if user can edit this project
     const canEdit = useMemo(() => {
@@ -31,6 +40,14 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
         if (currentUser.role === 'manager') return project.owner_id === currentUser.id
         return false
     }, [currentUser, project])
+
+    // Derived Milestones for Story Modal
+    const milestones = useMemo(() => {
+        if (!ganttData) return []
+        return ganttData.data
+            .filter(item => item.entity_type === 'milestone')
+            .map(m => ({ id: m.id, name: m.text }))
+    }, [ganttData])
 
     const handleGanttRefresh = useCallback(async () => {
         const result = await getGanttData({})
@@ -45,6 +62,55 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
             setGanttData(filteredData)
         }
     }, [project.id])
+
+    // Handlers
+    const handleAddStory = (projectId: string, milestoneId?: string) => {
+        setStoryModal({ open: true, milestoneId, mode: 'create' })
+    }
+
+    const handleAddTask = (storyId: string) => {
+        setTaskModal({ open: true, storyId, mode: 'create' })
+    }
+
+    const handleEditItem = (item: GanttTask) => {
+        if (!canEdit) return
+
+        if (item.entity_type === 'story') {
+            setStoryModal({
+                open: true,
+                mode: 'edit',
+                story: { id: item.entity_id, title: item.text, status: item.status, priority: 'Medium', code: 'STORY' } // Partial mapping
+            })
+        } else if (item.entity_type === 'task') {
+            // We need to pass enough info for TaskModal to pre-select, or it should fetch.
+            // TaskModal expects `task` object with fields matching DB mostly.
+            // GanttTask: { id, text, start_date, duration, progress, status, assignee_id, ... }
+            // Let's map what we have.
+            setTaskModal({
+                open: true,
+                mode: 'edit',
+                task: {
+                    id: item.entity_id,
+                    title: item.text,
+                    status: item.status,
+                    start_date: item.start_date,
+                    // end_date: item.end_date, // TaskModal doesn't use end_date directly mostly, uses due_date/duration? 
+                    // TaskModal uses `due_date`, `estimated_hours`.
+                    // GanttTask usually has `end_date` as due date.
+                    due_date: item.end_date,
+                    assignee_id: item.assignee_id,
+                    task_type: item.type, // 'dev', 'bug' etc if mapped
+                    estimated_hours: item.duration ? item.duration * 8 : 0, // rough guess if not in gantt data
+                    // We might need to fetch real task detail if this is insufficient. 
+                    // For now, this is better than nothing.
+                }
+            })
+        }
+    }
+
+    const handleModalSuccess = () => {
+        handleGanttRefresh()
+    }
 
     return (
         <div className="space-y-4">
@@ -83,16 +149,7 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
                     <ProjectTabs projectId={project.id} />
                 </div>
 
-                {/* Shared Stats - Only for Gantt View as per requirement 'Original Content' ?? 
-                   Actually stats at top are useful for both?
-                   Requirement says: "Gantt View (default, เนื้อหาเดิม)"
-                   "Work Items Tab Content -> Summary Cards (ด้านบน)"
-                   So Work Items has its own stats.
-                   I will show Project Stats ONLY for Gantt view or make them consistent.
-                   Given specific requirement for Work Item Summary Cards, I'll hide the generic Project Stats when in Work Items tab,
-                   to avoid cluttering (2 sets of stats).
-                */}
-
+                {/* Shared Stats */}
                 {activeTab === 'gantt' && (
                     <div className="grid grid-cols-5 gap-4 mt-6 pt-6 border-t">
                         <div className="text-center">
@@ -138,10 +195,35 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
                     data={ganttData}
                     readOnly={!canEdit}
                     onRefresh={handleGanttRefresh}
+                    onAddStory={handleAddStory}
+                    onAddTask={handleAddTask}
+                    onEditItem={handleEditItem}
                 />
             ) : (
-                <ProjectDetailView projectId={project.id} />
+                <ProjectDetailView projectId={project.id} currentUserId={currentUser.id} />
             )}
+
+            {/* Modals */}
+            <TaskModal
+                isOpen={taskModal.open}
+                onClose={() => setTaskModal(prev => ({ ...prev, open: false }))}
+                storyId={taskModal.storyId || ''}
+                onSuccess={handleModalSuccess}
+                mode={taskModal.mode}
+                task={taskModal.task}
+                currentUserId={currentUser.id}
+            />
+
+            <StoryModal
+                isOpen={storyModal.open}
+                onClose={() => setStoryModal(prev => ({ ...prev, open: false }))}
+                projectId={project.id}
+                milestoneId={storyModal.milestoneId}
+                milestones={milestones}
+                onSuccess={handleModalSuccess}
+                mode={storyModal.mode}
+                story={storyModal.story}
+            />
         </div>
     )
 }

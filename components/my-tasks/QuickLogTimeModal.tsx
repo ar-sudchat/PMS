@@ -5,11 +5,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { MyTask } from '@/lib/actions/my-tasks-actions'
 import { logTimeEntry } from '@/lib/actions/timesheet-actions'
 import { format } from 'date-fns'
-import { Calendar, Clock, Loader2 } from 'lucide-react'
+import { Calendar, Clock, Loader2, ArrowRightLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button' // If exists, else html button. I see Input used previously.
+import { Button } from '@/components/ui/button'
+import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { getTaskTypes } from '@/lib/actions/task-actions'
 
 interface QuickLogTimeModalProps {
     open: boolean
@@ -18,45 +20,157 @@ interface QuickLogTimeModalProps {
     postLogAction?: () => void
 }
 
+type TimeUnit = 'hours' | 'minutes'
+
 export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: QuickLogTimeModalProps) {
-    const [hours, setHours] = useState<string>('1') // string for input
     const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
     const [activityType, setActivityType] = useState('development')
     const [description, setDescription] = useState('')
     const [isOvertime, setIsOvertime] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [activityOptions, setActivityOptions] = useState<{ value: string, label: string }[]>([])
+
+    // Time Unit State
+    const [timeUnit, setTimeUnit] = useState<TimeUnit>('hours')
+    const [inputValue, setInputValue] = useState<string>('1') // Value shown in input
+    const [displayConversion, setDisplayConversion] = useState<string>('') // e.g. "90 min = 1.5 hr"
+
+    useEffect(() => {
+        const loadOptions = async () => {
+            try {
+                const types = await getTaskTypes()
+                const dynamicOptions = types.map((t: any) => ({
+                    value: t.value || t.code,
+                    label: t.label || t.name
+                }))
+                setActivityOptions(dynamicOptions)
+
+                // Set default if empty and not set
+                if (dynamicOptions.length > 0 && !activityType) {
+                    setActivityType(dynamicOptions[0].value)
+                }
+            } catch (error) {
+                console.error("Failed to load task types", error)
+                setActivityOptions([
+                    { value: 'development', label: 'Development' },
+                    { value: 'bug_fix', label: 'Bug Fix' }
+                ])
+            }
+        }
+        loadOptions()
+    }, [])
 
     useEffect(() => {
         if (open) {
-            // Reset fields
-            setHours('1')
+            setInputValue('1')
+            setTimeUnit('hours')
             setDate(format(new Date(), 'yyyy-MM-dd'))
-            setActivityType('development')
+
+            // Default to task type if available
+            if (task?.task_type) {
+                setActivityType(task.task_type)
+            } else if (activityOptions.length > 0) {
+                setActivityType(activityOptions[0].value)
+            }
+
             setDescription('')
             setIsOvertime(false)
+            setDisplayConversion('')
         }
-    }, [open])
+    }, [open, activityOptions, task])
+
+    // Handle Input Change
+    const handleInputChange = (val: string) => {
+        setInputValue(val)
+        updateConversionPreview(val, timeUnit)
+    }
+
+    // Handle Unit Toggle
+    const toggleUnit = () => {
+        const newUnit = timeUnit === 'hours' ? 'minutes' : 'hours'
+        setTimeUnit(newUnit)
+
+        // Auto convert value
+        const currentVal = parseFloat(inputValue) || 0
+        if (currentVal > 0) {
+            if (newUnit === 'minutes') {
+                // Hours -> Minutes
+                setInputValue(Math.round(currentVal * 60).toString())
+            } else {
+                // Minutes -> Hours (2 decimal places)
+                setInputValue((currentVal / 60).toFixed(2).replace(/\.00$/, ''))
+            }
+        }
+
+        updateConversionPreview(inputValue, newUnit) // Update preview clearing? No, confusing.
+        // Actually, if we convert value, we don't need preview essentially. 
+        // But user asked for "convert to hour" displayed.
+        // If I type 90 mins, I want to see "1.5 hours"
+        // So update preview AFTER conversion logic.
+
+        // Wait, if I toggle, the input value ITSELF changes.
+        // If I input 1.5 Hr -> Toggle -> Input becomes 90 Min.
+        // In that case, preview might just say "1.5 Hr" again?
+        // Let's keep it simple: Preview always shows the "Other unit" equivalent.
+    }
+
+    // Update conversion text
+    const updateConversionPreview = (val: string, unit: TimeUnit) => {
+        const num = parseFloat(val) || 0
+        if (num <= 0) {
+            setDisplayConversion('')
+            return
+        }
+
+        if (unit === 'minutes') {
+            const hrs = (num / 60).toFixed(2).replace(/\.00$/, '')
+            setDisplayConversion(`${hrs} hrs`)
+        } else {
+            const mins = Math.round(num * 60)
+            setDisplayConversion(`${mins} mins`)
+        }
+    }
+
+    // Effect to update conversion when unit or input changes (redundant if called in handlers, but safe)
+    useEffect(() => {
+        updateConversionPreview(inputValue, timeUnit)
+    }, [inputValue, timeUnit])
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!task) return
+
+        let hoursToLog = parseFloat(inputValue)
+        if (isNaN(hoursToLog) || hoursToLog <= 0) {
+            toast.error('Please enter valid time')
+            return
+        }
+
+        if (timeUnit === 'minutes') {
+            hoursToLog = hoursToLog / 60
+        }
+
+        // Round to 2 decimals
+        hoursToLog = Math.round(hoursToLog * 100) / 100
 
         setIsSubmitting(true)
         try {
             const result = await logTimeEntry({
                 taskId: task.task_id,
                 entryDate: date,
-                hours: parseFloat(hours),
+                hours: hoursToLog,
                 description,
                 activityType,
                 isOvertime
             })
 
             if (result.success) {
-                toast.success('Time logged successfully')
+                toast.success(`Logged ${hoursToLog} hours successfully`)
                 onOpenChange(false)
                 if (postLogAction) postLogAction()
             } else {
+                console.error('Log time failed:', result.error)
                 toast.error(result.error || 'Failed to log time')
             }
         } catch (error) {
@@ -98,38 +212,47 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-slate-500">Hours</label>
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs font-medium text-slate-500">
+                                    Time ({timeUnit === 'hours' ? 'Hours' : 'Minutes'})
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={toggleUnit}
+                                    className="text-[10px] flex items-center gap-1 text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer"
+                                >
+                                    <ArrowRightLeft className="w-3 h-3" />
+                                    Switch to {timeUnit === 'hours' ? 'Mins' : 'Hrs'}
+                                </button>
+                            </div>
                             <div className="relative">
                                 <Clock className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
                                 <input
                                     type="number"
-                                    min="0.25"
-                                    max="24"
-                                    step="0.25"
-                                    value={hours}
-                                    onChange={(e) => setHours(e.target.value)}
+                                    min="0"
+                                    step={timeUnit === 'hours' ? "0.25" : "15"}
+                                    value={inputValue}
+                                    onChange={(e) => handleInputChange(e.target.value)}
                                     className="w-full text-sm p-2 pl-9 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                     required
                                 />
+                                {displayConversion && (
+                                    <div className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">
+                                        = {displayConversion}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-1.5">
                         <label className="text-xs font-medium text-slate-500">Activity Type</label>
-                        <select
-                            value={activityType}
-                            onChange={(e) => setActivityType(e.target.value)}
-                            className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="development">Development</option>
-                            <option value="bug_fix">Bug Fix (Defect)</option>
-                            <option value="meeting">Meeting</option>
-                            <option value="documentation">Documentation</option>
-                            <option value="testing">Testing</option>
-                            <option value="support">Support</option>
-                            <option value="other">Other</option>
-                        </select>
+                        <SmartCombobox
+                            value={activityOptions.find(opt => opt.value === activityType) || activityOptions[0]}
+                            onChange={(opt) => setActivityType(opt?.value?.toString() || '')}
+                            options={activityOptions}
+                            placeholder="Select Activity"
+                        />
                     </div>
 
                     <div className="space-y-1.5">

@@ -40,7 +40,7 @@ export interface ProjectMilestone {
     milestone_name?: string
     milestone_color?: string
     planned_mandays: number
-    weight_percent: number
+    weight_percent: number // Legacy
     progress_percent?: number
     due_date?: string
     actual_mandays?: number
@@ -48,6 +48,48 @@ export interface ProjectMilestone {
     status?: 'pending' | 'in_progress' | 'completed'
     sort_order?: number
     deliverable_ids: string[]
+
+    // New fields
+    weight_ttd?: number
+    weight_mdc?: number
+    is_approved?: boolean
+    is_locked?: boolean
+    approved_at?: string
+    kpi_ttd_pass?: boolean
+    kpi_mdc_pass?: boolean
+    kpi_docs_pass?: boolean
+
+    // UI state
+    will_approve?: boolean
+
+    // Detailed Deliverables
+    deliverables?: ProjectDeliverable[]
+}
+
+export interface ProjectDeliverable {
+    id: string
+    project_milestone_id: string
+    deliverable_config_id?: string
+    name: string
+    description?: string
+    is_required: boolean
+    submitted_date?: string
+    submitted_by?: string
+    file_name?: string
+    file_path?: string
+    file_size?: number
+    is_on_time?: boolean
+    is_locked: boolean
+    sort_order: number
+    is_active: boolean
+    status?: 'pending' | 'submitted' | 'approved' | 'rejected' // Virtual status
+}
+
+export interface MilestoneRow extends ProjectMilestone {
+    // Extended properties for UI usage if any
+    deliverable_count?: number
+    submitted_count?: number
+    required_docs_pass?: boolean
 }
 
 export interface ProjectFormData {
@@ -71,6 +113,14 @@ export interface ProjectFormData {
         due_date?: string
         planned_mandays: number
         deliverable_ids: string[]
+
+        // New fields
+        weight_ttd?: number
+        weight_mdc?: number
+        completed_date?: string
+        is_locked?: boolean
+        is_approved?: boolean
+        will_approve?: boolean
     }[]
 }
 

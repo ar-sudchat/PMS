@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { GanttData } from '@/lib/actions/gantt-actions'
+import { GanttData, GanttTask } from '@/lib/actions/gantt-actions'
 import { GanttChart } from '@/components/gantt/GanttChart'
 import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 
@@ -9,9 +9,19 @@ interface GanttTabContentProps {
     data: GanttData | null
     readOnly: boolean
     onRefresh: () => void
+    onAddStory?: (projectId: string, milestoneId?: string) => void
+    onAddTask?: (storyId: string) => void
+    onEditItem?: (item: GanttTask) => void
 }
 
-export function GanttTabContent({ data, readOnly, onRefresh }: GanttTabContentProps) {
+export function GanttTabContent({
+    data,
+    readOnly,
+    onRefresh,
+    onAddStory,
+    onAddTask,
+    onEditItem
+}: GanttTabContentProps) {
     const [zoomScale, setZoomScale] = useState<'day' | 'month'>('day')
 
     const handleZoomChange = (scale: 'day' | 'month') => {
@@ -27,9 +37,11 @@ export function GanttTabContent({ data, readOnly, onRefresh }: GanttTabContentPr
             {/* Gantt Chart */}
             <div className="bg-white rounded-xl border overflow-hidden">
                 <GanttToolbar
+                    zoom={zoomScale}
                     onZoomChange={handleZoomChange}
                     onRefresh={onRefresh}
                     onExport={handleExport}
+                    onQuickAdd={onAddStory ? () => onAddStory(data?.projectId || '') : undefined}
                 />
 
                 {!readOnly && (
@@ -46,6 +58,9 @@ export function GanttTabContent({ data, readOnly, onRefresh }: GanttTabContentPr
                         zoom={zoomScale}
                         readOnly={readOnly}
                         onDataChange={onRefresh}
+                        onAddStory={onAddStory}
+                        onAddTask={onAddTask}
+                        onTaskDblClick={onEditItem}
                     />
                 ) : (
                     <div className="flex items-center justify-center h-96 text-slate-500">

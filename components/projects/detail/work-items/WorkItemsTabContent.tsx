@@ -5,7 +5,7 @@ import { getProjectWorkItems, getWorkItemsSummary, MilestoneGroup } from '@/lib/
 import { getEmployees } from '@/lib/actions/project-actions'
 import { SummaryCards } from './SummaryCards'
 import { WorkItemsTable } from './WorkItemsTable'
-import { AddStoryModal } from './AddStoryModal'
+import { CreateStoryModal as AddStoryModal } from '@/components/modals/CreateStoryModal'
 import { WorkItemFilters } from '@/components/gantt/WorkItemFilters'
 import { Button } from '@/components/ui/button'
 import { Plus, Download } from 'lucide-react'
@@ -34,12 +34,6 @@ export function WorkItemsTabContent({ projectId }: WorkItemsTabContentProps) {
     const fetchData = useCallback(async () => {
         setIsLoading(true)
         try {
-            // Convert status array to single string if API expects single, or handle array in API
-            // My API currently receives 'status' string. Let's assume single for now or fix API. 
-            // The existing filter bar handles multiple statuses. My API `getProjectWorkItems` handles single status string currently.
-            // I'll update API later to handle array, or just picking first one for now.
-            // Actually, let's just pass filters.
-
             const filters = {
                 search: searchQuery,
                 status: statusFilter.length > 0 ? statusFilter[0] : undefined, // Simplify for now
@@ -116,10 +110,11 @@ export function WorkItemsTabContent({ projectId }: WorkItemsTabContentProps) {
 
             {/* Modals */}
             <AddStoryModal
-                open={isAddStoryOpen}
-                onOpenChange={setIsAddStoryOpen}
+                isOpen={isAddStoryOpen}
+                onClose={() => setIsAddStoryOpen(false)}
                 projectId={projectId}
                 milestones={workItems.map(m => ({ id: m.id, name: m.name }))} // Pass available milestones
+                milestoneId={selectedMilestoneId}
                 onSuccess={fetchData}
             />
         </div>

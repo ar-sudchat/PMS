@@ -151,6 +151,7 @@ export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
                     setIsLogTimeOpen(true)
                 }}
                 onStatusChange={handleTaskStatusUpdate}
+                onDataChange={() => fetchTasks(statusFilter)}
             />
 
             <QuickLogTimeModal

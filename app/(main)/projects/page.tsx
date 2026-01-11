@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Search, Building, Target, ChevronDown, Check } from 'lucide-react'
+import Link from 'next/link'
 import { getProjectFilterOptions, getProjects, ProjectFilters } from '@/lib/actions/project-actions'
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { ProjectModal } from '@/components/modals/ProjectModal'
@@ -129,22 +130,26 @@ export default function ProjectsPage() {
     const columns = [
         {
             accessorKey: 'no',
-            header: 'No',
+            header: () => <div className="w-[50px] text-center">No</div>,
             cell: ({ row }: any) => (
-                <div className="text-center text-sm text-slate-600 font-medium w-16">
+                <div className="text-center text-sm text-slate-600 font-medium w-[50px] mx-auto">
                     {row.index + 1}
                 </div>
             ),
-            enableSorting: false
+            enableSorting: false,
+            size: 50,
+            meta: {
+                style: { width: '50px', textAlign: 'center' }
+            }
         },
         {
             accessorKey: 'name',
             header: 'Project',
             cell: ({ row }: any) => (
                 <div className="min-w-[200px] max-w-[280px]">
-                    <p className="font-medium text-slate-900 truncate" title={row.original.name}>
+                    <div className="font-medium text-slate-900 truncate" title={row.original.name}>
                         {row.original.name}
-                    </p>
+                    </div>
                     <p className="text-xs text-slate-500">{row.original.project_code}</p>
                 </div>
             )
@@ -255,19 +260,7 @@ export default function ProjectsPage() {
     return (
         <div className="p-6">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Projects</h1>
-                    <p className="text-slate-500">Manage all projects in your organization</p>
-                </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                >
-                    <Plus className="w-4 h-4" />
-                    Create Project
-                </button>
-            </div>
+
 
             {/* Filters */}
             <div className="bg-white rounded-xl border p-4 mb-6">
@@ -455,6 +448,17 @@ export default function ProjectsPage() {
                                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm"
                             />
                         </div>
+                    </div>
+
+                    {/* Create Project Button */}
+                    <div className="ml-auto">
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Create Project
+                        </button>
                     </div>
                 </div>
             </div>

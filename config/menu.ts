@@ -86,6 +86,7 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
+          { id: 'resource-planning', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
         ]
       },
       {
@@ -97,23 +98,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'deliverables-config', label: 'Deliverables', labelTh: 'Deliverables', path: '/projects/settings/deliverables', icon: Package },
           { id: 'statuses-config', label: 'Statuses', labelTh: 'สถานะ', path: '/projects/settings/statuses', icon: ListTodo },
           { id: 'customers-config', label: 'Customers', labelTh: 'ลูกค้า', path: '/projects/settings/customers', icon: Building2 },
-        ]
-      }
-    ]
-  },
-  {
-    id: 'work',
-    title: 'Work',
-    titleTh: 'งาน',
-    icon: CheckSquare,
-    children: [
-      {
-        id: 'work-tracking',
-        title: 'Work Tracking',
-        titleTh: 'ติดตามงาน',
-        children: [
-          { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
-          { id: 'sprints', label: 'Sprints', labelTh: 'Sprints', path: '/sprints', icon: Zap },
+          { id: 'task-types-config', label: 'Task Types', labelTh: 'ประเภทงาน', path: '/projects/settings/task-types', icon: CheckSquare },
         ]
       }
     ]
@@ -129,20 +114,19 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Time Tracking',
         titleTh: 'บันทึกเวลา',
         children: [
+          { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
           { id: 'my-timesheet', label: 'My Timesheet', labelTh: 'บันทึกเวลาของฉัน', path: '/timesheet', icon: Clock },
-          { id: 'time-tracking-page', label: 'Time Tracking', labelTh: 'ติดตามเวลา', path: '/time-tracking', icon: Clock },
-          { id: 'timesheet-approval', label: 'Approval', labelTh: 'อนุมัติ', path: '/timesheet/approvals', icon: UserCheck, roles: ['admin', 'manager'] },
         ]
       },
       {
-        id: 'time-reports',
-        title: 'Reports',
-        titleTh: 'รายงาน',
+        id: 'analytics',
+        title: 'Analytics',
+        titleTh: 'วิเคราะห์',
         children: [
-          { id: 'timesheet-reports', label: 'Time Reports', labelTh: 'รายงานเวลา', path: '/timesheet/reports', icon: FileBarChart },
-          { id: 'kpi-records', label: 'KPI Records', labelTh: 'บันทึก KPI', path: '/kpi/records', icon: CheckSquare, roles: ['admin', 'manager'] },
+          { id: 'employee-work-report', label: 'Employee Work Report', labelTh: 'รายงานการทำงาน', path: '/analytics/employee-work', icon: BarChart3 },
+          { id: 'all-resources', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
         ]
-      }
+      },
     ]
   },
   {
@@ -163,39 +147,7 @@ export const MENU_CONFIG: MenuModule[] = [
       }
     ]
   },
-  {
-    id: 'resources',
-    title: 'Resources',
-    titleTh: 'ทรัพยากร',
-    icon: FolderOpen,
-    children: [
-      {
-        id: 'resource-management',
-        title: 'Resource Management',
-        titleTh: 'จัดการทรัพยากร',
-        children: [
-          { id: 'resources-page', label: 'All Resources', labelTh: 'ทรัพยากรทั้งหมด', path: '/resources', icon: FolderOpen },
-        ]
-      }
-    ]
-  },
-  {
-    id: 'reports',
-    title: 'Reports',
-    titleTh: 'รายงาน',
-    icon: BarChart3,
-    children: [
-      {
-        id: 'report-list',
-        title: 'Reports',
-        titleTh: 'รายงาน',
-        children: [
-          { id: 'reports-page', label: 'All Reports', labelTh: 'รายงานทั้งหมด', path: '/reports', icon: BarChart3 },
-          { id: 'kpi-dashboard', label: 'KPI Dashboard', labelTh: 'KPI Dashboard', path: '/reports/kpi', icon: TrendingUp, roles: ['admin', 'manager'] },
-        ]
-      }
-    ]
-  },
+
   {
     id: 'config',
     title: 'Configuration',

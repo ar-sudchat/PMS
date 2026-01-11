@@ -132,10 +132,17 @@ export async function getWeeklyTimesheet(weekStart: string): Promise<WeeklyTimes
       }
 
       const task = taskMap.get(entry.task_id)!
-      task.entries[dateKey] = {
-        entry_id: entry.entry_id,
-        hours: entry.hours,
-        description: entry.work_description || ''
+
+      // Sum hours if multiple entries for same task on same date
+      if (task.entries[dateKey]) {
+        task.entries[dateKey].hours += entry.hours
+        task.entries[dateKey].description = entry.work_description || task.entries[dateKey].description
+      } else {
+        task.entries[dateKey] = {
+          entry_id: entry.entry_id,
+          hours: entry.hours,
+          description: entry.work_description || ''
+        }
       }
       task.total_hours += entry.hours
 
@@ -176,57 +183,43 @@ export async function logTimeEntry(data: {
     const pool = await getConnection()
     const employeeId = (user as any).employeeId || user.id
 
-    // Check if entry exists for this task/date
-    const existing = await pool.request()
-      .input('employeeId', sql.UniqueIdentifier, employeeId)
+    // Check if milestone is locked
+    const lockCheck = await pool.request()
       .input('taskId', sql.UniqueIdentifier, data.taskId)
-      .input('entryDate', sql.Date, data.entryDate)
       .query(`
-        SELECT id FROM pms.timesheet_entries 
-        WHERE employee_id = @employeeId 
-          AND task_id = @taskId 
-          AND entry_date = @entryDate
-          AND is_active = 1
+        SELECT ISNULL(pm.is_locked, 0) AS is_locked 
+        FROM pms.tasks t
+        INNER JOIN pms.stories s ON t.story_id = s.id
+        INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+        WHERE t.id = @taskId
       `)
+
+    if (lockCheck.recordset[0]?.is_locked) {
+      return { success: false, error: 'Milestone นี้ถูก Lock แล้ว ไม่สามารถบันทึก Timesheet ได้' }
+    }
 
     let entryId: string
 
-    if (existing.recordset.length > 0) {
-      // Update existing entry
-      entryId = existing.recordset[0].id
-      await pool.request()
-        .input('id', sql.UniqueIdentifier, entryId)
-        .input('hours', sql.Decimal(10, 2), data.hours)
-        .input('description', sql.NVarChar, data.description || null)
-        .input('activityType', sql.NVarChar, data.activityType || 'development')
-        .input('isOvertime', sql.Bit, data.isOvertime || false)
-        .query(`
-          UPDATE pms.timesheet_entries 
-          SET hours = @hours,
-              description = @description,
-              activity_type = @activityType,
-              is_overtime = @isOvertime,
-              updated_at = GETDATE()
-          WHERE id = @id
-        `)
-    } else {
-      // Create new entry
-      const result = await pool.request()
-        .input('employeeId', sql.UniqueIdentifier, employeeId)
-        .input('taskId', sql.UniqueIdentifier, data.taskId)
-        .input('entryDate', sql.Date, data.entryDate)
-        .input('hours', sql.Decimal(10, 2), data.hours)
-        .input('description', sql.NVarChar, data.description || null)
-        .input('activityType', sql.NVarChar, data.activityType || 'development')
-        .input('isOvertime', sql.Bit, data.isOvertime || false)
-        .query(`
-          INSERT INTO pms.timesheet_entries 
-          (id, employee_id, task_id, entry_date, hours, description, activity_type, is_overtime, is_billable, status, is_active, created_at, updated_at)
-          OUTPUT INSERTED.id
-          VALUES (NEWID(), @employeeId, @taskId, @entryDate, @hours, @description, @activityType, @isOvertime, 1, 'logged', 1, GETDATE(), GETDATE())
-        `)
-      entryId = result.recordset[0].id
-    }
+    // Always create new entry (allow multiple entries per task per day)
+    const result = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('taskId', sql.UniqueIdentifier, data.taskId)
+      .input('entryDate', sql.Date, data.entryDate)
+      .input('hours', sql.Decimal(10, 2), data.hours)
+      .input('description', sql.NVarChar, data.description || null)
+      .input('activityType', sql.NVarChar, data.activityType || 'development')
+      .input('isOvertime', sql.Bit, data.isOvertime || false)
+      .query(`
+        DECLARE @InsertedId TABLE (id UNIQUEIDENTIFIER);
+        
+        INSERT INTO pms.timesheet_entries 
+        (id, employee_id, task_id, entry_date, hours, description, activity_type, is_overtime, is_billable, status, is_active, created_at, updated_at)
+        OUTPUT INSERTED.id INTO @InsertedId
+        VALUES (NEWID(), @employeeId, @taskId, @entryDate, @hours, @description, @activityType, @isOvertime, 1, 'draft', 1, GETDATE(), GETDATE());
+        
+        SELECT id FROM @InsertedId;
+      `)
+    entryId = result.recordset[0].id
 
     // Update task actual_hours AND milestone actual_mandays
     // Re-use connection? Yes.
@@ -236,14 +229,14 @@ export async function logTimeEntry(data: {
     await updateTaskActualHours(pool, data.taskId)
     await updateMilestoneActualMandays(pool, data.taskId)
 
-    revalidatePath('/timesheet')
-    revalidatePath('/my-tasks')
-    revalidatePath('/my-projects') // Update Gantt/Lists
+    // Note: Removed revalidatePath calls to prevent page flickering
+    // Client will manually refresh display if needed via postLogAction callback
 
     return { success: true, entryId }
   } catch (error) {
     console.error('Error logging time:', error)
-    return { success: false, error: 'Database error' }
+    const errorMessage = error instanceof Error ? error.message : 'Database error'
+    return { success: false, error: errorMessage }
   }
 }
 
@@ -286,9 +279,8 @@ export async function deleteTimeEntry(entryId: string): Promise<{ success: boole
     // Update milestone actual_mandays
     await updateMilestoneActualMandays(pool, taskId)
 
-    revalidatePath('/timesheet')
-    revalidatePath('/my-tasks')
-    revalidatePath('/my-projects')
+    // Note: Removed revalidatePath to prevent flickering
+    // Database is updated, client should refresh display if needed
 
     return { success: true }
   } catch (error) {
@@ -377,3 +369,48 @@ export async function getAvailableTasksForTimesheet(): Promise<{
     return []
   }
 }
+
+// Get time entries for a specific task
+export interface TaskTimeEntry {
+  id: string
+  entry_date: string
+  hours: number
+  description: string | null
+  activity_type: string
+  is_overtime: boolean
+  status: string
+  created_at: string
+}
+
+export async function getTimeEntriesForTask(taskId: string): Promise<TaskTimeEntry[]> {
+  try {
+    const pool = await getConnection()
+
+    const result = await pool.request()
+      .input('taskId', sql.UniqueIdentifier, taskId)
+      .query(`
+        SELECT 
+          id,
+          entry_date,
+          hours,
+          description,
+          activity_type,
+          is_overtime,
+          status,
+          created_at
+        FROM pms.timesheet_entries
+        WHERE task_id = @taskId
+          AND is_active = 1
+        ORDER BY entry_date DESC, created_at DESC
+      `)
+
+    return result.recordset.map((r: any) => ({
+      ...r,
+      entry_date: r.entry_date?.toISOString?.() || r.entry_date
+    }))
+  } catch (error) {
+    console.error('Error fetching time entries for task:', error)
+    return []
+  }
+}
+

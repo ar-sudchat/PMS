@@ -1,31 +1,87 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Calendar, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
-import { getTeamWorkloadForDateRange, EmployeeWorkload } from '@/lib/actions/workload-actions'
+import { Calendar, ChevronLeft, ChevronRight, RefreshCw, Filter } from 'lucide-react'
+import { getTeamWorkloadForDateRange, EmployeeWorkload, reassignTask } from '@/lib/actions/workload-actions'
 import { getWorkloadConfig, WorkloadConfig } from '@/lib/actions/config-actions'
-import { WorkloadBar } from './WorkloadBar'
 import { cn } from '@/lib/utils'
+import { EmployeeWorkloadCard } from './EmployeeWorkloadCard'
+import { toast } from 'sonner'
+import {
+    DndContext,
+    DragOverlay,
+    useSensor,
+    useSensors,
+    PointerSensor,
+    DragStartEvent,
+    DragEndEvent,
+} from '@dnd-kit/core'
+import { TaskCard } from './TaskCard'
+import { ImpactAnalysisModal } from './ImpactAnalysisModal'
+
+// Helper to disable touch action for dnd
+class SmartPointerSensor extends PointerSensor {
+    static activators = [{
+        eventName: 'onPointerDown' as const, handler: ({ nativeEvent: event }: { nativeEvent: PointerEvent }) => {
+            if (!event.isPrimary || event.button !== 0 || isInteractiveElement(event.target as HTMLElement)) {
+                return false;
+            }
+            return true;
+        }
+    }]
+}
+function isInteractiveElement(element: HTMLElement | null) {
+    const interactiveElements = ['button', 'input', 'textarea', 'select', 'option'];
+    while (element) {
+        if (interactiveElements.includes(element.tagName.toLowerCase())) return true;
+        element = element.parentElement;
+    }
+    return false;
+}
 
 type PositionFilter = 'all' | 'SA' | 'BA' | 'PG'
 
 export function TeamWorkloadView() {
     const [startDate, setStartDate] = useState(() => {
         const today = new Date()
+        const day = today.getDay()
+        const diff = today.getDate() - day + (day === 0 ? -6 : 1) // adjust when day is sunday
         const monday = new Date(today)
-        monday.setDate(today.getDate() - today.getDay() + 1)
+        monday.setDate(diff)
         return monday.toISOString().split('T')[0]
     })
     const [employees, setEmployees] = useState<EmployeeWorkload[]>([])
     const [config, setConfig] = useState<WorkloadConfig | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [activeTab, setActiveTab] = useState<PositionFilter>('all')
+    const [activeId, setActiveId] = useState<string | null>(null)
+    const [dragData, setDragData] = useState<any>(null)
+
+    const sensors = useSensors(
+        useSensor(SmartPointerSensor, {
+            activationConstraint: {
+                distance: 8,
+            },
+        })
+    )
 
     const endDate = (() => {
-        const end = new Date(startDate)
-        end.setDate(end.getDate() + 4) // 5 days (Mon-Fri)
+        const start = new Date(startDate)
+        const end = new Date(start)
+        end.setDate(start.getDate() + 4) // 5 days (Mon-Fri)
         return end.toISOString().split('T')[0]
     })()
+
+    const dates = useMemo(() => {
+        const d = []
+        let current = new Date(startDate)
+        const end = new Date(endDate)
+        while (current <= end) {
+            d.push(new Date(current))
+            current.setDate(current.getDate() + 1)
+        }
+        return d
+    }, [startDate, endDate])
 
     useEffect(() => {
         loadData()
@@ -33,16 +89,18 @@ export function TeamWorkloadView() {
 
     const loadData = async () => {
         setIsLoading(true)
-
-        const [configResult, teamResult] = await Promise.all([
-            getWorkloadConfig(),
-            getTeamWorkloadForDateRange(startDate, endDate)
-        ])
-
-        if (configResult.success) setConfig(configResult.data)
-        if (teamResult.success) setEmployees(teamResult.data)
-
-        setIsLoading(false)
+        try {
+            const [configResult, teamResult] = await Promise.all([
+                getWorkloadConfig(),
+                getTeamWorkloadForDateRange(startDate, endDate)
+            ])
+            if (configResult.success) setConfig(configResult.data)
+            if (teamResult.success) setEmployees(teamResult.data)
+        } catch (e) {
+            toast.error("Failed to load data")
+        } finally {
+            setIsLoading(false)
+        }
     }
 
     const navigateWeek = (direction: 'prev' | 'next') => {
@@ -51,250 +109,249 @@ export function TeamWorkloadView() {
         setStartDate(current.toISOString().split('T')[0])
     }
 
-    const getDates = () => {
-        const dates = []
-        const current = new Date(startDate)
-        for (let i = 0; i < 5; i++) {
-            dates.push(new Date(current))
-            current.setDate(current.getDate() + 1)
-        }
-        return dates
+    const handleDragStart = (event: DragStartEvent) => {
+        setActiveId(event.active.id as string)
+        setDragData(event.active.data.current)
     }
 
-    const dates = getDates()
+    const handleDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event
+        setActiveId(null)
+        setDragData(null)
 
-    // Filter employees by position
+        if (!over) return
+
+        const taskId = active.id as string
+        const [employeeId, dateStr] = (over.id as string).split(':')
+
+        if (!employeeId || !dateStr) return
+
+        // Optimistic UI could happen here, but for safety lets wait API
+        const toastId = toast.loading("Updating assignment...")
+
+        const result = await reassignTask(taskId, employeeId, dateStr)
+
+        if (result.success) {
+            toast.success("Task reassigned", { id: toastId })
+            if (result.warning) {
+                toast.warning(result.warning, { duration: 5000 })
+            }
+            loadData() // Refresh data
+        } else {
+            toast.error(result.error || "Failed to reassign task", { id: toastId })
+        }
+    }
+
     const filteredEmployees = useMemo(() => {
         if (activeTab === 'all') return employees
         return employees.filter(emp => emp.position_code === activeTab)
     }, [employees, activeTab])
 
-    // Count by position
     const positionCounts = useMemo(() => {
-        const counts = {
+        return {
             all: employees.length,
             SA: employees.filter(e => e.position_code === 'SA').length,
             BA: employees.filter(e => e.position_code === 'BA').length,
             PG: employees.filter(e => e.position_code === 'PG').length
         }
-        return counts
     }, [employees])
 
+    // Summary Calculations
+    const summary = useMemo(() => {
+        if (!config || employees.length === 0) return null
+
+        const totalCapacity = employees.length * config.workingHoursPerDay * 5 // 5 days
+        const totalAllocated = employees.reduce((sum, e) => sum + e.total_assigned_hours, 0)
+        const totalAvailable = Math.max(0, totalCapacity - totalAllocated)
+        const overloadedCount = employees.filter(e => e.average_workload_percent > 100).length
+        const availableCount = employees.filter(e => e.average_workload_percent < 70).length // Using 70 as per typical warning threshold
+
+        return {
+            totalCapacity,
+            totalAllocated,
+            totalAvailable,
+            overloadedCount,
+            availableCount,
+            allocatedPercent: Math.round((totalAllocated / totalCapacity) * 100)
+        }
+
+    }, [employees, config])
+
     return (
-        <div className="bg-white rounded-xl border">
-            {/* Header */}
-            <div className="px-6 py-4 border-b flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-lg font-semibold">📊 Team Workload</h2>
-                    {config && (
-                        <span className="text-sm text-slate-500">
-                            ⚙️ {config.workingHoursPerDay}h/day
-                        </span>
-                    )}
-                </div>
+        <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+        >
+            <div className="flex flex-col gap-6">
 
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => navigateWeek('prev')}
-                        className="p-2 hover:bg-slate-100 rounded"
-                    >
-                        <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <span className="text-sm font-medium px-3">
-                        {new Date(startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                        {' - '}
-                        {new Date(endDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </span>
-                    <button
-                        onClick={() => navigateWeek('next')}
-                        className="p-2 hover:bg-slate-100 rounded"
-                    >
-                        <ChevronRight className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={loadData}
-                        className="p-2 hover:bg-slate-100 rounded ml-2"
-                        title="Refresh"
-                    >
-                        <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-                    </button>
-                </div>
-            </div>
+                {/* Summary Cards */}
+                {summary && (
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                <span className="font-bold text-lg">👥</span>
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800">{summary.totalCapacity}h</h3>
+                                <p className="text-xs text-slate-500">Total Capacity</p>
+                            </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                <span className="font-bold text-lg">🎯</span>
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800">{summary.totalAllocated}h</h3>
+                                <p className="text-xs text-slate-500">Allocated ({summary.allocatedPercent}%)</p>
+                            </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center text-green-600">
+                                <span className="font-bold text-lg">🕒</span>
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800">{summary.totalAvailable}h</h3>
+                                <p className="text-xs text-slate-500">Available • {summary.availableCount} people</p>
+                            </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-lg bg-red-50 flex items-center justify-center text-red-600">
+                                <span className="font-bold text-lg">⚠️</span>
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800">{summary.overloadedCount}</h3>
+                                <p className="text-xs text-slate-500">Overloaded</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
-            {/* Position Tabs */}
-            <div className="px-6 py-3 border-b bg-slate-50">
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setActiveTab('all')}
-                        className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                            activeTab === 'all'
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-slate-600 hover:bg-slate-100"
-                        )}
-                    >
-                        All ({positionCounts.all})
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('SA')}
-                        className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                            activeTab === 'SA'
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-slate-600 hover:bg-slate-100"
-                        )}
-                    >
-                        System Analyst ({positionCounts.SA})
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('BA')}
-                        className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                            activeTab === 'BA'
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-slate-600 hover:bg-slate-100"
-                        )}
-                    >
-                        Business Analyst ({positionCounts.BA})
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('PG')}
-                        className={cn(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                            activeTab === 'PG'
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-slate-600 hover:bg-slate-100"
-                        )}
-                    >
-                        Programmer ({positionCounts.PG})
-                    </button>
-                </div>
-            </div>
+                <div className="bg-white rounded-xl border shadow-sm flex flex-col h-[calc(100vh-280px)]">
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                                <Calendar className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Resource Planning</h2>
+                                <p className="text-sm text-slate-500">
+                                    {new Date(startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} - {new Date(endDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                            </div>
+                        </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        <tr className="bg-slate-50">
-                            <th className="px-4 py-3 text-left text-sm font-medium text-slate-600 w-48">
-                                Employee
-                            </th>
-                            {dates.map((date) => (
-                                <th key={date.toISOString()} className="px-2 py-3 text-center text-sm font-medium text-slate-600 w-24">
-                                    <div>{date.toLocaleDateString('th-TH', { weekday: 'short' })}</div>
-                                    <div className="text-xs text-slate-400">
-                                        {date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
-                                    </div>
-                                </th>
-                            ))}
-                            <th className="px-4 py-3 text-center text-sm font-medium text-slate-600 w-24">
-                                Avg
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {isLoading ? (
-                            <tr>
-                                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
-                                </td>
-                            </tr>
-                        ) : filteredEmployees.length === 0 ? (
-                            <tr>
-                                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                                    {activeTab === 'all'
-                                        ? 'No data available'
-                                        : `No ${activeTab} employees found`
-                                    }
-                                </td>
-                            </tr>
-                        ) : (
-                            filteredEmployees.map((emp) => (
-                                <tr key={emp.employee_id} className="hover:bg-slate-50">
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium">
-                                                {(emp.nickname || emp.employee_name).charAt(0)}
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-sm">{emp.nickname || emp.employee_name}</p>
-                                                <p className="text-xs text-slate-500">{emp.position_code}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    {dates.map((date) => {
-                                        const dayData = emp.daily_workload.find(
-                                            d => new Date(d.work_date).toDateString() === date.toDateString()
-                                        )
+                        <div className="flex items-center gap-2">
+                            <div className="flex bg-slate-100 p-1 rounded-lg mr-4">
+                                {(['all', 'SA', 'BA', 'PG'] as PositionFilter[]).map((tab) => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setActiveTab(tab)}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                                            activeTab === tab
+                                                ? "bg-white text-slate-800 shadow-sm"
+                                                : "text-slate-500 hover:text-slate-700"
+                                        )}
+                                    >
+                                        {tab === 'all' ? 'All Roles' : tab}
+                                        <span className="ml-1.5 bg-slate-200 px-1.5 py-0.5 rounded-full text-[10px]">
+                                            {positionCounts[tab]}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
 
-                                        if (!dayData) {
-                                            return (
-                                                <td key={date.toISOString()} className="px-2 py-3 text-center">
-                                                    <span className="text-slate-300">-</span>
-                                                </td>
-                                            )
-                                        }
+                            <div className="flex items-center border rounded-lg overflow-hidden">
+                                <button onClick={() => navigateWeek('prev')} className="p-2 hover:bg-slate-50 border-r">
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => setStartDate(new Date().toISOString().split('T')[0])} className="px-3 hover:bg-slate-50 text-sm font-medium text-slate-600">
+                                    Today
+                                </button>
+                                <button onClick={() => navigateWeek('next')} className="p-2 hover:bg-slate-50 border-l">
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
 
-                                        return (
-                                            <td key={date.toISOString()} className="px-2 py-3">
-                                                <div className={cn(
-                                                    "text-center p-2 rounded",
-                                                    dayData.status === 'overload' ? "bg-red-100" :
-                                                        dayData.status === 'full' ? "bg-amber-100" :
-                                                            dayData.status === 'warning' ? "bg-yellow-100" :
-                                                                "bg-green-50"
-                                                )}>
-                                                    <p className="text-sm font-medium">
-                                                        {dayData.assigned_hours.toFixed(1)}/{dayData.capacity_hours}h
-                                                    </p>
-                                                    <p className={cn(
-                                                        "text-xs font-bold",
-                                                        dayData.status === 'overload' ? "text-red-600" :
-                                                            dayData.status === 'full' ? "text-amber-600" :
-                                                                dayData.status === 'warning' ? "text-yellow-600" :
-                                                                    "text-green-600"
-                                                    )}>
-                                                        {dayData.workload_percent}%
-                                                    </p>
-                                                </div>
-                                            </td>
-                                        )
-                                    })}
-                                    <td className="px-4 py-3 text-center">
-                                        <div className={cn(
-                                            "inline-flex items-center gap-1 px-2 py-1 rounded text-sm font-bold",
-                                            emp.average_workload_percent > 100 ? "bg-red-100 text-red-600" :
-                                                emp.average_workload_percent >= 100 ? "bg-amber-100 text-amber-600" :
-                                                    emp.average_workload_percent >= 70 ? "bg-yellow-100 text-yellow-600" :
-                                                        "bg-green-100 text-green-600"
+                            <button onClick={loadData} className="p-2 hover:bg-slate-100 rounded-lg border ml-2 text-slate-500">
+                                <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
+                            </button>
+                        </div>
+                    </div>
+
+
+                    {/* Content Grid */}
+                    <div className="flex-1 overflow-y-auto bg-slate-50/50">
+                        <div className="min-w-[1000px] p-6">
+                            {/* Global Week Header */}
+                            <div className="grid grid-cols-[300px_repeat(5,1fr)_120px] gap-4 mb-4 px-4">
+                                <div className="font-semibold text-slate-500 text-sm flex items-end pb-2">Employee</div>
+                                {dates.map((date) => {
+                                    const isToday = date.toISOString().split('T')[0] === new Date().toISOString().split('T')[0]
+                                    return (
+                                        <div key={date.toISOString()} className={cn(
+                                            "rounded-lg p-2 text-center transition-colors",
+                                            isToday ? "bg-blue-600 text-white shadow-md scale-105 origin-bottom" : "bg-white border text-slate-600"
                                         )}>
-                                            {emp.average_workload_percent}%
+                                            <div className={cn("text-xs font-medium uppercase mb-0.5", isToday ? "text-blue-100" : "text-slate-400")}>
+                                                {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                                            </div>
+                                            <div className="text-xl font-bold leading-none">
+                                                {date.getDate()}
+                                            </div>
                                         </div>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                    )
+                                })}
+                                <div className="font-semibold text-slate-500 text-sm text-right flex items-end justify-end pb-2">Utilization</div>
+                            </div>
 
-            {/* Legend */}
-            <div className="px-6 py-3 border-t bg-slate-50">
-                <div className="flex items-center gap-6 text-xs">
-                    <span className="flex items-center gap-1">
-                        <span className="w-3 h-3 bg-green-500 rounded"></span> Available (0-69%)
-                    </span>
-                    <span className="flex items-center gap-1">
-                        <span className="w-3 h-3 bg-yellow-500 rounded"></span> Warning (70-99%)
-                    </span>
-                    <span className="flex items-center gap-1">
-                        <span className="w-3 h-3 bg-amber-500 rounded"></span> Full (100%)
-                    </span>
-                    <span className="flex items-center gap-1">
-                        <span className="w-3 h-3 bg-red-500 rounded"></span> Overload (&gt;100%)
-                    </span>
+                            {/* Employee Rows */}
+                            <div className="space-y-3">
+                                {isLoading ? (
+                                    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                        <RefreshCw className="w-8 h-8 animate-spin mb-4" />
+                                        <p>Loading workload data...</p>
+                                    </div>
+                                ) : filteredEmployees.length === 0 ? (
+                                    <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-dashed">
+                                        <Filter className="w-8 h-8 mx-auto mb-4 opacity-50" />
+                                        <p>No employees found for this filter</p>
+                                    </div>
+                                ) : (
+                                    filteredEmployees.map(emp => (
+                                        <EmployeeWorkloadCard
+                                            key={emp.employee_id}
+                                            employee={emp}
+                                            config={config}
+                                            dates={dates}
+                                            isSelected={false}
+                                            onSelect={() => { }}
+                                        />
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
+
+            <DragOverlay>
+                {activeId && dragData ? (
+                    <div className="opacity-90 rotate-2 scale-105 cursor-grabbing">
+                        <TaskCard
+                            id={activeId}
+                            title={dragData.title}
+                            hours={dragData.hours}
+                            priority={dragData.priority}
+                            status="Dragging"
+                            projectCode={dragData.projectCode}
+                            isLocked={dragData.isLocked}
+                        />
+                    </div>
+                ) : null}
+            </DragOverlay>
+        </DndContext>
     )
 }

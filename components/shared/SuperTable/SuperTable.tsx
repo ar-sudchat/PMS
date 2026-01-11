@@ -103,6 +103,9 @@ export interface SuperTableProps<TData> {
 
     // Sizing
     size?: 'sm' | 'md' | 'lg';
+
+    // Custom Toolbar
+    renderToolbarAction?: () => React.ReactNode;
 }
 
 export interface ContextMenuItem<TData> {
@@ -824,9 +827,10 @@ export function SuperTable<TData>({
     onRowClick,
     onRowDoubleClick,
     isLoading = false,
-    emptyMessage = "No data found",
+    emptyMessage = "No data available",
     emptyIcon,
-    size = "lg", // Default size
+    size = 'md',
+    renderToolbarAction,
 }: SuperTableProps<TData>) {
     // State
     const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
@@ -933,8 +937,7 @@ export function SuperTable<TData>({
     };
 
     return (
-        <div style={{ ...styles.container, ...sizeStyles[size] }}>
-            {/* ... toolbar code ... */}
+        <div style={styles.container}>
             {/* Toolbar */}
             <div style={styles.toolbar}>
                 {/* Global Search */}
@@ -942,17 +945,26 @@ export function SuperTable<TData>({
                     <div style={styles.searchContainer}>
                         <Search size={18} style={styles.searchIcon} />
                         <input
-                            type="text"
+                            style={styles.searchInput}
                             placeholder={searchPlaceholder}
                             value={globalFilter ?? ""}
                             onChange={(e) => setGlobalFilter(e.target.value)}
-                            style={styles.searchInput}
                         />
                         {globalFilter && (
-                            <button onClick={() => setGlobalFilter("")} style={styles.clearButton}>
-                                <X size={16} />
+                            <button
+                                style={styles.clearButton}
+                                onClick={() => setGlobalFilter("")}
+                            >
+                                <X size={14} />
                             </button>
                         )}
+                    </div>
+                )}
+
+                {/* Custom Action */}
+                {renderToolbarAction && (
+                    <div className="ml-auto">
+                        {renderToolbarAction()}
                     </div>
                 )}
 

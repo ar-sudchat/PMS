@@ -1,11 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { MyTask } from '@/lib/actions/my-tasks-actions'
+import { getTimeEntriesForTask, deleteTimeEntry, TaskTimeEntry } from '@/lib/actions/timesheet-actions'
 import { format } from 'date-fns'
-import { Calendar, Clock, Tag, CheckSquare, AlignLeft, AlertCircle } from 'lucide-react'
+import { Calendar, Clock, Tag, CheckSquare, AlignLeft, AlertCircle, Trash2, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { toast } from 'sonner'
+
+const statusOptions = [
+    { value: 'todo', label: 'To Do' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'review', label: 'Review' },
+    { value: 'done', label: 'Done' },
+    { value: 'blocked', label: 'Blocked' }
+]
 
 interface TaskDetailModalProps {
     open: boolean
@@ -13,9 +24,45 @@ interface TaskDetailModalProps {
     task: MyTask | null
     onLogTime: (task: MyTask) => void
     onStatusChange: (task: MyTask, status: string) => void
+    onDataChange?: () => void  // Called when time entries are modified
 }
 
-export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusChange }: TaskDetailModalProps) {
+export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusChange, onDataChange }: TaskDetailModalProps) {
+    const [timeEntries, setTimeEntries] = useState<TaskTimeEntry[]>([])
+    const [loadingEntries, setLoadingEntries] = useState(false)
+
+    useEffect(() => {
+        if (open && task) {
+            loadTimeEntries()
+        }
+    }, [open, task])
+
+    const loadTimeEntries = async () => {
+        if (!task) return
+        setLoadingEntries(true)
+        try {
+            const entries = await getTimeEntriesForTask(task.task_id)
+            setTimeEntries(entries)
+        } catch (error) {
+            console.error('Failed to load time entries:', error)
+        } finally {
+            setLoadingEntries(false)
+        }
+    }
+
+    const handleDeleteEntry = async (entryId: string) => {
+        if (!confirm('ต้องการลบรายการนี้ใช่ไหม?')) return
+
+        const result = await deleteTimeEntry(entryId)
+        if (result.success) {
+            toast.success('ลบรายการสำเร็จ')
+            loadTimeEntries() // Refresh list
+            if (onDataChange) onDataChange()  // Notify parent to refresh task data
+        } else {
+            toast.error(result.error || 'ลบไม่สำเร็จ')
+        }
+    }
+
     if (!task) return null
 
     return (
@@ -82,6 +129,62 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
                             </div>
                         )}
 
+                        {/* Time Log History */}
+                        <div>
+                            <h4 className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">
+                                <History className="w-4 h-4 text-slate-400" />
+                                Time Log History
+                                <span className="text-xs font-normal text-slate-500">
+                                    ({timeEntries.length} รายการ)
+                                </span>
+                            </h4>
+
+                            {loadingEntries ? (
+                                <div className="text-sm text-slate-500 text-center py-4">กำลังโหลด...</div>
+                            ) : timeEntries.length === 0 ? (
+                                <div className="text-sm text-slate-400 text-center py-4 bg-slate-50 rounded-lg border border-slate-100">
+                                    ยังไม่มีการบันทึกเวลา
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                    {timeEntries.map((entry) => (
+                                        <div
+                                            key={entry.id}
+                                            className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-slate-200 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-center min-w-[50px]">
+                                                    <div className="text-lg font-bold text-indigo-600">{entry.hours}</div>
+                                                    <div className="text-[10px] text-slate-400 uppercase">hrs</div>
+                                                </div>
+                                                <div className="border-l border-slate-200 pl-3">
+                                                    <div className="text-sm font-medium text-slate-700">
+                                                        {format(new Date(entry.entry_date), 'dd MMM yyyy')}
+                                                    </div>
+                                                    <div className="text-xs text-slate-500">
+                                                        {entry.activity_type}
+                                                        {entry.is_overtime && <span className="ml-1 text-amber-500">(OT)</span>}
+                                                    </div>
+                                                    {entry.description && (
+                                                        <div className="text-xs text-slate-400 mt-1 line-clamp-1">
+                                                            {entry.description}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                                title="ลบรายการ"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
                         {/* Notes */}
                         {task.notes && (
                             <div>
@@ -99,17 +202,12 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
                             <div>
                                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Status</label>
-                                <select
-                                    value={task.status}
-                                    onChange={(e) => onStatusChange(task, e.target.value)}
-                                    className="w-full text-sm rounded-md border-slate-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                >
-                                    <option value="todo">To Do</option>
-                                    <option value="in_progress">In Progress</option>
-                                    <option value="review">Review</option>
-                                    <option value="done">Done</option>
-                                    <option value="blocked">Blocked</option>
-                                </select>
+                                <SmartCombobox
+                                    value={statusOptions.find(opt => opt.value === task.status) || statusOptions[0]}
+                                    onChange={(opt) => onStatusChange(task, opt?.value?.toString() || 'todo')}
+                                    options={statusOptions}
+                                    placeholder="Select Status"
+                                />
                             </div>
 
                             {/* Dates */}
@@ -165,9 +263,6 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
                                 <button
                                     onClick={() => {
                                         onLogTime(task)
-                                        // We might want to keep detail modal open or not?
-                                        // Usually log time modal opens ON TOP or replaces.
-                                        // onLogTime logic in parent should handle this.
                                     }}
                                     className="w-full mt-2 py-2 flex items-center justify-center gap-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
                                 >
@@ -189,8 +284,6 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
                         </div>
                     </div>
                 </div>
-
-                {/* Footer mainly for closing if needed, but X icon exists */}
             </DialogContent>
         </Dialog>
     )

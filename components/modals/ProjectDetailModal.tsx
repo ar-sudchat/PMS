@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Edit, Calendar, User, Building, Target, FileText, DollarSign } from 'lucide-react'
 import { getProjectById } from '@/lib/actions/project-actions'
+import { MilestoneApprovalView } from '@/components/projects/MilestoneApprovalView'
 
 interface ProjectDetailModalProps {
     open: boolean
@@ -182,71 +183,9 @@ export function ProjectDetailModal({ open, onClose, projectId, onEdit }: Project
                                 </div>
                             </div>
 
-                            {/* Milestones */}
-                            <div>
-                                <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                                    <Target className="w-4 h-4" />
-                                    Milestones ({project.milestones?.length || 0})
-                                </h4>
-
-                                {project.milestones && project.milestones.length > 0 ? (
-                                    <div className="border rounded-lg overflow-hidden">
-                                        <table className="w-full text-sm">
-                                            <thead className="bg-slate-50">
-                                                <tr>
-                                                    <th className="px-4 py-2 text-left font-medium text-slate-600">Milestone</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-slate-600">Weight</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-slate-600">Due Date</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-slate-600">MD</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-slate-600">Status</th>
-                                                    <th className="px-4 py-2 text-center font-medium text-slate-600">Docs</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y">
-                                                {project.milestones.map((ms: any, index: number) => (
-                                                    <tr key={ms.id || index} className={ms.is_current ? 'bg-blue-50' : ''}>
-                                                        <td className="px-4 py-2">
-                                                            <div className="flex items-center gap-2">
-                                                                {ms.is_current && (
-                                                                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                                                                )}
-                                                                <span style={{ color: ms.milestone_color || 'inherit' }}>
-                                                                    {ms.milestone_name}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center">{ms.weight_percent || 0}%</td>
-                                                        <td className="px-4 py-2 text-center">
-                                                            {ms.due_date
-                                                                ? new Date(ms.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
-                                                                : '-'
-                                                            }
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center">
-                                                            {ms.actual_mandays || 0}/{ms.planned_mandays || 0}
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center">
-                                                            <span className={`px-2 py-0.5 rounded text-xs ${ms.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                                                    ms.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                                                                        'bg-slate-100 text-slate-600'
-                                                                }`}>
-                                                                {ms.status === 'completed' ? 'Done' :
-                                                                    ms.status === 'in_progress' ? 'In Progress' : 'Pending'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-4 py-2 text-center text-slate-500">
-                                                            {ms.submitted_count || 0}/{ms.deliverable_count || 0}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-slate-500 border rounded-lg">
-                                        No milestones configured
-                                    </div>
-                                )}
+                            {/* Milestone Approval */}
+                            <div className="border rounded-lg p-4">
+                                <MilestoneApprovalView projectId={project.id} />
                             </div>
                         </div>
                     ) : (

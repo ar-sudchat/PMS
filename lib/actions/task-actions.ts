@@ -207,7 +207,7 @@ export async function createTask(data: {
         const codeResult = await pool.request()
             .input('storyId', sql.UniqueIdentifier, data.story_id)
             .query(`
-        SELECT CONCAT('T-', RIGHT('000' + CAST(ISNULL(MAX(CAST(REPLACE(task_code, 'T-', '') AS INT)), 0) + 1 AS VARCHAR), 3)) AS new_code
+        SELECT CONCAT('T-', RIGHT('000' + CAST(ISNULL(MAX(TRY_CAST(REPLACE(task_code, 'T-', '') AS INT)), 0) + 1 AS VARCHAR), 3)) AS new_code
         FROM pms.tasks WHERE story_id = @storyId
       `)
 
@@ -378,14 +378,23 @@ export async function deleteTask(taskId: string) {
 export async function getTaskTypes() {
     try {
         const pool = await getConnection()
+        const result = await pool.request().query(`
+            SELECT code as value, name as label, name, name_th, color, icon, is_defect
+            FROM pms.task_type_configs
+            WHERE is_active = 1
+            ORDER BY sort_order
+        `)
 
-        const result = await pool.request()
-            .query(`SELECT code, name_th, name_en, color, icon FROM pms.task_type_configs WHERE [is_active] = 1 ORDER BY [sequence]`)
-
-        return { success: true, data: result.recordset }
-
-    } catch (error: any) {
+        return result.recordset
+    } catch (error) {
         console.error('getTaskTypes error:', error)
-        return { success: false, error: error.message, data: [] }
+        // Fallback to static data if DB fails
+        return [
+            { value: 'development', label: 'Development' },
+            { value: 'bug_fix', label: 'Bug Fix' },
+            { value: 'design', label: 'Design' },
+            { value: 'testing', label: 'Testing' },
+            { value: 'documentation', label: 'Documentation' }
+        ]
     }
 }

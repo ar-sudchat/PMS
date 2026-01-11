@@ -51,12 +51,14 @@ export async function createMilestoneConfig(data: MilestoneConfigFormData) {
         .input('icon', data.icon || null)
         .input('sort_order', data.sort_order || 0)
         .input('is_active', data.is_active ? 1 : 0)
+        .input('kpi_weight_ttd', data.kpi_weight_ttd || 0)
+        .input('kpi_weight_mdc', data.kpi_weight_mdc || 0)
         .query(`
       INSERT INTO pms.milestone_configs 
-      (code, name, name_th, description, color, icon, sort_order, is_active)
+      (code, name, name_th, description, color, icon, sort_order, is_active, kpi_weight_ttd, kpi_weight_mdc)
       OUTPUT INSERTED.id
       VALUES 
-      (@code, @name, @name_th, @description, @color, @icon, @sort_order, @is_active)
+      (@code, @name, @name_th, @description, @color, @icon, @sort_order, @is_active, @kpi_weight_ttd, @kpi_weight_mdc)
     `)
 
     revalidatePath('/projects/settings/milestones')
@@ -76,6 +78,8 @@ export async function updateMilestoneConfig(id: string, data: MilestoneConfigFor
         .input('icon', data.icon || null)
         .input('sort_order', data.sort_order || 0)
         .input('is_active', data.is_active ? 1 : 0)
+        .input('kpi_weight_ttd', data.kpi_weight_ttd || 0)
+        .input('kpi_weight_mdc', data.kpi_weight_mdc || 0)
         .query(`
       UPDATE pms.milestone_configs SET
         name = @name,
@@ -84,7 +88,9 @@ export async function updateMilestoneConfig(id: string, data: MilestoneConfigFor
         color = @color,
         icon = @icon,
         sort_order = @sort_order,
-        is_active = @is_active
+        is_active = @is_active,
+        kpi_weight_ttd = @kpi_weight_ttd,
+        kpi_weight_mdc = @kpi_weight_mdc
       WHERE id = @id
     `)
 
@@ -93,12 +99,25 @@ export async function updateMilestoneConfig(id: string, data: MilestoneConfigFor
 }
 
 // DELETE (soft delete)
+// DELETE (hard delete, fallback to soft delete if used)
 export async function deleteMilestoneConfig(id: string) {
     const pool = await getConnection()
 
-    await pool.request()
-        .input('id', id)
-        .query('UPDATE pms.milestone_configs SET is_active = 0 WHERE id = @id')
+    try {
+        await pool.request()
+            .input('id', id)
+            .query('DELETE FROM pms.milestone_configs WHERE id = @id')
+    } catch (error: any) {
+        // If FK constraint exists (number 547), fallback to soft delete
+        if (error.number === 547) {
+            console.warn("Hard delete failed due to FK, falling back to soft delete:", error.message)
+            await pool.request()
+                .input('id', id)
+                .query('UPDATE pms.milestone_configs SET is_active = 0 WHERE id = @id')
+        } else {
+            throw error
+        }
+    }
 
     revalidatePath('/projects/settings/milestones')
     return { success: true }

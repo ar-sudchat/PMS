@@ -26,11 +26,9 @@ import { GanttData, GanttTask } from '@/lib/actions/gantt-actions'
 import { GanttChart } from '@/components/gantt/GanttChart'
 import { GanttToolbar } from '@/components/gantt/GanttToolbar'
 import { GanttContextMenu } from '@/components/gantt/GanttContextMenu'
-import { StoryModal } from '@/components/gantt/StoryModal'
-import { TaskModal } from '@/components/gantt/TaskModal'
+import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryModal'
+import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
 import { LayoutGrid, List } from 'lucide-react'
-
-// ... existing Project interface ...
 
 interface MyProjectsPageProps {
     projects: Project[]
@@ -60,13 +58,19 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
 
     // Interaction Handlers
     const handleTaskDblClick = (task: GanttTask) => {
-        // TaskModal and StoryModal don't support editing yet
         // Double-click is disabled for now
     }
 
     const handleContextMenu = (task: GanttTask, position: { x: number; y: number }) => {
         setContextMenu({ task, position })
     }
+
+    // Derive Milestones
+    const milestones = storyModal.projectId
+        ? multiProjectGanttData.data
+            .filter(t => t.entity_type === 'milestone' && t.project_id === storyModal.projectId)
+            .map(t => ({ id: t.entity_id, name: t.text }))
+        : []
 
     return (
         <div className="space-y-6 p-6">
@@ -117,8 +121,7 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
                             setContextMenu({ task: null, position: null })
                         }}
                         onEdit={(task) => {
-                            // TaskModal and StoryModal don't support editing yet
-                            // Edit functionality is disabled for now
+                            // Edit functionality is disabled for now in view
                             setContextMenu({ task: null, position: null })
                         }}
                         onDelete={(task) => {
@@ -130,18 +133,21 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
             </div>
 
             <StoryModal
-                open={storyModal.open}
+                isOpen={storyModal.open}
                 onClose={() => setStoryModal(prev => ({ ...prev, open: false }))}
                 projectId={storyModal.projectId}
                 milestoneId={storyModal.milestoneId}
+                milestones={milestones}
                 onSuccess={handleRefresh}
+                mode="create"
             />
 
             <TaskModal
-                open={taskModal.open}
+                isOpen={taskModal.open}
                 onClose={() => setTaskModal(prev => ({ ...prev, open: false }))}
                 storyId={taskModal.storyId}
                 onSuccess={handleRefresh}
+                mode="create"
             />
         </div>
     )

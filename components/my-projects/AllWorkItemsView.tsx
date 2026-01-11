@@ -1,11 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { MilestoneGroup, ProjectWorkItemsGroup } from '@/lib/actions/work-items-actions'
-import { WorkItemsTable } from '@/components/projects/detail/work-items/WorkItemsTable'
-import Link from 'next/link'
-import { getEmployees } from '@/lib/actions/project-actions'
+import { ProjectDetailTwoPanel } from '@/components/projects/detail/two-panel/ProjectDetailTwoPanel'
+import { SmartCombobox } from '@/components/shared/SmartCombobox'
 
 interface AllWorkItemsViewProps {
     data: ProjectWorkItemsGroup[]
@@ -14,86 +12,63 @@ interface AllWorkItemsViewProps {
 }
 
 export function AllWorkItemsView({ data, filters, onRefresh }: AllWorkItemsViewProps) {
-    // We need employees for the assignee dropdowns.
-    // Fetching here or passing? Should pass. 
-    // But since this is a new component in MyProjectsGanttPage ecosystem, 
-    // and MyProjectsGanttPage doesn't fetch all employees (it fetches filter options).
-    // Let's fetch employees here.
-    const [employees, setEmployees] = useState<{ id: string, name: string }[]>([])
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('')
 
+    // Auto-select first project
     useEffect(() => {
-        getEmployees().then(res => {
-            if (res) setEmployees(res.map((e: any) => ({ id: e.id, name: e.full_name, nickname: e.nickname })))
-        })
-    }, [])
+        if (data.length > 0 && !selectedProjectId) {
+            setSelectedProjectId(data[0].projectId)
+        }
+    }, [data])
+
+    // Update selection if data changes and selected is not in data
+    useEffect(() => {
+        if (data.length > 0 && !data.find(p => p.projectId === selectedProjectId)) {
+            setSelectedProjectId(data[0].projectId)
+        }
+    }, [data, selectedProjectId])
+
+
+    const selectedProject = data.find(p => p.projectId === selectedProjectId)
+    const options = data.map(p => ({ value: p.projectId, label: `${p.projectCode} | ${p.projectName}` }))
 
     return (
-        <div className="h-full overflow-y-auto p-4 space-y-6">
-            {data.length === 0 ? (
-                <div className="text-center py-20 text-slate-500 border border-dashed rounded-lg">
-                    <p>No projects found matching filters.</p>
-                </div>
-            ) : (
-                data.map(project => (
-                    <ProjectGroup
-                        key={project.projectId}
-                        project={project}
-                        employees={employees}
-                        onRefresh={onRefresh}
+        <div className="h-full flex flex-col p-4 gap-4">
+            {/* Project Selector */}
+            <div className="flex items-center gap-4 bg-white p-4 rounded-xl border shadow-sm shrink-0 z-20">
+                <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Select Project:</span>
+                <div className="max-w-md w-full">
+                    <SmartCombobox
+                        options={options}
+                        value={options.find(o => o.value === selectedProjectId) || null}
+                        onChange={(val: any) => setSelectedProjectId(val?.value as string || '')}
+                        placeholder="Search project..."
                     />
-                ))
-            )}
-        </div>
-    )
-}
-
-function ProjectGroup({ project, employees, onRefresh }: { project: ProjectWorkItemsGroup, employees: any[], onRefresh: () => void }) {
-    const [expanded, setExpanded] = useState(true)
-
-    return (
-        <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-            <div
-                className="flex items-center gap-2 p-3 bg-slate-50 border-b cursor-pointer hover:bg-slate-100 transition-colors"
-                onClick={() => setExpanded(!expanded)}
-            >
-                <div className="p-1 text-slate-400">
-                    {expanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                </div>
-                <div>
-                    <h2 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                        {project.projectCode}
-                        <span className="text-slate-400 font-normal">|</span>
-                        {project.projectName}
-                    </h2>
-                </div>
-                <div className="ml-auto">
-                    <Link
-                        href={`/projects/${project.projectId}?tab=work-items`}
-                        className="text-xs flex items-center gap-1 text-indigo-600 hover:underline px-2 py-1 rounded hover:bg-indigo-50"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        Open Detail <ExternalLink className="w-3 h-3" />
-                    </Link>
                 </div>
             </div>
 
-            {expanded && (
-                <div className="p-4">
-                    <WorkItemsTable
-                        data={project.milestones}
-                        isLoading={false}
-                        employees={employees}
-                        onRefresh={onRefresh}
-                        onAddStory={() => {
-                            // Redirect to project detail to add? Or simple alert
-                            // Currently WorkItemsTable expects a handler.
-                            // If we want to support adding here, we need to pass projectId context.
-                            // For global view, maybe redirect is better?
-                            window.location.href = `/projects/${project.projectId}?tab=work-items`
-                        }}
-                    />
-                </div>
-            )}
+            {/* Project Content */}
+            <div className="flex-1 min-h-0 bg-white border rounded-xl shadow-sm overflow-hidden">
+                {selectedProject ? (
+                    <div className="h-full flex flex-col">
+                        <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
+                            <h2 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                {selectedProject.projectCode}
+                                <span className="text-slate-400 font-normal">|</span>
+                                {selectedProject.projectName}
+                            </h2>
+
+                        </div>
+                        <div className="flex-1 overflow-hidden p-0">
+                            <ProjectDetailTwoPanel projectId={selectedProject.projectId} />
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                        <p>Please select a project to view details.</p>
+                    </div>
+                )}
+            </div>
         </div>
     )
 }

@@ -380,12 +380,28 @@ export async function getProjectById(id: string) {
           pm.milestone_config_id,
           pm.planned_mandays,
           pm.actual_mandays,
-          pm.weight_percent,
+          -- Legacy weight for backward comaptibility/display
+          ISNULL(pm.weight_percent, 0) as weight_percent,
+          
+          -- New Weight Columns (TTD/MDC)
+          COALESCE(pm.weight_ttd, mc.default_weight_ttd) as weight_ttd,
+          COALESCE(pm.weight_mdc, mc.default_weight_mdc) as weight_mdc,
+          mc.default_weight_ttd,
+          mc.default_weight_mdc,
+          
           pm.progress_percent,
           pm.due_date,
           pm.completed_date,
           pm.status,
           pm.sort_order,
+          
+          -- Lock & KPI
+          ISNULL(pm.is_approved, 0) as is_approved,
+          ISNULL(pm.is_locked, 0) as is_locked,
+          pm.approved_at,
+          pm.kpi_ttd_pass,
+          pm.kpi_mdc_pass,
+          pm.kpi_docs_pass,
 
           mc.code as milestone_code,
           mc.name as milestone_name,
@@ -396,10 +412,10 @@ export async function getProjectById(id: string) {
           CASE WHEN pm.id = @current_ms_id THEN 1 ELSE 0 END as is_current,
           
           -- Deliverables
-          (SELECT COUNT(*) FROM pms.project_milestone_deliverables d WHERE d.project_milestone_id = pm.id) as deliverable_count,
-          (SELECT COUNT(*) FROM pms.project_milestone_deliverables d WHERE d.project_milestone_id = pm.id AND d.is_submitted = 1) as submitted_count,
+          (SELECT COUNT(*) FROM pms.project_deliverables d WHERE d.project_milestone_id = pm.id AND d.is_active = 1 AND d.is_required = 1) as deliverable_count,
+          (SELECT COUNT(*) FROM pms.project_deliverables d WHERE d.project_milestone_id = pm.id AND d.is_active = 1 AND d.is_required = 1 AND d.submitted_date IS NOT NULL) as submitted_count,
           
-          -- Deliverable IDs (for Edit Form)
+          -- Legacy Deliverable IDs (Deprecated but kept for now)
           (
             SELECT STRING_AGG(CAST(deliverable_config_id AS NVARCHAR(50)), ',') 
             FROM pms.project_milestone_deliverables 
@@ -412,12 +428,34 @@ export async function getProjectById(id: string) {
         ORDER BY pm.sort_order
       `)
 
+        // 3. Get Project Deliverables (Full details)
+        const deliverablesResult = await pool.request()
+            .input('project_id', sql.UniqueIdentifier, id)
+            .query(`
+                SELECT 
+                    pd.*,
+                    dc.name as config_name,
+                    dc.is_required as config_is_required
+                FROM pms.project_deliverables pd
+                LEFT JOIN pms.deliverable_configs dc ON pd.deliverable_config_id = dc.id
+                WHERE pd.project_milestone_id IN (
+                    SELECT id FROM pms.project_milestones WHERE project_id = @project_id
+                )
+                ORDER BY pd.sort_order
+            `)
+
+        const deliverables = deliverablesResult.recordset
+
         // Calculate totals and format milestones
         const milestonesRaw = milestonesResult.recordset
-        const milestones = milestonesRaw.map((m: any) => ({
-            ...m,
-            deliverable_ids: m.deliverable_ids_str ? m.deliverable_ids_str.split(',') : []
-        }))
+        const milestones = milestonesRaw.map((m: any) => {
+            const milestoneDeliverables = deliverables.filter((d: any) => d.project_milestone_id === m.id)
+            return {
+                ...m,
+                deliverable_ids: m.deliverable_ids_str ? m.deliverable_ids_str.split(',') : [],
+                deliverables: milestoneDeliverables
+            }
+        })
 
         const totalPlannedMD = milestones.reduce((sum: number, m: any) => sum + (m.planned_mandays || 0), 0)
         const totalActualMD = milestones.reduce((sum: number, m: any) => sum + (m.actual_mandays || 0), 0)
@@ -427,7 +465,7 @@ export async function getProjectById(id: string) {
             success: true,
             data: {
                 ...project,
-                milestones,
+                milestones, // Now includes nested deliverables
                 total_planned_mandays: totalPlannedMD,
                 total_actual_mandays: totalActualMD,
                 milestone_count: milestones.length,
@@ -437,7 +475,6 @@ export async function getProjectById(id: string) {
                     : 0
             }
         }
-
     } catch (error) {
         console.error('getProjectById error:', error)
         return { success: false, error: 'Failed to load project', data: null }
@@ -540,7 +577,20 @@ export async function createProject(data: ProjectFormData) {
             (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order, @progress_percent)
           `)
 
+
             const milestoneId = msResult.recordset[0].id
+
+            // Update new fields (weight_ttd, weight_mdc)
+            // We can do this in the insert above, but I'll add a quick update to keep it clean or merge into insert.
+            // Merging into insert is better.
+            // Wait, I didn't update the INSERT query above. I should update the INSERT query.
+            // Let's rewrite the INSERT query block in createProject.
+
+            await transaction.request()
+                .input('id', milestoneId)
+                .input('weight_ttd', m.weight_ttd || 0)
+                .input('weight_mdc', m.weight_mdc || 0)
+                .query(`UPDATE pms.project_milestones SET weight_ttd = @weight_ttd, weight_mdc = @weight_mdc WHERE id = @id`)
 
             // 3. Insert Deliverables
             for (const deliverableId of m.deliverable_ids) {
@@ -553,6 +603,20 @@ export async function createProject(data: ProjectFormData) {
               VALUES (@project_milestone_id, @deliverable_config_id)
             `)
             }
+
+            // 4. Insert Actual Project Deliverables (New System)
+            await transaction.request()
+                .input('ms_id', milestoneId)
+                .input('config_id', m.milestone_config_id)
+                .query(`
+                    INSERT INTO pms.project_deliverables (
+                        project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active
+                    )
+                    SELECT 
+                        @ms_id, id, name, name_th, is_required, sort_order, 1
+                    FROM pms.deliverable_configs
+                    WHERE milestone_config_id = @config_id
+                `)
         }
 
         await transaction.commit()
@@ -560,7 +624,7 @@ export async function createProject(data: ProjectFormData) {
         return { success: true, id: projectId }
 
     } catch (error) {
-        await transaction.rollback()
+        if (transaction) await transaction.rollback()
         console.error('Create project error:', error)
         throw error
     }
@@ -616,13 +680,19 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('due_date', m.due_date || null)
                     .input('sort_order', i + 1)
                     .input('progress_percent', m.progress_percent || 0)
+                    .input('weight_ttd', m.weight_ttd || 0)
+                    .input('weight_mdc', m.weight_mdc || 0)
+                    .input('completed_date', m.completed_date || null)
                     .query(`
                         UPDATE pms.project_milestones
                         SET planned_mandays = @planned_mandays,
                             weight_percent = @weight_percent,
                             due_date = @due_date,
                             sort_order = @sort_order,
-                            progress_percent = @progress_percent
+                            progress_percent = @progress_percent,
+                            weight_ttd = @weight_ttd,
+                            weight_mdc = @weight_mdc,
+                            completed_date = @completed_date
                         WHERE id = @id
                     `)
 
@@ -664,6 +734,45 @@ export async function updateProject(id: string, data: ProjectFormData) {
                              VALUES (@project_milestone_id, @deliverable_config_id)
                          `)
                 }
+            }
+
+            // Insert Actual Project Deliverables for NEW milestones (New System)
+            if (!milestoneId) continue; // Should have been set above
+
+            // Only insert defaults if it's a NEW milestone (not found in existingMap)
+            if (!existingMap.get(configId)) {
+                await transaction.request()
+                    .input('ms_id', milestoneId)
+                    .input('config_id', m.milestone_config_id)
+                    .query(`
+                        INSERT INTO pms.project_deliverables (
+                            project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active
+                        )
+                        SELECT 
+                            @ms_id, id, name, name_th, is_required, sort_order, 1
+                        FROM pms.deliverable_configs
+                        WHERE milestone_config_id = @config_id
+                    `)
+            }
+
+            // Handle Approval & Locking
+            if (m.will_approve || m.is_approved) {
+                await transaction.request()
+                    .input('id', milestoneId)
+                    .input('today', new Date())
+                    .query(`
+                        UPDATE pms.project_milestones
+                        SET is_approved = 1,
+                            is_locked = 1,
+                            approved_at = COALESCE(approved_at, @today),
+                            completed_date = COALESCE(completed_date, @today),
+                            status = 'completed', 
+                            progress_percent = 100
+                        WHERE id = @id
+                    `)
+
+                // TODO: Calculate KPI here if needed (could be complex, maybe do client side calc and pass it? Or purely DB)
+                // For now, let's trust the input or simple defaults.
             }
 
             // Check if this is the current milestone
@@ -725,6 +834,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
         await transaction.commit()
         revalidatePath('/projects')
         revalidatePath(`/projects/${id}`)
+        revalidatePath('/my-projects')
         return { success: true, id: id }
 
     } catch (error) {
@@ -734,6 +844,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
     }
 }
 
+// Delete Project (soft delete)
 // Delete Project (soft delete)
 export async function deleteProject(id: string) {
     const pool = await getConnection()
@@ -745,3 +856,50 @@ export async function deleteProject(id: string) {
     revalidatePath('/projects')
     return { success: true }
 }
+
+export async function deleteProjectDeliverable(id: string) {
+    try {
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query('DELETE FROM pms.project_deliverables WHERE id = @id')
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('deleteProjectDeliverable error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+export async function createCustomDeliverable(data: {
+    project_milestone_id: string
+    name: string
+    is_required: boolean
+}) {
+    try {
+        const pool = await getConnection()
+
+        // Get max sort order
+        const maxOrderResult = await pool.request()
+            .input('ms_id', sql.UniqueIdentifier, data.project_milestone_id)
+            .query('SELECT MAX(sort_order) as max_order FROM pms.project_deliverables WHERE project_milestone_id = @ms_id')
+
+        const nextOrder = (maxOrderResult.recordset[0].max_order || 0) + 1
+
+        await pool.request()
+            .input('project_milestone_id', sql.UniqueIdentifier, data.project_milestone_id)
+            .input('name', sql.NVarChar, data.name)
+            .input('is_required', sql.Bit, data.is_required)
+            .input('sort_order', sql.Int, nextOrder)
+            .query(`
+                INSERT INTO pms.project_deliverables (project_milestone_id, name, is_required, sort_order, is_active)
+                VALUES (@project_milestone_id, @name, @is_required, @sort_order, 1)
+            `)
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('createCustomDeliverable error:', error)
+        return { success: false, error: error.message }
+    }
+}
+

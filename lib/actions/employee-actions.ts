@@ -423,3 +423,48 @@ export async function getActiveEmployees() {
     return { success: false, error: error.message, data: [] }
   }
 }
+// ============================================
+// GET ASSIGNABLE EMPLOYEES
+// ============================================
+
+export async function getAssignableEmployees(dueDate?: string) {
+  try {
+    const pool = await getConnection()
+    const request = pool.request()
+
+    let query = `
+            SELECT 
+                e.id,
+                e.employee_code,
+                e.first_name,
+                e.last_name,
+                e.nickname,
+                p.code as role_code,
+                p.name as role_name,
+                ISNULL((
+                    SELECT SUM(t.estimated_hours)
+                    FROM pms.tasks t
+                    WHERE t.assignee_id = e.id 
+                    ${dueDate ? 'AND t.due_date = @dueDate' : ''}
+                    AND t.status NOT IN ('done', 'cancelled')
+                    AND t.is_active = 1
+                ), 0) as assigned_hours,
+                7 as max_hours_per_day
+            FROM pms.employees e
+            LEFT JOIN pms.positions p ON e.position_id = p.id
+            WHERE e.is_active = 1
+            ORDER BY CASE WHEN p.code = 'PG' THEN 1 ELSE 2 END, e.first_name
+        `
+
+    if (dueDate) {
+      request.input('dueDate', sql.Date, new Date(dueDate))
+    }
+
+    const result = await request.query(query)
+    return { success: true, data: result.recordset }
+
+  } catch (error: any) {
+    console.error('getAssignableEmployees error:', error)
+    return { success: false, error: error.message, data: [] }
+  }
+}

@@ -54,6 +54,8 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
         icon: "",
         sort_order: 0,
         is_active: true,
+        kpi_weight_ttd: 0,
+        kpi_weight_mdc: 0,
     });
 
     useEffect(() => {
@@ -67,6 +69,8 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                 icon: data.icon || "",
                 sort_order: data.sort_order,
                 is_active: data.is_active,
+                kpi_weight_ttd: data.kpi_weight_ttd || 0,
+                kpi_weight_mdc: data.kpi_weight_mdc || 0,
             });
         } else {
             setFormData({
@@ -78,6 +82,8 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                 icon: "",
                 sort_order: 0,
                 is_active: true,
+                kpi_weight_ttd: 0,
+                kpi_weight_mdc: 0,
             });
         }
     }, [mode, data, open]);
@@ -156,6 +162,32 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                             value={formData.name_th}
                             onChange={(e) => setFormData({ ...formData, name_th: e.target.value })}
                             placeholder="e.g. เริ่มต้นโครงการ"
+                        />
+                    </div>
+                </div>
+
+                {/* Row 2.5: KPI Weights */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-sm font-medium mb-2 block">KPI Weight (TTD) %</label>
+                        <Input
+                            type="number"
+                            value={formData.kpi_weight_ttd}
+                            onChange={(e) => setFormData({ ...formData, kpi_weight_ttd: parseFloat(e.target.value) || 0 })}
+                            placeholder="e.g. 35"
+                            min={0}
+                            max={100}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium mb-2 block">KPI Weight (MDC) %</label>
+                        <Input
+                            type="number"
+                            value={formData.kpi_weight_mdc}
+                            onChange={(e) => setFormData({ ...formData, kpi_weight_mdc: parseFloat(e.target.value) || 0 })}
+                            placeholder="e.g. 30"
+                            min={0}
+                            max={100}
                         />
                     </div>
                 </div>

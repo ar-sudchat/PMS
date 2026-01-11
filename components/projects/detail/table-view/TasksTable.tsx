@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { TaskListItem, updateTaskField } from '@/lib/actions/project-detail-actions'
 import { InlineStatusSelect } from './InlineStatusSelect'
-import { InlinePrioritySelect } from './InlinePrioritySelect'
+import { InlinePrioritySelect } from './InlinePrioritySelect' // Not used in design 4 but might be useful? Text didn't ask for it in table, asked for 'Status', 'Type', 'Assignee'. Let me check Design 4 again.
+// Design 4: Code | Title | Story | Status | Type | Assignee | Est | Due
+// It does NOT show Priority.
 import { InlineAssigneeSelect } from './InlineAssigneeSelect'
-import { Loader2, MoreVertical, Search, CheckSquare } from 'lucide-react'
+import { Loader2, MoreVertical, CheckSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { format } from 'date-fns'
 import Link from 'next/link'
-import { cn } from "@/lib/utils"
 
 interface TasksTableProps {
     tasks: TaskListItem[]
@@ -36,32 +36,29 @@ export function TasksTable({ tasks, isLoading, onRefresh, sort, onSortChange }: 
     }
 
     if (tasks.length === 0) {
-        return <div className="p-8 text-center text-slate-500 border rounded-lg bg-slate-50 border-dashed">No tasks found.</div>
+        return <div className="p-8 text-center text-slate-500 border rounded-lg bg-slate-50 border-dashed">No tasks found matching your filters.</div>
     }
 
     return (
         <div className="bg-white rounded-lg border overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 border-b font-medium">
+                    <thead className="bg-slate-50 text-slate-700 border-b font-medium">
                         <tr>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('task_code')}>Code</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('title')}>Title</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('story_code')}>Story</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('milestone_id')}>Milestone</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('task_type')}>Type</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('status')}>Status</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('priority')}>Priority</th>
-                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => onSortChange('assignee_id')}>Assignee</th>
-                            <th className="px-4 py-3 text-center">Est. h</th>
-                            <th className="px-4 py-3 text-center">Act. h</th>
-                            <th className="px-4 py-3">Due Date</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors w-[100px]" onClick={() => onSortChange('task_code')}>Code</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSortChange('title')}>Title</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors w-[100px]" onClick={() => onSortChange('story_code')}>Story</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors w-[120px]" onClick={() => onSortChange('status')}>Status</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors w-[100px]" onClick={() => onSortChange('task_type')}>Type</th>
+                            <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors w-[180px]" onClick={() => onSortChange('assignee_id')}>Assignee</th>
+                            <th className="px-4 py-3 text-center w-[60px]">Est</th>
+                            <th className="px-4 py-3 w-[100px]">Due Date</th>
                             <th className="px-2 py-3 w-[40px]"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {tasks.map(task => (
-                            <tr key={task.id} className="hover:bg-slate-50/80 group">
+                            <tr key={task.id} className="hover:bg-slate-50 transition-colors group">
                                 <td className="px-4 py-3 font-medium text-indigo-600">
                                     <span className="hover:underline cursor-pointer">{task.task_code}</span>
                                 </td>
@@ -72,20 +69,6 @@ export function TasksTable({ tasks, isLoading, onRefresh, sort, onSortChange }: 
                                     {task.story_code}
                                 </td>
                                 <td className="px-4 py-3">
-                                    <span
-                                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                        style={{ backgroundColor: task.milestone_color + '20', color: task.milestone_color }}
-                                    >
-                                        <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: task.milestone_color }} />
-                                        {task.milestone_code}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-3">
-                                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 capitalize">
-                                        {task.task_type}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-3">
                                     <InlineStatusSelect
                                         currentStatus={task.status}
                                         type="task"
@@ -93,10 +76,9 @@ export function TasksTable({ tasks, isLoading, onRefresh, sort, onSortChange }: 
                                     />
                                 </td>
                                 <td className="px-4 py-3">
-                                    <InlinePrioritySelect
-                                        currentPriority={task.priority}
-                                        onUpdate={(val) => handleUpdate(task.id, 'priority', val)}
-                                    />
+                                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 capitalize">
+                                        {task.task_type}
+                                    </span>
                                 </td>
                                 <td className="px-4 py-3">
                                     <InlineAssigneeSelect
@@ -105,13 +87,10 @@ export function TasksTable({ tasks, isLoading, onRefresh, sort, onSortChange }: 
                                     />
                                 </td>
                                 <td className="px-4 py-3 text-center text-slate-500">
-                                    {task.estimated_hours || '-'}
+                                    {task.estimated_hours ? `${task.estimated_hours}h` : '-'}
                                 </td>
-                                <td className="px-4 py-3 text-center text-slate-500">
-                                    {task.actual_hours || '-'}
-                                </td>
-                                <td className="px-4 py-3 text-slate-500">
-                                    {task.due_date ? format(new Date(task.due_date), 'dd MMM') : '-'}
+                                <td className="px-4 py-3 text-slate-500 text-xs">
+                                    {task.due_date ? format(new Date(task.due_date), 'dd/MM') : '-'}
                                 </td>
                                 <td className="px-2 py-3">
                                     <DropdownMenu>
@@ -122,7 +101,6 @@ export function TasksTable({ tasks, isLoading, onRefresh, sort, onSortChange }: 
                                             <DropdownMenuItem>
                                                 <CheckSquare className="w-4 h-4 mr-2" /> View Details
                                             </DropdownMenuItem>
-                                            {/* Add more actions */}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </td>
@@ -130,6 +108,10 @@ export function TasksTable({ tasks, isLoading, onRefresh, sort, onSortChange }: 
                         ))}
                     </tbody>
                 </table>
+            </div>
+            <div className="px-4 py-3 border-t bg-slate-50 text-xs text-slate-500 flex justify-between items-center">
+                <span>Showing {tasks.length} tasks</span>
+                {/* Pagination placeholder */}
             </div>
         </div>
     )

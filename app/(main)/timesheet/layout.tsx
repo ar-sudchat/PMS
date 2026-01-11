@@ -8,8 +8,6 @@ import { Clock, CheckSquare, BarChart3 } from "lucide-react";
 
 const tabs = [
     { name: "My Timesheet", href: "/timesheet", icon: Clock },
-    { name: "Approvals", href: "/timesheet/approvals", icon: CheckSquare },
-    { name: "Reports", href: "/timesheet/reports", icon: BarChart3 },
 ];
 
 export default function TimesheetLayout({

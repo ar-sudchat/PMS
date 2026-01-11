@@ -1,13 +1,13 @@
 'use client'
 
-import { Fragment } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, Transition } from '@headlessui/react'
-import { 
-  ChevronDown, 
-  Layers, 
-  Bell, 
+import { Menu, MenuButton, MenuItems, MenuItem, Transition } from '@headlessui/react'
+import {
+  ChevronDown,
+  Layers,
+  Bell,
   Search,
   Menu as MenuIcon,
   User,
@@ -26,8 +26,13 @@ interface TopNavProps {
 
 export function TopNav({ user, onMenuClick }: TopNavProps) {
   const pathname = usePathname()
-  
-  const menu: MenuModule[] = user 
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const menu: MenuModule[] = user
     ? filterMenuByRole(MENU_CONFIG, user.role as any)
     : MENU_CONFIG
 
@@ -60,15 +65,34 @@ export function TopNav({ user, onMenuClick }: TopNavProps) {
           <div className="hidden lg:flex items-center space-x-1">
             {menu.map((module) => {
               const Icon = module.icon
-              const isActive = module.children.some(group => 
+              const isActive = module.children.some(group =>
                 group.children.some(item => pathname === item.path)
               )
+
+              if (!mounted) {
+                return (
+                  <div key={module.id} className="relative">
+                    <button
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        isActive
+                          ? "bg-slate-700 text-white shadow-lg"
+                          : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{module.title}</span>
+                      <ChevronDown className="h-4 w-4 transition-transform" />
+                    </button>
+                  </div>
+                )
+              }
 
               return (
                 <Menu key={module.id} as="div" className="relative">
                   {({ open }) => (
                     <>
-                      <Menu.Button
+                      <MenuButton
                         className={cn(
                           "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
                           open || isActive
@@ -82,7 +106,7 @@ export function TopNav({ user, onMenuClick }: TopNavProps) {
                           "h-4 w-4 transition-transform",
                           open && "rotate-180"
                         )} />
-                      </Menu.Button>
+                      </MenuButton>
 
                       <Transition
                         as={Fragment}
@@ -93,7 +117,7 @@ export function TopNav({ user, onMenuClick }: TopNavProps) {
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                       >
-                        <Menu.Items className="absolute left-0 mt-2 w-72 origin-top-left bg-white rounded-xl shadow-2xl ring-1 ring-black/5 focus:outline-none z-50 overflow-hidden">
+                        <MenuItems className="absolute left-0 mt-2 w-72 origin-top-left bg-white rounded-xl shadow-2xl ring-1 ring-black/5 focus:outline-none z-50 overflow-hidden">
                           {module.children.map((group) => (
                             <div key={group.id} className="p-2">
                               <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 rounded-lg">
@@ -105,7 +129,7 @@ export function TopNav({ user, onMenuClick }: TopNavProps) {
                                   const isItemActive = pathname === item.path
 
                                   return (
-                                    <Menu.Item key={item.id}>
+                                    <MenuItem key={item.id}>
                                       {({ active }) => (
                                         <Link
                                           href={item.path || '#'}
@@ -127,13 +151,13 @@ export function TopNav({ user, onMenuClick }: TopNavProps) {
                                           <span className="flex-1">{item.label}</span>
                                         </Link>
                                       )}
-                                    </Menu.Item>
+                                    </MenuItem>
                                   )
                                 })}
                               </div>
                             </div>
                           ))}
-                        </Menu.Items>
+                        </MenuItems>
                       </Transition>
                     </>
                   )}
@@ -152,91 +176,110 @@ export function TopNav({ user, onMenuClick }: TopNavProps) {
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </button>
 
-            <Menu as="div" className="relative">
-              <Menu.Button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">
-                  {user?.nameTh?.charAt(0) || user?.name?.charAt(0) || 'U'}
-                </div>
-                <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-white truncate max-w-[120px]">
-                    {user?.nameTh || user?.name || 'User'}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {user?.role || 'member'}
-                  </p>
-                </div>
-                <ChevronDown className="w-4 h-4 text-slate-400 hidden md:block" />
-              </Menu.Button>
-
-              <Transition
-                as={Fragment}
-                enter="transition ease-out duration-100"
-                enterFrom="transform opacity-0 scale-95"
-                enterTo="transform opacity-100 scale-100"
-                leave="transition ease-in duration-75"
-                leaveFrom="transform opacity-100 scale-100"
-                leaveTo="transform opacity-0 scale-95"
-              >
-                <Menu.Items className="absolute right-0 mt-2 w-56 origin-top-right bg-white rounded-xl shadow-2xl ring-1 ring-black/5 focus:outline-none z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b">
-                    <p className="text-sm font-medium text-slate-900">
-                      {user?.nameTh || user?.name}
+            {!mounted ? (
+              <div className="relative">
+                <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">
+                    {user?.nameTh?.charAt(0) || user?.name?.charAt(0) || 'U'}
+                  </div>
+                  <div className="hidden md:block text-left">
+                    <p className="text-sm font-medium text-white truncate max-w-[120px]">
+                      {user?.nameTh || user?.name || 'User'}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      {user?.employeeCode} • {user?.email}
+                    <p className="text-xs text-slate-400">
+                      {user?.role || 'member'}
                     </p>
                   </div>
-
-                  <div className="p-2">
-                    <Menu.Item>
-                      {({ active }) => (
-                        <Link
-                          href="/profile"
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm",
-                            active ? "bg-slate-100" : ""
-                          )}
-                        >
-                          <User className="w-4 h-4 text-slate-400" />
-                          <span>โปรไฟล์</span>
-                        </Link>
-                      )}
-                    </Menu.Item>
-                    <Menu.Item>
-                      {({ active }) => (
-                        <Link
-                          href="/settings"
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm",
-                            active ? "bg-slate-100" : ""
-                          )}
-                        >
-                          <Settings className="w-4 h-4 text-slate-400" />
-                          <span>ตั้งค่า</span>
-                        </Link>
-                      )}
-                    </Menu.Item>
+                  <ChevronDown className="w-4 h-4 text-slate-400 hidden md:block" />
+                </button>
+              </div>
+            ) : (
+              <Menu as="div" className="relative">
+                <MenuButton className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">
+                    {user?.nameTh?.charAt(0) || user?.name?.charAt(0) || 'U'}
                   </div>
-
-                  <div className="p-2 border-t">
-                    <Menu.Item>
-                      {({ active }) => (
-                        <button
-                          onClick={handleLogout}
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm w-full text-red-600",
-                            active ? "bg-red-50" : ""
-                          )}
-                        >
-                          <LogOut className="w-4 h-4" />
-                          <span>ออกจากระบบ</span>
-                        </button>
-                      )}
-                    </Menu.Item>
+                  <div className="hidden md:block text-left">
+                    <p className="text-sm font-medium text-white truncate max-w-[120px]">
+                      {user?.nameTh || user?.name || 'User'}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {user?.role || 'member'}
+                    </p>
                   </div>
-                </Menu.Items>
-              </Transition>
-            </Menu>
+                  <ChevronDown className="w-4 h-4 text-slate-400 hidden md:block" />
+                </MenuButton>
+
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  <MenuItems className="absolute right-0 mt-2 w-56 origin-top-right bg-white rounded-xl shadow-2xl ring-1 ring-black/5 focus:outline-none z-50 overflow-hidden">
+                    <div className="px-4 py-3 border-b">
+                      <p className="text-sm font-medium text-slate-900">
+                        {user?.nameTh || user?.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {user?.employeeCode} • {user?.email}
+                      </p>
+                    </div>
+
+                    <div className="p-2">
+                      <MenuItem>
+                        {({ active }) => (
+                          <Link
+                            href="/profile"
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm",
+                              active ? "bg-slate-100" : ""
+                            )}
+                          >
+                            <User className="w-4 h-4 text-slate-400" />
+                            <span>โปรไฟล์</span>
+                          </Link>
+                        )}
+                      </MenuItem>
+                      <MenuItem>
+                        {({ active }) => (
+                          <Link
+                            href="/settings"
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm",
+                              active ? "bg-slate-100" : ""
+                            )}
+                          >
+                            <Settings className="w-4 h-4 text-slate-400" />
+                            <span>ตั้งค่า</span>
+                          </Link>
+                        )}
+                      </MenuItem>
+                    </div>
+
+                    <div className="p-2 border-t">
+                      <MenuItem>
+                        {({ active }) => (
+                          <button
+                            onClick={handleLogout}
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm w-full text-red-600",
+                              active ? "bg-red-50" : ""
+                            )}
+                          >
+                            <LogOut className="w-4 h-4" />
+                            <span>ออกจากระบบ</span>
+                          </button>
+                        )}
+                      </MenuItem>
+                    </div>
+                  </MenuItems>
+                </Transition>
+              </Menu>
+            )}
           </div>
         </div>
       </div>

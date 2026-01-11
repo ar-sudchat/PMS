@@ -1,84 +1,168 @@
-'use client'
-
+import { useMemo } from 'react'
 import { EmployeeWorkload } from '@/lib/actions/workload-actions'
 import { WorkloadConfig } from '@/lib/actions/config-actions'
 import { cn } from '@/lib/utils'
+import { DropZone } from './DropZone'
+import { TaskCard } from './TaskCard'
 
 interface EmployeeWorkloadCardProps {
     employee: EmployeeWorkload
     isSelected: boolean
     onSelect: () => void
     config: WorkloadConfig | null
+    dates: Date[]
 }
 
-export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config }: EmployeeWorkloadCardProps) {
+export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, dates }: EmployeeWorkloadCardProps) {
+    // Helper to determine role colors
+    const getRoleColor = (roleParams: string) => {
+        const role = roleParams || ''
+        if (role.includes('SA') || role.includes('System Analyst')) return 'bg-green-500'
+        if (role.includes('BA') || role.includes('Business Analyst')) return 'bg-purple-500'
+        if (role.includes('PG') || role.includes('Programmer') || role.includes('Developer')) return 'bg-blue-500'
+        return 'bg-slate-400'
+    }
+
+    const {
+        roleColor,
+        roleBadgeColor
+    } = useMemo(() => {
+        const color = getRoleColor(employee.position_code)
+        // Derive lighter/darker shades if needed, for now use same base
+        return {
+            roleColor: color,
+            roleBadgeColor: color.replace('500', '600')
+        }
+    }, [employee.position_code])
+
     const getStatusColor = (percent: number) => {
         if (!config) return 'bg-slate-200'
-        if (percent > config.workloadFullPercent) return 'bg-red-500'
-        if (percent >= config.workloadFullPercent) return 'bg-amber-500'
-        if (percent >= config.workloadWarningPercent) return 'bg-yellow-500'
+        if (percent > (config.workloadFullPercent || 100)) return 'bg-red-500'
+        if (percent >= (config.workloadFullPercent || 100)) return 'bg-amber-500'
+        if (percent >= (config.workloadWarningPercent || 80)) return 'bg-yellow-500'
         return 'bg-green-500'
     }
 
-    const getStatusIcon = (percent: number) => {
-        if (!config) return '⬜'
-        if (percent > config.workloadFullPercent) return '🔴'
-        if (percent >= config.workloadFullPercent) return '🟠'
-        if (percent >= config.workloadWarningPercent) return '🟡'
-        return '🟢'
-    }
-
     return (
-        <div
-            onClick={onSelect}
-            className={cn(
-                "p-4 rounded-lg border cursor-pointer transition-all",
-                isSelected
-                    ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200"
-                    : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
-            )}
-        >
-            <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-medium">
-                        {(employee.nickname || employee.employee_name).charAt(0)}
-                    </div>
-                    <div>
-                        <p className="font-medium">{employee.nickname || employee.employee_name}</p>
-                        <p className="text-sm text-slate-500">{employee.position_name}</p>
-                    </div>
+        <div className="grid grid-cols-[300px_repeat(5,1fr)_120px] gap-4 bg-white border rounded-xl shadow-sm p-4 items-stretch min-h-[140px]">
+            {/* 1. Employee Info Column */}
+            <div className="flex items-start gap-4">
+                <div className={cn("w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0", roleColor)}>
+                    {String(employee.nickname || employee.employee_name || '?').charAt(0)}
                 </div>
-                <div className="text-right">
-                    <p className="text-lg font-bold">
-                        {getStatusIcon(employee.average_workload_percent)} {employee.average_workload_percent}%
-                    </p>
-                    <p className="text-xs text-slate-500">Avg. Workload</p>
+                <div className="flex flex-col gap-1">
+                    <div className="font-bold text-slate-800 text-lg leading-tight">
+                        {employee.nickname || employee.employee_name}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className={cn("px-2 py-0.5 rounded text-[10px] text-white font-bold", roleBadgeColor)}>
+                            {employee.position_code}
+                        </span>
+                        <span className="text-slate-400 text-xs">{employee.position_name}</span>
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                        {config?.workingHoursPerDay || 8}h / day
+                    </div>
                 </div>
             </div>
 
-            {/* Daily Workload Bars */}
-            <div className="flex gap-1">
-                {employee.daily_workload.slice(0, 7).map((day) => (
-                    <div key={day.work_date} className="flex-1">
-                        <div className="text-center mb-1">
-                            <p className="text-xs text-slate-400">
-                                {new Date(day.work_date).toLocaleDateString('th-TH', { weekday: 'short' })}
-                            </p>
+            {/* 2. Daily Columns */}
+            {dates.map((date) => {
+                const dateStr = date.toISOString().split('T')[0]
+                const dayData = employee.daily_workload.find(d => d.work_date === dateStr)
+                const tasks = dayData?.tasks || []
+                const assigned = dayData?.assigned_hours || 0
+                const available = dayData?.available_hours || 0
+                const percent = dayData?.workload_percent || 0
+
+                // Simple Weekend Check
+                const isWeekend = date.getDay() === 0 || date.getDay() === 6
+
+                if (isWeekend) {
+                    return (
+                        <div key={dateStr} className="bg-slate-50/50 rounded-lg flex items-center justify-center border border-dashed text-slate-300 font-medium">
+                            Off
                         </div>
-                        <div className="h-8 bg-slate-100 rounded overflow-hidden relative">
-                            <div
-                                className={cn(
-                                    "absolute bottom-0 left-0 right-0 transition-all",
-                                    getStatusColor(day.workload_percent)
+                    )
+                }
+
+                return (
+                    <div key={dateStr} className="flex flex-col relative h-full">
+                        <div className="border rounded-lg p-2 h-full bg-white relative hover:border-blue-400 transition-colors flex flex-col">
+                            {/* Hours Header */}
+                            <div className="flex justify-between items-center text-xs mb-2">
+                                <span className={cn("font-bold", assigned > 0 ? "text-slate-700" : "text-slate-300")}>
+                                    {assigned}h
+                                </span>
+                                {available > 0 && (
+                                    <span className="text-green-600 font-medium">+{available}h</span>
                                 )}
-                                style={{ height: `${Math.min(day.workload_percent, 100)}%` }}
-                            />
+                            </div>
+
+                            {/* Tasks List */}
+                            <div className="space-y-1.5 flex-1 min-h-[40px]">
+                                <DropZone
+                                    id={`${employee.employee_id}:${dateStr}`}
+                                    date={dateStr}
+                                    employeeId={employee.employee_id}
+                                    className="h-full"
+                                >
+                                    {tasks.map(task => (
+                                        <TaskCard
+                                            key={task.id}
+                                            id={task.id}
+                                            title={task.title}
+                                            hours={task.estimated_hours}
+                                            priority={task.priority}
+                                            status={task.status}
+                                            projectCode={task.project_code}
+                                            isLocked={task.milestone_locked}
+                                        />
+                                    ))}
+                                    {/* Placeholder for empty drop zone if needed, or handled by css */}
+                                    {tasks.length === 0 && available > 0 && (
+                                        <div className="h-full w-full flex items-center justify-center text-[10px] text-slate-300 italic border-2 border-transparent hover:border-blue-200 border-dashed rounded">
+                                            Drop
+                                        </div>
+                                    )}
+                                </DropZone>
+                            </div>
+
+                            {/* Progress Bar (Absolute Bottom) */}
+                            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-100 rounded-b-lg overflow-hidden">
+                                <div
+                                    className={cn("h-full transition-all", getStatusColor(percent))}
+                                    style={{ width: `${Math.min(percent, 100)}%` }}
+                                />
+                            </div>
                         </div>
-                        <p className="text-xs text-center mt-1 text-slate-500">
-                            {day.assigned_hours.toFixed(0)}h
-                        </p>
                     </div>
-                ))}
+                )
+            })}
+
+            {/* 3. Utilization Column */}
+            <div className="flex flex-col items-end justify-center text-right pr-2">
+                <div className={cn("text-3xl font-bold tracking-tight",
+                    employee.average_workload_percent > 100 ? "text-red-500" :
+                        employee.average_workload_percent > 80 ? "text-amber-500" : "text-green-500"
+                )}>
+                    {employee.average_workload_percent}%
+                </div>
+                <div className="flex items-center gap-1.5 my-1">
+                    <div className={cn("w-2 h-2 rounded-full", getStatusColor(employee.average_workload_percent))} />
+                    <span className="text-xs font-medium text-slate-600">
+                        {employee.average_workload_percent > 100 ? "Overload" :
+                            employee.average_workload_percent > 80 ? "Busy" : "Optimal"}
+                    </span>
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                    {employee.total_assigned_hours}h / {employee.daily_workload.length * (config?.workingHoursPerDay || 8)}h
+                </div>
+                {employee.total_available_hours > 0 && (
+                    <div className="text-xs text-green-600 font-medium mt-0.5">
+                        {employee.total_available_hours}h Free
+                    </div>
+                )}
             </div>
         </div>
     )

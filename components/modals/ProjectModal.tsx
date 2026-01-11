@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, FileText, Check, AlertCircle } from 'lucide-react'
-import { Project, ProjectFormData } from '@/types/project'
+import { Project, ProjectFormData, MilestoneRow } from '@/types/project'
 import {
     getCustomers,
     getEmployees,
@@ -11,9 +11,12 @@ import {
     getProjectStatusConfigs,
     createProject,
     updateProject,
-    generateProjectCode
+    generateProjectCode,
+    getProjectById
 } from '@/lib/actions/project-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { MilestonesTab } from './ProjectModal/MilestonesTab'
+import { DeliverablesTab } from './ProjectModal/DeliverablesTab'
 
 interface ProjectModalProps {
     open: boolean
@@ -23,19 +26,9 @@ interface ProjectModalProps {
     onSuccess: () => void
 }
 
-interface MilestoneRow {
-    id?: string
-    milestone_config_id: string
-    weight_percent: number
-    due_date: string
-    planned_mandays: number
-    deliverable_ids: string[]
-    progress_percent?: number
-}
-
 export function ProjectModal({ open, onClose, mode, project, onSuccess }: ProjectModalProps) {
     // Active Tab
-    const [activeTab, setActiveTab] = useState<'info' | 'milestones'>('info')
+    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables'>('info')
 
     // Form State - Project Info
     const [formData, setFormData] = useState({
@@ -70,9 +63,11 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
 
     // Computed Values
     const totalValue = formData.sold_mandays * formData.manday_rate
-    const totalWeight = milestones.reduce((sum, m) => sum + (m.weight_percent || 0), 0)
+    const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
+    const totalMDC = milestones.reduce((sum, m) => sum + (m.weight_mdc || 0), 0)
     const totalMandays = milestones.reduce((sum, m) => sum + (m.planned_mandays || 0), 0)
-    const isWeightValid = Math.abs(totalWeight - 100) < 0.01 // Close enough for float math
+    // Validation: Allow small float diffs
+    const isWeightValid = Math.abs(totalTTD - 100) < 0.1 && Math.abs(totalMDC - 100) < 0.1
     const isMandaysValid = totalMandays <= formData.sold_mandays
 
     // Load options on mount
@@ -94,33 +89,78 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
 
     // Load data when edit mode
     useEffect(() => {
+        const fetchProjectDetails = async (id: string) => {
+            setIsLoading(true)
+            try {
+                const res = await getProjectById(id)
+                if (res.success && res.data) {
+                    const projectData = res.data
+                    setFormData({
+                        project_year: projectData.project_year,
+                        project_code: projectData.project_code,
+                        name: projectData.name,
+                        name_th: projectData.name_th || '',
+                        customer_id: projectData.customer_id,
+                        project_manager_id: projectData.project_manager_id,
+                        description: projectData.description || '',
+                        sold_mandays: projectData.sold_mandays,
+                        manday_rate: projectData.manday_rate,
+                        warranty_end_date: projectData.warranty_end_date ? new Date(projectData.warranty_end_date).toISOString().split('T')[0] : '',
+                        status_id: projectData.status_id || '',
+                        current_milestone_id: projectData.current_milestone_id || '',
+                        project_owner_id: projectData.project_owner_id || '',
+                    })
+
+                    if (projectData.milestones) {
+                        setMilestones(projectData.milestones.map((m: any) => ({
+                            id: m.id,
+                            milestone_config_id: m.milestone_config_id,
+                            milestone_name: m.milestone_name,
+                            milestone_color: m.milestone_color,
+                            weight_percent: m.weight_percent, // Legacy
+                            weight_ttd: m.weight_ttd,
+                            weight_mdc: m.weight_mdc,
+                            due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
+                            completed_date: m.completed_date ? new Date(m.completed_date).toISOString().split('T')[0] : '',
+                            planned_mandays: m.planned_mandays,
+                            actual_mandays: m.actual_mandays,
+                            deliverable_ids: m.deliverable_ids || [],
+                            deliverables: m.deliverables || [], // New
+                            progress_percent: m.progress_percent || 0,
+                            is_locked: m.is_locked,
+                            is_approved: m.is_approved,
+                            kpi_ttd_pass: m.kpi_ttd_pass,
+                            kpi_mdc_pass: m.kpi_mdc_pass,
+                            sort_order: m.sort_order,
+                            status: m.status,
+                            // Derived UI props
+                            deliverable_count: m.deliverable_count,
+                            submitted_count: m.submitted_count
+                        })))
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load project details:', error)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
         if (mode === 'edit' && project && open) {
-            setFormData({
+            // Initial simple populate from props to avoid flickering empty
+            setFormData(prev => ({
+                ...prev,
                 project_year: project.project_year,
                 project_code: project.project_code,
                 name: project.name,
-                name_th: project.name_th || '',
                 customer_id: project.customer_id,
                 project_manager_id: project.project_manager_id,
-                description: project.description || '',
                 sold_mandays: project.sold_mandays,
                 manday_rate: project.manday_rate,
-                warranty_end_date: project.warranty_end_date ? new Date(project.warranty_end_date).toISOString().split('T')[0] : '', // Format date for input
-                status_id: project.status_id || '',
-                current_milestone_id: project.current_milestone_id || '',
-                project_owner_id: project.project_owner_id || '',
-            })
-            if (project.milestones) {
-                setMilestones(project.milestones.map(m => ({
-                    id: m.id,
-                    milestone_config_id: m.milestone_config_id,
-                    weight_percent: m.weight_percent,
-                    due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
-                    planned_mandays: m.planned_mandays,
-                    deliverable_ids: m.deliverable_ids || [],
-                    progress_percent: m.progress_percent || 0
-                })))
-            }
+            }))
+
+            // Allow fetch to run
+            if (project.id) fetchProjectDetails(project.id)
         } else if (mode === 'create' && open) {
             resetForm()
         }
@@ -178,10 +218,10 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
         })
         // Start with 4 empty milestone rows
         setMilestones([
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
-            { milestone_config_id: '', weight_percent: 0, due_date: '', planned_mandays: 0, deliverable_ids: [], progress_percent: 0 },
+            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
+            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
+            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
+            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
         ])
         setActiveTab('info')
         setErrors({})
@@ -280,7 +320,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
             {/* Modal */}
-            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4 flex flex-col items-stretch h-[85vh] max-h-[95vh]">
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-7xl mx-4 flex flex-col items-stretch h-[85vh] max-h-[95vh]">
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
@@ -317,6 +357,16 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                 {milestones.length}
                             </span>
                         )}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('deliverables')}
+                        className={`pb-4 px-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeTab === 'deliverables'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-slate-600 hover:text-slate-900'
+                            }`}
+                    >
+                        📋 Deliverables
                     </button>
                 </div>
 
@@ -516,250 +566,29 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
 
                     {/* ═══ Tab: Milestones ═══ */}
                     <div className={`${activeTab === 'milestones' ? 'block' : 'hidden'} space-y-4`}>
-                        {/* Header Row */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-center gap-4 flex-1">
-                                <label className="text-sm font-medium text-slate-700 whitespace-nowrap">Current Milestone:</label>
-                                <div className="flex-1 md:max-w-xs">
-                                    <SmartCombobox
-                                        placeholder="Not started"
-                                        options={[
-                                            { value: '', label: 'Not started' },
-                                            ...milestones.map((m, i) => {
-                                                const config = milestoneConfigs.find((c: any) => c.id === m.milestone_config_id)
-                                                return config ? { value: m.id || `temp-${i}`, label: config.name } : null
-                                            }).filter(Boolean) as { value: string, label: string }[]
-                                        ]}
-                                        value={(() => {
-                                            if (!formData.current_milestone_id) {
-                                                return { value: '', label: 'Not started' }
-                                            }
-
-                                            // Find milestone by id or temp id
-                                            const milestone = milestones.find((m, i) => {
-                                                if (m.id) return m.id === formData.current_milestone_id
-                                                return `temp-${i}` === formData.current_milestone_id
-                                            })
-
-                                            if (!milestone) return { value: '', label: 'Not started' }
-
-                                            const config = milestoneConfigs.find((c: any) => c.id === milestone.milestone_config_id)
-                                            return config
-                                                ? { value: formData.current_milestone_id, label: config.name }
-                                                : { value: '', label: 'Not started' }
-                                        })()}
-                                        onChange={(option) => setFormData({ ...formData, current_milestone_id: option?.value === '' ? '' : option?.value as string || '' })}
-                                        maxDisplayItems={10}
-                                    />
+                        {mode === 'edit' && project && (
+                            <div className="flex justify-between items-center bg-blue-50 px-4 py-2 rounded-md border border-blue-100 mb-2">
+                                <div className="text-sm text-blue-700">
+                                    <strong>Project Progress:</strong> {project.progress_percent || 0}%
                                 </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {/* Remove Auto Distribute MD button as requested */}
-                                <button
-                                    type="button"
-                                    onClick={handleAddMilestone}
-                                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
-                                >
-                                    <Plus className="w-4 h-4" /> Add Milestone
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Milestone Table */}
-                        <div className="border border-slate-200 rounded-lg">
-                            <table className="w-full min-w-[700px]">
-                                <thead className="bg-slate-50">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-sm font-medium text-slate-700">Milestone</th>
-                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-24">Weight (%)</th>
-                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-24">Progress (%)</th>
-                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-36">Due Date</th>
-                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-24">Mandays</th>
-                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-32">Deliverables</th>
-                                        <th className="px-4 py-3 text-center text-sm font-medium text-slate-700 w-16"></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200">
-                                    {milestones.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                                                <p>No milestones added</p>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleAddMilestone}
-                                                    className="mt-2 text-blue-600 hover:underline text-sm"
-                                                >
-                                                    + Add your first milestone
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        milestones.map((milestone, index) => (
-                                            <tr key={index} className="hover:bg-slate-50">
-                                                {/* Milestone Select */}
-                                                <td className="px-4 py-2">
-                                                    <SmartCombobox
-                                                        placeholder="Select milestone"
-                                                        options={[
-                                                            { value: '', label: 'Select milestone' },
-                                                            ...milestoneConfigs.map((mc: any) => ({
-                                                                value: mc.id,
-                                                                label: `${mc.name} - ${mc.name_th}`
-                                                            }))
-                                                        ]}
-                                                        value={milestone.milestone_config_id ? (() => {
-                                                            const config = milestoneConfigs.find((mc: any) => mc.id === milestone.milestone_config_id)
-                                                            return config ? { value: config.id, label: `${config.name} - ${config.name_th}` } : { value: '', label: 'Select milestone' }
-                                                        })() : { value: '', label: 'Select milestone' }}
-                                                        onChange={(option) => handleUpdateMilestone(index, 'milestone_config_id', option?.value === '' ? '' : option?.value as string || '')}
-                                                        maxDisplayItems={10}
-                                                    />
-                                                </td>
-
-                                                {/* Weight */}
-                                                <td className="px-4 py-2">
-                                                    <input
-                                                        type="number"
-                                                        value={milestone.weight_percent}
-                                                        onChange={(e) => handleUpdateMilestone(index, 'weight_percent', parseFloat(e.target.value) || 0)}
-                                                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm text-center"
-                                                        min="0"
-                                                        max="100"
-                                                    />
-                                                </td>
-
-                                                {/* Progress (for KPI) */}
-                                                <td className="px-4 py-2">
-                                                    <div className="relative">
-                                                        <input
-                                                            type="number"
-                                                            value={milestone.progress_percent || 0}
-                                                            onChange={(e) => handleUpdateMilestone(index, 'progress_percent', Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                                                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm text-center"
-                                                            min="0"
-                                                            max="100"
-                                                        />
-                                                        {/* Progress bar indicator */}
-                                                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-200 rounded-b">
-                                                            <div
-                                                                className="h-full bg-blue-500 rounded-b transition-all"
-                                                                style={{ width: `${milestone.progress_percent || 0}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Due Date */}
-                                                <td className="px-4 py-2">
-                                                    <input
-                                                        type="date"
-                                                        value={milestone.due_date}
-                                                        onChange={(e) => handleUpdateMilestone(index, 'due_date', e.target.value)}
-                                                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                                                    />
-                                                </td>
-
-                                                {/* Mandays */}
-                                                <td className="px-4 py-2">
-                                                    <input
-                                                        type="number"
-                                                        value={milestone.planned_mandays}
-                                                        onChange={(e) => handleUpdateMilestone(index, 'planned_mandays', parseFloat(e.target.value) || 0)}
-                                                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm text-center"
-                                                        min="0"
-                                                    />
-                                                </td>
-
-                                                {/* Deliverables */}
-                                                <td className="px-4 py-2">
-                                                    <div className="relative group">
-                                                        <button
-                                                            type="button"
-                                                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm text-left flex items-center justify-between hover:bg-slate-50"
-                                                        >
-                                                            <span>{getDeliverableDisplay(milestone.deliverable_ids)}</span>
-                                                            <FileText className="w-4 h-4 text-slate-400" />
-                                                        </button>
-                                                        {/* Simple Dropdown for Multi-select */}
-                                                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg hidden group-hover:block z-50">
-                                                            <div className="p-2 max-h-48 overflow-y-auto">
-                                                                {deliverableConfigs.map((dc: any) => (
-                                                                    <label key={dc.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={milestone.deliverable_ids.includes(dc.id)}
-                                                                            onChange={(e) => {
-                                                                                const current = milestone.deliverable_ids;
-                                                                                const updated = e.target.checked
-                                                                                    ? [...current, dc.id]
-                                                                                    : current.filter(id => id !== dc.id);
-                                                                                handleUpdateMilestone(index, 'deliverable_ids', updated)
-                                                                            }}
-                                                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                                        />
-                                                                        <span className="text-xs text-slate-700">{dc.name}</span>
-                                                                    </label>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Delete */}
-                                                <td className="px-4 py-2 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveMilestone(index)}
-                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Summary */}
-                        {milestones.length > 0 && (
-                            <div className={`p-3 rounded-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${isWeightValid && isMandaysValid
-                                ? 'bg-green-50 border border-green-200'
-                                : 'bg-amber-50 border border-amber-200'
-                                }`}>
-                                <div className="flex items-center gap-6 text-sm">
-                                    <span className="text-slate-600">
-                                        <strong>{milestones.length}</strong> Milestones
-                                    </span>
-                                    <span className={isWeightValid ? 'text-green-700' : 'text-amber-700'}>
-                                        Weight: <strong>{totalWeight}%</strong>
-                                        {isWeightValid ? (
-                                            <Check className="w-4 h-4 inline ml-1" />
-                                        ) : (
-                                            <span className="ml-1">(must be 100%)</span>
-                                        )}
-                                    </span>
-                                    <span className={isMandaysValid ? 'text-green-700' : 'text-amber-700'}>
-                                        Mandays: <strong>{totalMandays}</strong> / {formData.sold_mandays}
-                                        {isMandaysValid && <Check className="w-4 h-4 inline ml-1" />}
-                                    </span>
-                                </div>
-                                {isWeightValid && isMandaysValid ? (
-                                    <span className="text-green-700 text-sm flex items-center gap-1">
-                                        <Check className="w-4 h-4" /> Valid
-                                    </span>
-                                ) : (
-                                    <span className="text-amber-700 text-sm flex items-center gap-1">
-                                        <AlertCircle className="w-4 h-4" /> Please check values
-                                    </span>
-                                )}
                             </div>
                         )}
 
-                        {errors.milestones && (
-                            <p className="text-red-500 text-sm">{errors.milestones}</p>
-                        )}
+                        <MilestonesTab
+                            milestones={milestones}
+                            setMilestones={setMilestones}
+                            milestoneConfigs={milestoneConfigs}
+                        />
+                    </div>
+
+                    {/* ═══ Tab: Deliverables ═══ */}
+                    <div className={`${activeTab === 'deliverables' ? 'block' : 'hidden'} space-y-4`}>
+                        <DeliverablesTab
+                            milestones={milestones}
+                            onRefresh={() => {
+                                if (project?.id) fetchProjectDetails(project.id)
+                            }}
+                        />
                     </div>
                 </div>
 
@@ -789,6 +618,6 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     )
 }

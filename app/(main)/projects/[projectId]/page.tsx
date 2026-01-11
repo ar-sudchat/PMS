@@ -39,7 +39,7 @@ export default async function ProjectDetailRoute(props: { params: Promise<{ proj
             project={projectResult.data}
             ganttData={ganttResult.data}
             currentUser={currentUser}
-            activeTab={searchParams.tab || 'gantt'}
+            activeTab={searchParams.tab || 'detail'}
         />
     )
 }

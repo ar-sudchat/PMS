@@ -12,18 +12,18 @@ interface InlineStatusSelectProps {
 }
 
 const STORY_STATUSES = [
-    { value: 'backlog', label: 'Backlog', color: 'bg-slate-100 text-slate-700' },
-    { value: 'todo', label: 'To Do', color: 'bg-blue-100 text-blue-700' },
-    { value: 'working', label: 'Working', color: 'bg-amber-100 text-amber-700' },
-    { value: 'done', label: 'Done', color: 'bg-green-100 text-green-700' },
+    { value: 'backlog', label: 'Backlog', color: 'bg-slate-100 text-slate-600' },
+    { value: 'todo', label: 'To Do', color: 'bg-blue-100 text-blue-600' },
+    { value: 'working', label: 'In Progress', color: 'bg-amber-100 text-amber-700' },
+    { value: 'done', label: 'Done', color: 'bg-green-100 text-green-600' },
 ]
 
 const TASK_STATUSES = [
-    { value: 'todo', label: 'To Do', color: 'bg-slate-100 text-slate-700' },
-    { value: 'working', label: 'In Progress', color: 'bg-blue-100 text-blue-700' },
-    { value: 'review', label: 'Review', color: 'bg-indigo-100 text-indigo-700' },
-    { value: 'done', label: 'Done', color: 'bg-green-100 text-green-700' },
-    { value: 'cancelled', label: 'Cancelled', color: 'bg-red-50 text-red-700' },
+    { value: 'todo', label: 'To Do', color: 'bg-blue-100 text-blue-600' },
+    { value: 'working', label: 'In Progress', color: 'bg-amber-100 text-amber-700' },
+    { value: 'review', label: 'Review', color: 'bg-purple-100 text-purple-600' },
+    { value: 'done', label: 'Done', color: 'bg-green-100 text-green-600' },
+    { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-600' },
 ]
 
 export function InlineStatusSelect({ currentStatus, onUpdate, type }: InlineStatusSelectProps) {
@@ -54,14 +54,14 @@ export function InlineStatusSelect({ currentStatus, onUpdate, type }: InlineStat
 
     return (
         <Select value={status} onValueChange={handleValueChange} disabled={isLoading}>
-            <SelectTrigger className={cn("h-7 px-2 text-xs border-0 font-medium w-[100px]", currentConfig?.color)}>
+            <SelectTrigger className={cn("h-7 px-2.5 text-xs text-center border-0 font-medium w-auto min-w-[90px] rounded-full", currentConfig?.color)}>
                 <SelectValue>{currentConfig?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>
                 {statuses.map(s => (
                     <SelectItem key={s.value} value={s.value}>
                         <div className="flex items-center">
-                            <div className={cn("w-2 h-2 rounded-full mr-2", s.color.replace('text-', 'bg-').split(' ')[0])} />
+                            <div className={cn("w-2 h-2 rounded-full mr-2", s.color.replace('text-', 'bg-').split(' ')[1] || 'bg-slate-400')} />
                             {s.label}
                         </div>
                     </SelectItem>

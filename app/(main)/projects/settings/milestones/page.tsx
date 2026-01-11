@@ -134,6 +134,17 @@ export default function MilestoneConfigPage() {
             ),
             size: 150,
         },
+        {
+            header: 'KPI Weight',
+            accessorKey: 'kpi_weight_ttd',
+            cell: ({ row }: { row: { original: MilestoneConfig } }) => (
+                <div className="flex flex-col text-xs text-slate-500">
+                    <span>TTD: {row.original.kpi_weight_ttd}%</span>
+                    <span>MDC: {row.original.kpi_weight_mdc}%</span>
+                </div>
+            ),
+            size: 100,
+        },
         /*
         {
             header: 'คำอธิบาย',
