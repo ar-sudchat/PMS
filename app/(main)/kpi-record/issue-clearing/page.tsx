@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import IssueClearingView from '@/components/kpi-record/IssueClearingView'
+import IssueClearingKPIView from '@/components/kpi-record/IssueClearingKPIView'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,5 +11,5 @@ export default async function IssueClearingPage() {
         redirect('/login')
     }
 
-    return <IssueClearingView currentUserId={user.id} currentUserName={user.nameTh || user.name || user.nickname || 'User'} />
+    return <IssueClearingKPIView currentUserId={user.id} currentUserName={user.nameTh || user.name || user.nickname || 'User'} />
 }

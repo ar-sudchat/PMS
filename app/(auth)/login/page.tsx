@@ -1,20 +1,16 @@
 'use client'
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Layers, ArrowRight, Lock, User } from "lucide-react"
+import { Layers, ArrowRight, User } from "lucide-react"
 import { login } from "@/lib/actions/auth-actions"
 
 export default function LoginPage() {
     const router = useRouter()
     const [employeeCode, setEmployeeCode] = React.useState("")
-    const [password, setPassword] = React.useState("")
-    const [rememberMe, setRememberMe] = React.useState(false)
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
 
@@ -24,20 +20,16 @@ export default function LoginPage() {
         setError(null)
 
         try {
-            const result = await login(employeeCode, password)
+            const result = await login(employeeCode)
 
             if (result.success) {
-                if (result.mustChangePassword) {
-                    router.push('/change-password')
-                } else {
-                    router.push('/')
-                }
+                router.push('/')
             } else {
                 setError(result.error || 'Login failed')
                 setIsLoading(false)
             }
         } catch (err) {
-            setError('An error occurred during login')
+            setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
             setIsLoading(false)
         }
     }
@@ -74,10 +66,10 @@ export default function LoginPage() {
                             <Layers className="h-6 w-6 text-white" />
                         </motion.div>
                         <h1 className="text-2xl font-medium tracking-tight text-white">
-                            Welcome back
+                            Project Management
                         </h1>
                         <p className="text-sm text-zinc-400">
-                            Enter your credentials to access the workspace
+                            กรอกรหัสพนักงานเพื่อเข้าสู่ระบบ
                         </p>
                     </div>
 
@@ -96,61 +88,32 @@ export default function LoginPage() {
                         <div className="space-y-4">
                             <div className="space-y-1">
                                 <Input
-                                    label="Employee Code"
+                                    label="รหัสพนักงาน"
                                     type="text"
-                                    placeholder="e.g. 240001"
+                                    placeholder="เช่น 240001"
                                     value={employeeCode}
                                     onChange={(e) => setEmployeeCode(e.target.value)}
                                     required
-                                    className="bg-black/20 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/50 transition-all hover:bg-black/30 h-11"
-                                    leftIcon={<User className="h-4 w-4 text-zinc-500" />}
+                                    autoFocus
+                                    className="bg-black/20 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/50 transition-all hover:bg-black/30 h-12 text-lg"
+                                    leftIcon={<User className="h-5 w-5 text-zinc-500" />}
                                 />
-                            </div>
-
-                            <div className="space-y-1">
-                                <Input
-                                    label="Password"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    className="bg-black/20 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/50 transition-all hover:bg-black/30 h-11"
-                                    leftIcon={<Lock className="h-4 w-4 text-zinc-500" />}
-                                />
-                                <div className="flex items-center justify-between pt-1">
-                                    <div className="flex items-center gap-2">
-                                        <Checkbox
-                                            id="remember"
-                                            checked={rememberMe}
-                                            onChange={(e) => setRememberMe(e.target.checked)}
-                                            className="border-white/20"
-                                        />
-                                        <label htmlFor="remember" className="text-xs text-zinc-400 cursor-pointer select-none hover:text-zinc-300 transition-colors">Remember me</label>
-                                    </div>
-                                    <Link
-                                        href="/forgot-password"
-                                        className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                                    >
-                                        Forgot password?
-                                    </Link>
-                                </div>
                             </div>
                         </div>
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-900/20 border-0 transition-all active:scale-[0.98]"
-                            disabled={isLoading}
+                            className="w-full h-12 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-900/20 border-0 transition-all active:scale-[0.98] text-base"
+                            disabled={isLoading || !employeeCode.trim()}
                         >
                             {isLoading ? (
                                 <span className="flex items-center gap-2">
                                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    Signing in...
+                                    กำลังเข้าสู่ระบบ...
                                 </span>
                             ) : (
                                 <span className="flex items-center gap-2">
-                                    Sign In <ArrowRight className="w-4 h-4 opacity-70" />
+                                    เข้าสู่ระบบ <ArrowRight className="w-4 h-4 opacity-70" />
                                 </span>
                             )}
                         </Button>
@@ -159,7 +122,7 @@ export default function LoginPage() {
                     {/* Footer */}
                     <div className="mt-8 text-center">
                         <p className="text-xs text-zinc-500">
-                            Default Access: <span className="font-mono text-zinc-400">1234</span>
+                            Intranet Access Only
                         </p>
 
                         <div className="mt-6 flex items-center justify-center gap-2 text-xs text-zinc-600">

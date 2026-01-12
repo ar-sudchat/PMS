@@ -15,15 +15,18 @@
 
 ## Pending Scripts (ยังไม่ได้รันที่ Production)
 
-### [2026-01-12] Task Status - Done Not as Planned
+### [2026-01-12] Task Status - Done Not as Planned (Updated)
 - **File:** `task-status-done-not-planned.sql`
 - **Status:** PENDING
 - **Description:** เพิ่มสถานะ "Done (Not as Planned)" สำหรับ Issue Clearing KPI
+- **KPI Formula:** Issue Clearing Rate = (Done / Total Completed) x 100, Target >= 85%
 - **Changes:**
-  - เพิ่ม column `not_as_planned_reason` ใน `pms.tasks`
+  - เพิ่ม columns `not_as_planned_reason`, `not_as_planned_notes` ใน `pms.tasks`
   - อัพเดท CHECK constraint สำหรับ status ใหม่ `done_not_planned`
-  - สร้าง View `vw_issue_clearing_kpi`
-  - สร้าง View `vw_tasks_not_as_planned`
+  - สร้าง View `vw_issue_clearing_weekly` (รายสัปดาห์)
+  - สร้าง View `vw_issue_clearing_kpi_monthly` (รายเดือน)
+  - สร้าง View `vw_issue_clearing_kpi_yearly` (รายปี)
+  - สร้าง View `vw_tasks_not_as_planned` (รายละเอียด)
 - **Impact:** Task management, KPI calculation
 - **Rollback:** ไม่จำเป็น (เพิ่ม column และ view ใหม่)
 
@@ -72,8 +75,13 @@ _ยังไม่มี - เพิ่มหลังจากรันสำ�
 ## Quick Reference
 
 ```sql
--- ดู scripts ที่ต้องรัน
+-- ดู scripts ที่ต้องรัน (เรียงตามลำดับ)
 -- 1. sprint-schema.sql
 -- 2. fix-all-name-th-columns.sql
 -- 3. task-status-done-not-planned.sql
+
+-- หลังรัน task-status-done-not-planned.sql จะได้:
+-- - Task status ใหม่: done_not_planned
+-- - Views: vw_issue_clearing_weekly, vw_issue_clearing_kpi_monthly, vw_issue_clearing_kpi_yearly
+-- - KPI: Issue Clearing Rate = (Done / Total Completed) x 100, Target >= 85%
 ```

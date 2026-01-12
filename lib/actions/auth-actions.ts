@@ -17,18 +17,18 @@ import { revalidatePath } from 'next/cache'
 const DEFAULT_PASSWORD = '1234'
 
 // ============================================
-// LOGIN
+// LOGIN (Intranet Mode - No Password Required)
 // ============================================
 
-export async function login(employeeCode: string, password: string) {
+export async function login(employeeCode: string, _password?: string) {
     try {
         const pool = await getConnection()
 
-        // Get employee
+        // Get employee by code only
         const result = await pool.request()
             .input('employeeCode', sql.NVarChar, employeeCode)
             .query(`
-        SELECT 
+        SELECT
           e.id,
           e.employee_code,
           e.email,
@@ -36,12 +36,9 @@ export async function login(employeeCode: string, password: string) {
           e.last_name,
           e.first_name_th,
           e.last_name_th,
+          e.nickname,
           e.role,
-          e.password_hash,
-          e.must_change_password,
           e.is_active,
-          e.login_attempts,
-          e.locked_until,
           e.department_id,
           p.code as position_code
         FROM pms.employees e
@@ -50,7 +47,7 @@ export async function login(employeeCode: string, password: string) {
       `)
 
         if (result.recordset.length === 0) {
-            return { success: false, error: 'รหัสพนักงานไม่ถูกต้อง' }
+            return { success: false, error: 'ไม่พบรหัสพนักงาน' }
         }
 
         const employee = result.recordset[0]
@@ -60,77 +57,23 @@ export async function login(employeeCode: string, password: string) {
             return { success: false, error: 'บัญชีถูกระงับการใช้งาน' }
         }
 
-        // Check if locked
-        if (employee.locked_until && new Date(employee.locked_until) > new Date()) {
-            return { success: false, error: 'บัญชีถูกล็อค กรุณาลองใหม่ภายหลัง' }
-        }
-
-        // Check password
-        let isValidPassword = false
-
-        if (employee.password_hash) {
-            isValidPassword = await verifyPassword(password, employee.password_hash)
-        } else {
-            // ถ้ายังไม่มี password_hash ให้ใช้ default password
-            isValidPassword = password === DEFAULT_PASSWORD
-
-            // Set default password hash
-            if (isValidPassword) {
-                const hashedPassword = await hashPassword(DEFAULT_PASSWORD)
-                await pool.request()
-                    .input('id', sql.UniqueIdentifier, employee.id)
-                    .input('passwordHash', sql.NVarChar, hashedPassword)
-                    .query(`
-            UPDATE pms.employees 
-            SET password_hash = @passwordHash, must_change_password = 1
-            WHERE id = @id
-          `)
-            }
-        }
-
-        if (!isValidPassword) {
-            // Increment login attempts
-            const attempts = (employee.login_attempts || 0) + 1
-            const lockUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null // Lock 15 mins
-
-            await pool.request()
-                .input('id', sql.UniqueIdentifier, employee.id)
-                .input('attempts', sql.Int, attempts)
-                .input('lockUntil', sql.DateTime, lockUntil)
-                .query(`
-          UPDATE pms.employees 
-          SET login_attempts = @attempts, locked_until = @lockUntil
-          WHERE id = @id
-        `)
-
-            return {
-                success: false,
-                error: attempts >= 5
-                    ? 'บัญชีถูกล็อค 15 นาที เนื่องจากใส่รหัสผิดเกิน 5 ครั้ง'
-                    : `รหัสผ่านไม่ถูกต้อง (เหลือ ${5 - attempts} ครั้ง)`
-            }
-        }
-
-        // Reset login attempts & update last login
+        // Update last login
         await pool.request()
             .input('id', sql.UniqueIdentifier, employee.id)
-            .query(`
-        UPDATE pms.employees 
-        SET login_attempts = 0, locked_until = NULL, last_login = GETDATE()
-        WHERE id = @id
-      `)
+            .query(`UPDATE pms.employees SET last_login = GETDATE() WHERE id = @id`)
 
         // Create session
         const userSession: UserSession = {
             id: employee.id,
             employeeCode: employee.employee_code,
             email: employee.email,
-            name: `${employee.first_name} ${employee.last_name}`,
-            nameTh: `${employee.first_name_th} ${employee.last_name_th}`,
+            name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+            nameTh: `${employee.first_name_th || ''} ${employee.last_name_th || ''}`.trim(),
+            nickname: employee.nickname,
             role: employee.role,
             positionCode: employee.position_code,
             departmentId: employee.department_id,
-            mustChangePassword: employee.must_change_password || false
+            mustChangePassword: false
         }
 
         // Create token and set cookie
@@ -140,7 +83,7 @@ export async function login(employeeCode: string, password: string) {
         return {
             success: true,
             user: userSession,
-            mustChangePassword: employee.must_change_password
+            mustChangePassword: false
         }
 
     } catch (error: any) {

@@ -10,6 +10,13 @@ const config: sql.config = {
         encrypt: true,
         trustServerCertificate: true,
     },
+    connectionTimeout: 15000, // 15 seconds
+    requestTimeout: 30000,    // 30 seconds
+    pool: {
+        max: 10,
+        min: 0,
+        idleTimeoutMillis: 30000
+    }
 }
 
 let pool: sql.ConnectionPool | null = null
@@ -19,11 +26,14 @@ export async function getConnection() {
         throw new Error("DB_SERVER is missing. Please configure .env.local");
     }
 
-    if (!pool) {
+    if (!pool || !pool.connected) {
         try {
+            console.log('[DB] Connecting to:', process.env.DB_SERVER, '/', process.env.DB_NAME)
             pool = await sql.connect(config)
+            console.log('[DB] Connected successfully')
         } catch (err) {
-            console.error('Database Connection Failed! Bad Config: ', config)
+            console.error('[DB] Connection Failed:', err)
+            pool = null
             throw err
         }
     }
