@@ -146,10 +146,11 @@ export function MyTasksView({
         await fetchTasks(newStatus, selectedEmployeeId, currentWeek.week_start_date)
     }
 
-    const handleTaskStatusUpdate = async (task: MyTask, newStatus: string) => {
-        const result = await updateTaskStatus(task.task_id, newStatus)
+    const handleTaskStatusUpdate = async (task: MyTask, newStatus: string, reason?: string) => {
+        const result = await updateTaskStatus(task.task_id, newStatus, reason)
         if (result.success) {
-            toast.success(`Task status updated to ${newStatus}`)
+            const statusLabel = newStatus === 'done_not_planned' ? 'เสร็จไม่ตามแผน' : newStatus
+            toast.success(`Task status updated to ${statusLabel}`)
             // Refresh list to ensure consistency and correct counts
             await fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)
 

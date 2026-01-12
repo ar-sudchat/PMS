@@ -1,29 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { MyTask } from '@/lib/actions/my-tasks-actions'
 import { getTimeEntriesForTask, deleteTimeEntry, TaskTimeEntry } from '@/lib/actions/timesheet-actions'
 import { format } from 'date-fns'
-import { Calendar, Clock, Tag, CheckSquare, AlignLeft, AlertCircle, Trash2, History } from 'lucide-react'
+import { Calendar, Clock, CheckSquare, AlignLeft, AlertCircle, Trash2, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { TaskStatusSelect } from '@/components/tasks/TaskStatusSelect'
 import { toast } from 'sonner'
-
-const statusOptions = [
-    { value: 'todo', label: 'To Do' },
-    { value: 'in_progress', label: 'In Progress' },
-    { value: 'review', label: 'Review' },
-    { value: 'done', label: 'Done' },
-    { value: 'blocked', label: 'Blocked' }
-]
 
 interface TaskDetailModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     task: MyTask | null
     onLogTime: (task: MyTask) => void
-    onStatusChange: (task: MyTask, status: string) => void
+    onStatusChange: (task: MyTask, status: string, reason?: string) => void
     onDataChange?: () => void  // Called when time entries are modified
 }
 
@@ -202,11 +194,9 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
                             <div>
                                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Status</label>
-                                <SmartCombobox
-                                    value={statusOptions.find(opt => opt.value === task.status) || statusOptions[0]}
-                                    onChange={(opt) => onStatusChange(task, opt?.value?.toString() || 'todo')}
-                                    options={statusOptions}
-                                    placeholder="Select Status"
+                                <TaskStatusSelect
+                                    value={task.status}
+                                    onChange={(status, reason) => onStatusChange(task, status, reason)}
                                 />
                             </div>
 

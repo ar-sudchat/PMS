@@ -1,14 +1,15 @@
 'use client'
 
 import { MyTask } from '@/lib/actions/my-tasks-actions'
-import { Calendar, Clock, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Calendar, Clock, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TaskStatusSelect } from '@/components/tasks/TaskStatusSelect'
 
 interface TaskCardProps {
     task: MyTask
     onViewDetail: (task: MyTask) => void
     onLogTime: (task: MyTask) => void
-    onStatusChange: (task: MyTask, newStatus: string) => void
+    onStatusChange: (task: MyTask, newStatus: string, reason?: string) => void
 }
 
 export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange }: TaskCardProps) {
@@ -18,16 +19,6 @@ export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange }: Task
             case 'high': return 'text-red-600 bg-red-50 border-red-100'
             case 'medium': return 'text-amber-600 bg-amber-50 border-amber-100'
             default: return 'text-slate-600 bg-slate-50 border-slate-100'
-        }
-    }
-
-    const getStatusColor = (s: string) => {
-        switch (s?.toLowerCase()) {
-            case 'done': return 'text-green-600 bg-green-50'
-            case 'in_progress': return 'text-blue-600 bg-blue-50'
-            case 'review': return 'text-purple-600 bg-purple-50'
-            case 'blocked': return 'text-red-600 bg-red-50'
-            default: return 'text-slate-600 bg-slate-50'
         }
     }
 
@@ -110,23 +101,10 @@ export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange }: Task
                     </button>
                 </div>
 
-                <select
+                <TaskStatusSelect
                     value={task.status}
-                    onChange={(e) => onStatusChange(task, e.target.value)}
-                    className={cn(
-                        "text-xs font-medium px-2 py-1.5 rounded border outline-none cursor-pointer appearance-none pr-6 bg-no-repeat bg-[right_0.2rem_center] bg-[length:12px]",
-                        getStatusColor(task.status)
-                    )}
-                    style={{
-                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3e%3c/svg%3e")`
-                    }}
-                >
-                    <option value="todo">To Do</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="review">Review</option>
-                    <option value="done">Done</option>
-                    <option value="blocked">Blocked</option>
-                </select>
+                    onChange={(status, reason) => onStatusChange(task, status, reason)}
+                />
             </div>
         </div>
     )

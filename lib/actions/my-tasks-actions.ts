@@ -149,26 +149,63 @@ export async function getTaskDetail(taskId: string): Promise<MyTask | null> {
 // Update task status (quick action)
 export async function updateTaskStatus(
     taskId: string,
-    status: string
+    status: string,
+    notAsPlannedReason?: string
 ): Promise<{ success: boolean; error?: string }> {
     const user = await getCurrentUser()
     if (!user) return { success: false, error: 'Unauthorized' }
 
-    const validStatuses = ['todo', 'in_progress', 'review', 'done', 'blocked']
+    const validStatuses = ['todo', 'in_progress', 'review', 'done', 'done_not_planned', 'blocked', 'cancelled']
     if (!validStatuses.includes(status)) {
         return { success: false, error: 'Invalid status' }
     }
 
     try {
         const pool = await getConnection()
-        await pool.request()
-            .input('taskId', sql.UniqueIdentifier, taskId)
-            .input('status', sql.NVarChar, status)
-            .query(`
-        UPDATE pms.tasks 
-        SET status = @status, updated_at = GETDATE()
-        WHERE id = @taskId
-      `)
+
+        // If done_not_planned, set completed_date and reason
+        if (status === 'done_not_planned') {
+            await pool.request()
+                .input('taskId', sql.UniqueIdentifier, taskId)
+                .input('status', sql.NVarChar, status)
+                .input('reason', sql.NVarChar, notAsPlannedReason || null)
+                .query(`
+                    UPDATE pms.tasks
+                    SET status = @status,
+                        completed_date = GETDATE(),
+                        not_as_planned_reason = @reason,
+                        updated_at = GETDATE()
+                    WHERE id = @taskId
+                `)
+        } else if (status === 'done') {
+            // If done, set completed_date and clear not_as_planned fields
+            await pool.request()
+                .input('taskId', sql.UniqueIdentifier, taskId)
+                .input('status', sql.NVarChar, status)
+                .query(`
+                    UPDATE pms.tasks
+                    SET status = @status,
+                        completed_date = GETDATE(),
+                        not_as_planned_reason = NULL,
+                        not_as_planned_notes = NULL,
+                        updated_at = GETDATE()
+                    WHERE id = @taskId
+                `)
+        } else {
+            // Other statuses - clear completed_date
+            await pool.request()
+                .input('taskId', sql.UniqueIdentifier, taskId)
+                .input('status', sql.NVarChar, status)
+                .query(`
+                    UPDATE pms.tasks
+                    SET status = @status,
+                        completed_date = NULL,
+                        not_as_planned_reason = NULL,
+                        not_as_planned_notes = NULL,
+                        updated_at = GETDATE()
+                    WHERE id = @taskId
+                `)
+        }
 
         return { success: true }
     } catch (error) {
