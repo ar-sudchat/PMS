@@ -323,24 +323,32 @@ export async function getEmployeeFormOptions() {
   try {
     const pool = await getConnection()
 
+    // Check if name_th columns exist in departments and positions
+    const columnCheck = await pool.request().query(`
+      SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = 'pms'
+      AND TABLE_NAME IN ('departments', 'positions')
+      AND COLUMN_NAME = 'name_th'
+    `)
+    const hasNameThDept = columnCheck.recordset.some((r: any) => r.TABLE_NAME === 'departments')
+    const hasNameThPos = columnCheck.recordset.some((r: any) => r.TABLE_NAME === 'positions')
+
+    const deptQuery = hasNameThDept
+      ? `SELECT id, code, name, name_th FROM pms.departments WHERE is_active = 1 ORDER BY sort_order, name`
+      : `SELECT id, code, name, NULL as name_th FROM pms.departments WHERE is_active = 1 ORDER BY sort_order, name`
+
+    const posQuery = hasNameThPos
+      ? `SELECT id, code, name, name_th, department_id FROM pms.positions WHERE is_active = 1 ORDER BY sort_order, name`
+      : `SELECT id, code, name, NULL as name_th, department_id FROM pms.positions WHERE is_active = 1 ORDER BY sort_order, name`
+
     const [departments, positions, managers] = await Promise.all([
+      pool.request().query(deptQuery),
+      pool.request().query(posQuery),
       pool.request().query(`
-        SELECT id, code, name, name_th 
-        FROM pms.departments 
-        WHERE is_active = 1 
-        ORDER BY sort_order, name
-      `),
-      pool.request().query(`
-        SELECT id, code, name, name_th, department_id 
-        FROM pms.positions 
-        WHERE is_active = 1 
-        ORDER BY sort_order, name
-      `),
-      pool.request().query(`
-        SELECT id, employee_code, 
+        SELECT id, employee_code,
           CONCAT(first_name_th, ' ', last_name_th) as name_th,
           CONCAT(first_name, ' ', last_name) as name
-        FROM pms.employees 
+        FROM pms.employees
         WHERE is_active = 1 AND role = 'manager'
         ORDER BY first_name
       `)
@@ -404,16 +412,18 @@ export async function getActiveEmployees() {
     // Similar to getEmployees but lightweight and only active
     const result = await pool.request()
       .query(`
-        SELECT 
+        SELECT
           e.id,
           e.employee_code,
+          e.first_name,
+          e.last_name,
           e.nickname,
-          CONCAT(e.first_name, ' ', e.last_name) as full_name,
+          COALESCE(NULLIF(e.first_name, '') + ' ' + NULLIF(e.last_name, ''), e.nickname, e.employee_code) as full_name,
           p.name as position
         FROM pms.employees e
         LEFT JOIN pms.positions p ON e.position_id = p.id
         WHERE e.is_active = 1
-        ORDER BY e.nickname, e.first_name
+        ORDER BY e.first_name, e.last_name, e.nickname
       `)
 
     return { success: true, data: result.recordset }

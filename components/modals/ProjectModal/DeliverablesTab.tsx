@@ -1,40 +1,117 @@
 'use client'
 
-import { useState } from 'react'
-import { FileText, CheckCircle2, AlertCircle, Upload, Link as LinkIcon, Lock, X, Plus, Trash2, Loader2 } from 'lucide-react'
-import { MilestoneRow, ProjectDeliverable } from '@/types/project'
+import { useState, useMemo } from 'react'
+import { FileText, CheckCircle2, AlertCircle, Upload, Link as LinkIcon, Lock, X, Plus, Trash2, Loader2, PlusCircle, ChevronDown } from 'lucide-react'
+import { MilestoneRow, ProjectDeliverable, DeliverableConfig } from '@/types/project'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
-import { createCustomDeliverable, deleteProjectDeliverable, verifyDeliverable } from '@/lib/actions/project-actions'
+import { createCustomDeliverable, deleteProjectDeliverable, verifyDeliverable, createDeliverableFromConfig } from '@/lib/actions/project-actions'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 
 interface DeliverablesTabProps {
     milestones: MilestoneRow[]
+    deliverableConfigs?: DeliverableConfig[]
     onRefresh?: () => void
     deliverableChanges?: Record<string, any>
     onDeliverableChange?: (id: string, field: string, value: any) => void
+    pendingDeletes?: Set<string>
+    onMarkDelete?: (id: string, name: string) => void
 }
 
-export function DeliverablesTab({ milestones, onRefresh, deliverableChanges = {}, onDeliverableChange }: DeliverablesTabProps) {
+export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh, deliverableChanges = {}, onDeliverableChange, pendingDeletes = new Set(), onMarkDelete }: DeliverablesTabProps) {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null)
     const [newDocData, setNewDocData] = useState({ name: '', is_required: true })
     const [isSubmitting, setIsSubmitting] = useState(false)
 
-    const handleDelete = async (id: string, name: string) => {
+    // Helper to format date for input (YYYY-MM-DD)
+    const formatDateForInput = (date: string | Date | null | undefined): string => {
+        if (!date) return ''
+        try {
+            if (typeof date === 'string') {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date
+                return new Date(date).toISOString().split('T')[0]
+            }
+            return date.toISOString().split('T')[0]
+        } catch {
+            return ''
+        }
+    }
+
+    // Get available deliverable configs for a milestone (not yet added)
+    const getAvailableConfigs = (milestone: MilestoneRow) => {
+        const existingConfigIds = milestone.deliverables?.map(d => d.deliverable_config_id) || []
+        return deliverableConfigs.filter(
+            config => config.milestone_config_id === milestone.milestone_config_id &&
+                !existingConfigIds.includes(config.id)
+        )
+    }
+
+    // Add deliverable from template config
+    const handleAddFromConfig = async (milestoneId: string, configId: string) => {
+        setIsSubmitting(true)
+        try {
+            const result = await createDeliverableFromConfig({
+                project_milestone_id: milestoneId,
+                deliverable_config_id: configId
+            })
+            if (result.success) {
+                toast.success('Document added from template')
+                onRefresh?.()
+            } else {
+                toast.error(result.error || 'Failed to add document')
+            }
+        } catch (error) {
+            toast.error('Failed to add document')
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    // Add all available deliverables from template
+    const handleAddAllFromConfig = async (milestoneId: string, milestoneConfigId: string) => {
+        const availableConfigs = deliverableConfigs.filter(
+            c => c.milestone_config_id === milestoneConfigId
+        )
+        const milestone = milestones.find(m => m.id === milestoneId)
+        const existingConfigIds = milestone?.deliverables?.map(d => d.deliverable_config_id) || []
+        const configsToAdd = availableConfigs.filter(c => !existingConfigIds.includes(c.id))
+
+        if (configsToAdd.length === 0) {
+            toast.info('All template documents already added')
+            return
+        }
+
+        setIsSubmitting(true)
+        try {
+            for (const config of configsToAdd) {
+                await createDeliverableFromConfig({
+                    project_milestone_id: milestoneId,
+                    deliverable_config_id: config.id
+                })
+            }
+            toast.success(`Added ${configsToAdd.length} documents from template`)
+            onRefresh?.()
+        } catch (error) {
+            toast.error('Failed to add some documents')
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDelete = (id: string, name: string) => {
         if (!confirm(`Are you sure you want to delete "${name}"?`)) return
 
-        const result = await deleteProjectDeliverable(id)
-        if (result.success) {
-            toast.success('Document deleted')
-            onRefresh?.()
-        } else {
-            toast.error(result.error)
+        // Mark for pending delete - will be saved when Update Project is clicked
+        if (onMarkDelete) {
+            onMarkDelete(id, name)
+            toast.success('Document marked for deletion (save to confirm)')
         }
     }
 
@@ -106,6 +183,43 @@ export function DeliverablesTab({ milestones, onRefresh, deliverableChanges = {}
                                 )}>
                                     {m.status === 'completed' ? 'Completed' : 'Pending'}
                                 </div>
+
+                                {/* Add from Template Dropdown */}
+                                {!m.is_locked && m.id && (() => {
+                                    const availableConfigs = getAvailableConfigs(m)
+                                    if (availableConfigs.length === 0) return null
+
+                                    return (
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger className="inline-flex items-center px-3 py-1 h-7 text-xs border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50" disabled={isSubmitting}>
+                                                <Plus className="w-3 h-3 mr-1" />
+                                                Add
+                                                <ChevronDown className="w-3 h-3 ml-1" />
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-64">
+                                                <DropdownMenuItem
+                                                    onClick={() => m.id && m.milestone_config_id && handleAddAllFromConfig(m.id, m.milestone_config_id)}
+                                                    className="font-medium text-blue-600"
+                                                >
+                                                    <PlusCircle className="w-4 h-4 mr-2" />
+                                                    Add All ({availableConfigs.length})
+                                                </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                                {availableConfigs.map(config => (
+                                                    <DropdownMenuItem
+                                                        key={config.id}
+                                                        onClick={() => m.id && handleAddFromConfig(m.id, config.id)}
+                                                    >
+                                                        {config.name}
+                                                        {config.is_required && (
+                                                            <span className="ml-auto text-xs text-amber-600">(Required)</span>
+                                                        )}
+                                                    </DropdownMenuItem>
+                                                ))}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )
+                                })()}
                             </div>
                         </div>
 
@@ -125,12 +239,50 @@ export function DeliverablesTab({ milestones, onRefresh, deliverableChanges = {}
                                 <tbody className="divide-y divide-slate-100">
                                     {(!m.deliverables || m.deliverables.length === 0) ? (
                                         <tr>
-                                            <td colSpan={6} className="px-4 py-6 text-center text-slate-400 italic">
-                                                No deliverables configured for this phase.
+                                            <td colSpan={7} className="px-4 py-8 text-center">
+                                                <div className="text-slate-400 italic mb-4">
+                                                    No deliverables configured for this phase.
+                                                </div>
+                                                {/* Show Add buttons when no deliverables */}
+                                                {!m.is_locked && m.id && (() => {
+                                                    const availableConfigs = getAvailableConfigs(m)
+                                                    if (availableConfigs.length === 0) return null
+
+                                                    return (
+                                                        <div className="flex justify-center gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => m.id && m.milestone_config_id && handleAddAllFromConfig(m.id, m.milestone_config_id)}
+                                                                disabled={isSubmitting}
+                                                            >
+                                                                <PlusCircle className="w-4 h-4 mr-1" />
+                                                                Add from Template ({availableConfigs.length})
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => m.id && handleOpenAddModal(m.id)}
+                                                            >
+                                                                <Plus className="w-4 h-4 mr-1" />
+                                                                Add Custom
+                                                            </Button>
+                                                        </div>
+                                                    )
+                                                })()}
+                                                {/* Message for unsaved milestones */}
+                                                {!m.id && (
+                                                    <div className="text-amber-600 text-xs mt-2">
+                                                        <AlertCircle className="w-4 h-4 inline mr-1" />
+                                                        Save the project first to add deliverables
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                     ) : (
-                                        m.deliverables.map((d, idx) => {
+                                        m.deliverables
+                                            .filter(d => !pendingDeletes.has(d.id)) // Filter out pending deletes
+                                            .map((d, idx) => {
                                             // Merge current DB data with pending changes
                                             const changes = deliverableChanges[d.id] || {}
                                             // Handle submitted_date: if in changes use it (can be null), otherwise DB
@@ -176,10 +328,10 @@ export function DeliverablesTab({ milestones, onRefresh, deliverableChanges = {}
                                                             <span className="text-slate-300">-</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-center text-slate-600 text-xs text-center">
+                                                    <td className="px-4 py-3 text-center text-slate-600 text-xs">
                                                         <Input
                                                             type="date"
-                                                            value={submittedDateValue ? format(new Date(submittedDateValue), 'yyyy-MM-dd') : ''}
+                                                            value={formatDateForInput(submittedDateValue)}
                                                             onChange={(e) => onDeliverableChange?.(d.id, 'submitted_date', e.target.value || null)}
                                                             disabled={m.is_locked}
                                                             className="h-8 w-32 mx-auto text-xs"
@@ -218,14 +370,14 @@ export function DeliverablesTab({ milestones, onRefresh, deliverableChanges = {}
                                                                     <Upload className="w-3 h-3" /> Upload
                                                                 </button>
                                                             )}
-                                                            {/* Delete Button - Show only if not submitted or approved/locked logic allows */}
-                                                            {!d.submitted_date && !m.is_locked && (
+                                                            {/* Delete Button - Always visible when not locked */}
+                                                            {!m.is_locked && (
                                                                 <button
-                                                                    className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
                                                                     onClick={() => handleDelete(d.id, d.name)}
                                                                     title="Remove document"
                                                                 >
-                                                                    <Trash2 className="w-3 h-3" />
+                                                                    <Trash2 className="w-4 h-4" />
                                                                 </button>
                                                             )}
                                                         </div>

@@ -41,9 +41,10 @@ export interface TaskFilters {
     priority?: string
     projectId?: string
     weekStart?: string // Filter tasks due in this week
+    employeeId?: string // View tasks of specific employee (for managers)
 }
 
-// Get my tasks (assigned to current user)
+// Get my tasks (assigned to current user or specified employee)
 export async function getMyTasks(filters?: TaskFilters): Promise<MyTask[]> {
     const user = await getCurrentUser()
     if (!user) return []
@@ -51,14 +52,14 @@ export async function getMyTasks(filters?: TaskFilters): Promise<MyTask[]> {
     try {
         const pool = await getConnection()
         let query = `
-      SELECT * FROM pms.vw_my_tasks 
+      SELECT * FROM pms.vw_my_tasks
       WHERE assignee_id = @employeeId
     `
         const request = pool.request()
-        // Using employeeId from session. Assuming session logic maps correctly. 
-        // Usually user.id is login ID (from AspNetUsers?), but app uses employees table. 
-        // previous actions use `(user as any).employeeId || user.id`. I will assume user object structure.
-        const employeeId = (user as any).employeeId || user.id
+        // Using employeeId from session or filter override (for managers viewing other employees)
+        // If filters.employeeId is provided, use that; otherwise use current user
+        const currentEmployeeId = (user as any).employeeId || user.id
+        const employeeId = filters?.employeeId || currentEmployeeId
         request.input('employeeId', sql.UniqueIdentifier, employeeId)
 
         if (filters?.status && filters.status !== 'all') {
@@ -90,23 +91,33 @@ export async function getMyTasks(filters?: TaskFilters): Promise<MyTask[]> {
 }
 
 // Get task counts by status
-export async function getMyTaskCounts(): Promise<Record<string, number>> {
+export async function getMyTaskCounts(filters?: { employeeId?: string; weekStart?: string }): Promise<Record<string, number>> {
     const user = await getCurrentUser()
     if (!user) return {}
 
     try {
         const pool = await getConnection()
-        const employeeId = (user as any).employeeId || user.id
-        const result = await pool.request()
-            .input('employeeId', sql.UniqueIdentifier, employeeId)
-            .query(`
-        SELECT 
-          status,
-          COUNT(*) as count
-        FROM pms.vw_my_tasks 
-        WHERE assignee_id = @employeeId
-        GROUP BY status
-      `)
+        const currentEmployeeId = (user as any).employeeId || user.id
+        const employeeId = filters?.employeeId || currentEmployeeId
+
+        let query = `
+          SELECT
+            status,
+            COUNT(*) as count
+          FROM pms.vw_my_tasks
+          WHERE assignee_id = @employeeId
+        `
+        const request = pool.request()
+        request.input('employeeId', sql.UniqueIdentifier, employeeId)
+
+        if (filters?.weekStart) {
+            query += ' AND due_date >= @weekStart AND due_date < DATEADD(day, 7, @weekStart)'
+            request.input('weekStart', sql.Date, filters.weekStart)
+        }
+
+        query += ' GROUP BY status'
+
+        const result = await request.query(query)
 
         const counts: Record<string, number> = { all: 0 }
         result.recordset.forEach((row: { status: string; count: number }) => {

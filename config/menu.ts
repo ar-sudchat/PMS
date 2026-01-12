@@ -27,6 +27,11 @@ import {
   Zap,
   Activity,
   FolderOpen,
+  Rocket,
+  HardDrive,
+  FileCheck,
+  ClipboardList,
+  Wrench,
   type LucideIcon
 } from 'lucide-react'
 
@@ -95,6 +100,7 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Settings',
         titleTh: 'ตั้งค่า',
         children: [
+          { id: 'project-types-config', label: 'Project Types', labelTh: 'ประเภทโครงการ', path: '/projects/settings/project-types', icon: Layers },
           { id: 'milestones-config', label: 'Milestones', labelTh: 'Milestones', path: '/projects/settings/milestones', icon: Milestone },
           { id: 'deliverables-config', label: 'Deliverables', labelTh: 'Deliverables', path: '/projects/settings/deliverables', icon: Package },
           { id: 'statuses-config', label: 'Statuses', labelTh: 'สถานะ', path: '/projects/settings/statuses', icon: ListTodo },
@@ -144,6 +150,35 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'employees', label: 'Employees', labelTh: 'พนักงาน', path: '/team', icon: Users },
           { id: 'departments', label: 'Departments', labelTh: 'แผนก', path: '/team/departments', icon: Building2 },
           { id: 'positions', label: 'Positions', labelTh: 'ตำแหน่ง', path: '/team/positions', icon: Briefcase },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'kpi-record',
+    title: 'KPI Record',
+    titleTh: 'บันทึก KPI',
+    icon: ClipboardList,
+    children: [
+      {
+        id: 'kpi-tracking',
+        title: 'KPI Tracking',
+        titleTh: 'ติดตาม KPI',
+        children: [
+          { id: 'deploy-success', label: 'Deploy Success', labelTh: 'ผลการ Deploy', path: '/kpi-record/deploy-success', icon: Rocket, roles: ['admin', 'manager'] },
+          { id: 'deploy-backup', label: 'Deploy Backup', labelTh: 'Backup ก่อน Deploy', path: '/kpi-record/deploy-backup', icon: HardDrive, roles: ['admin', 'manager'] },
+          { id: 'meeting-minutes', label: 'Meeting Minutes', labelTh: 'MoM Tracking', path: '/kpi-record/meeting-minutes', icon: FileCheck, roles: ['admin', 'manager'] },
+          { id: 'docs-ontime', label: 'Docs On-time', labelTh: 'เอกสารตรงเวลา', path: '/kpi-record/docs-ontime', icon: FileText, roles: ['admin', 'manager'] },
+          { id: 'issue-clearing', label: 'Issue Clearing', labelTh: 'งานคงค้าง', path: '/kpi-record/issue-clearing', icon: CheckSquare, roles: ['admin', 'manager'] },
+          { id: 'post-golive-rework', label: 'Post Go-Live Rework', labelTh: 'Rework หลัง Go-Live', path: '/kpi-record/post-golive-rework', icon: Wrench, roles: ['admin', 'manager'] },
+        ]
+      },
+      {
+        id: 'kpi-settings',
+        title: 'Settings',
+        titleTh: 'ตั้งค่า',
+        children: [
+          { id: 'backup-sources', label: 'Backup Sources', labelTh: 'แหล่ง Backup', path: '/kpi-record/backup-sources', icon: Database, roles: ['admin', 'manager'] },
         ]
       }
     ]

@@ -16,6 +16,16 @@ export interface PositionFormData {
     is_active: boolean;
 }
 
+// Helper to check if name_th column exists in positions table
+async function checkPositionNameThColumn(pool: any): Promise<boolean> {
+    const columnCheck = await pool.request().query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'positions'
+        AND COLUMN_NAME = 'name_th'
+    `)
+    return columnCheck.recordset.length > 0
+}
+
 export async function getPositions() {
     const pool = await getConnection()
     const result = await pool.request()
@@ -26,10 +36,11 @@ export async function getPositions() {
 export async function createPosition(data: PositionFormData) {
     try {
         const pool = await getConnection()
-        const result = await pool.request()
+        const hasNameTh = await checkPositionNameThColumn(pool)
+
+        const request = pool.request()
             .input('code', data.code)
             .input('name', data.name)
-            .input('name_th', data.name_th)
             .input('description', data.description)
             .input('level', data.level)
             .input('hourly_rate', data.hourly_rate)
@@ -37,11 +48,22 @@ export async function createPosition(data: PositionFormData) {
             .input('department_id', data.department_id || null)
             .input('color', data.color)
             .input('is_active', data.is_active)
-            .query(`
-          INSERT INTO pms.positions (code, name, name_th, description, level, hourly_rate, daily_rate, department_id, color, is_active)
-          OUTPUT INSERTED.id
-          VALUES (@code, @name, @name_th, @description, @level, @hourly_rate, @daily_rate, @department_id, @color, @is_active)
-        `)
+
+        let result
+        if (hasNameTh) {
+            request.input('name_th', data.name_th)
+            result = await request.query(`
+                INSERT INTO pms.positions (code, name, name_th, description, level, hourly_rate, daily_rate, department_id, color, is_active)
+                OUTPUT INSERTED.id
+                VALUES (@code, @name, @name_th, @description, @level, @hourly_rate, @daily_rate, @department_id, @color, @is_active)
+            `)
+        } else {
+            result = await request.query(`
+                INSERT INTO pms.positions (code, name, description, level, hourly_rate, daily_rate, department_id, color, is_active)
+                OUTPUT INSERTED.id
+                VALUES (@code, @name, @description, @level, @hourly_rate, @daily_rate, @department_id, @color, @is_active)
+            `)
+        }
 
         revalidatePath('/team/positions')
         return { success: true, id: result.recordset[0].id }
@@ -54,11 +76,12 @@ export async function createPosition(data: PositionFormData) {
 export async function updatePosition(id: string, data: PositionFormData) {
     try {
         const pool = await getConnection()
-        await pool.request()
+        const hasNameTh = await checkPositionNameThColumn(pool)
+
+        const request = pool.request()
             .input('id', id)
             .input('code', data.code)
             .input('name', data.name)
-            .input('name_th', data.name_th)
             .input('description', data.description)
             .input('level', data.level)
             .input('hourly_rate', data.hourly_rate)
@@ -66,22 +89,42 @@ export async function updatePosition(id: string, data: PositionFormData) {
             .input('department_id', data.department_id || null)
             .input('color', data.color)
             .input('is_active', data.is_active)
-            .query(`
-          UPDATE pms.positions 
-          SET 
-            code = @code,
-            name = @name,
-            name_th = @name_th,
-            description = @description,
-            level = @level,
-            hourly_rate = @hourly_rate,
-            daily_rate = @daily_rate,
-            department_id = @department_id,
-            color = @color,
-            is_active = @is_active,
-            updated_at = GETDATE()
-          WHERE id = @id
-        `)
+
+        if (hasNameTh) {
+            request.input('name_th', data.name_th)
+            await request.query(`
+                UPDATE pms.positions
+                SET
+                    code = @code,
+                    name = @name,
+                    name_th = @name_th,
+                    description = @description,
+                    level = @level,
+                    hourly_rate = @hourly_rate,
+                    daily_rate = @daily_rate,
+                    department_id = @department_id,
+                    color = @color,
+                    is_active = @is_active,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+        } else {
+            await request.query(`
+                UPDATE pms.positions
+                SET
+                    code = @code,
+                    name = @name,
+                    description = @description,
+                    level = @level,
+                    hourly_rate = @hourly_rate,
+                    daily_rate = @daily_rate,
+                    department_id = @department_id,
+                    color = @color,
+                    is_active = @is_active,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+        }
 
         revalidatePath('/team/positions')
         return { success: true }

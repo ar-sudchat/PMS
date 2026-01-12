@@ -14,6 +14,7 @@ export default function LoginPage() {
     const router = useRouter()
     const [employeeCode, setEmployeeCode] = React.useState("")
     const [password, setPassword] = React.useState("")
+    const [rememberMe, setRememberMe] = React.useState(false)
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
 
@@ -121,7 +122,9 @@ export default function LoginPage() {
                                     <div className="flex items-center gap-2">
                                         <Checkbox
                                             id="remember"
-                                            className="border-white/20 data-[state=checked]:bg-indigo-500 data-[state=checked]:border-indigo-500"
+                                            checked={rememberMe}
+                                            onChange={(e) => setRememberMe(e.target.checked)}
+                                            className="border-white/20"
                                         />
                                         <label htmlFor="remember" className="text-xs text-zinc-400 cursor-pointer select-none hover:text-zinc-300 transition-colors">Remember me</label>
                                     </div>

@@ -145,18 +145,20 @@ export default function MilestoneConfigPage() {
             ),
             size: 100,
         },
-        /*
         {
-            header: 'คำอธิบาย',
-            accessorKey: 'description',
-            cell: ({ row }: { row: { original: MilestoneConfig } }) => (
-                <span className="text-slate-600 text-sm truncate max-w-[200px] block">
-                    {row.original.description || "-"}
-                </span>
-            ),
-            size: 200,
+            header: 'KPI Flag',
+            accessorKey: 'is_go_live',
+            cell: ({ row }: { row: { original: MilestoneConfig } }) => {
+                if (row.original.is_go_live) {
+                    return <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">Go-Live</span>
+                }
+                if (row.original.is_post_go_live) {
+                    return <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">Post GL</span>
+                }
+                return <span className="text-slate-400">-</span>
+            },
+            size: 100,
         },
-        */
         {
             header: 'สถานะ',
             accessorKey: 'is_active',

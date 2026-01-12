@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X } from 'lucide-react'
+import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle } from 'lucide-react'
 import { MilestoneRow } from '@/types/project'
 import { Switch } from '@/components/ui/Switch'
 import { cn } from '@/lib/utils'
@@ -35,6 +35,13 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
 
     const isTTDValid = Math.abs(totalTTD - 100) < 0.1
     const isMDCValid = Math.abs(totalMDC - 100) < 0.1
+
+    // --- Available Milestones (not yet added) ---
+    const availableMilestones = useMemo(() => {
+        return milestoneConfigs
+            .filter(config => config.is_active !== false && !milestones.some(m => m.milestone_config_id === config.id))
+            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    }, [milestoneConfigs, milestones])
 
     // --- Handlers ---
 
@@ -75,8 +82,93 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
         setMilestones(updated)
     }
 
-    // Filter milestones that have IDs (saved) for the "Current Milestone" dropdown
-    const availableForCurrent = milestones.filter(m => m.id)
+    // Add a single milestone from config
+    const handleAddMilestone = (configId: string) => {
+        const config = milestoneConfigs.find(c => c.id === configId)
+        if (!config) return
+
+        const newMilestone: MilestoneRow = {
+            milestone_config_id: config.id,
+            milestone_name: config.name,
+            milestone_color: config.color || '#6B7280',
+            weight_percent: 0,
+            weight_ttd: config.ttd_weight || 0,
+            weight_mdc: config.mdc_weight || 0,
+            due_date: '',
+            completed_date: '',
+            planned_mandays: 0,
+            actual_mandays: 0,
+            deliverable_ids: [],
+            deliverables: [],
+            progress_percent: 0,
+            is_locked: false,
+            is_approved: false,
+            kpi_ttd_pass: undefined,
+            kpi_mdc_pass: undefined,
+            sort_order: config.sort_order || 0,
+            status: undefined,
+            is_new: true
+        }
+
+        // Insert in correct sort order
+        const updated = [...milestones, newMilestone].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        setMilestones(updated)
+    }
+
+    // Add all available milestones
+    const handleAddAllMilestones = () => {
+        const newMilestones: MilestoneRow[] = availableMilestones.map(config => ({
+            milestone_config_id: config.id,
+            milestone_name: config.name,
+            milestone_color: config.color || '#6B7280',
+            weight_percent: 0,
+            weight_ttd: config.ttd_weight || 0,
+            weight_mdc: config.mdc_weight || 0,
+            due_date: '',
+            completed_date: '',
+            planned_mandays: 0,
+            actual_mandays: 0,
+            deliverable_ids: [],
+            deliverables: [],
+            progress_percent: 0,
+            is_locked: false,
+            is_approved: false,
+            kpi_ttd_pass: undefined,
+            kpi_mdc_pass: undefined,
+            sort_order: config.sort_order || 0,
+            status: undefined,
+            is_new: true
+        }))
+
+        const updated = [...milestones, ...newMilestones].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        setMilestones(updated)
+    }
+
+    // All milestones for Current Milestone dropdown (both saved and new)
+    // For saved milestones, use id. For new milestones, use index-based temp id
+    const milestonesForCurrentDropdown = useMemo(() => {
+        return milestones.map((m, idx) => ({
+            ...m,
+            tempId: m.id || `temp-${idx}`,
+            displayName: m.milestone_name || 'Unnamed Milestone'
+        }))
+    }, [milestones])
+
+    // Helper to format date for input (YYYY-MM-DD)
+    const formatDateForInput = (date: string | Date | null | undefined): string => {
+        if (!date) return ''
+        try {
+            if (typeof date === 'string') {
+                // If already YYYY-MM-DD format, return as is
+                if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date
+                // Otherwise parse and format
+                return new Date(date).toISOString().split('T')[0]
+            }
+            return date.toISOString().split('T')[0]
+        } catch {
+            return ''
+        }
+    }
 
     return (
         <div className="space-y-6">
@@ -90,12 +182,20 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                         <SmartCombobox
                             options={[
                                 { value: '', label: 'Select Current Milestone' },
-                                ...availableForCurrent.map(m => ({
-                                    value: m.id!,
-                                    label: `${m.milestone_name} (${m.progress_percent}%)`
+                                ...milestonesForCurrentDropdown.map(m => ({
+                                    value: m.id || m.tempId,
+                                    label: `${m.displayName} (${m.progress_percent || 0}%)`
                                 }))
                             ]}
-                            value={currentMilestoneId ? availableForCurrent.find(m => m.id === currentMilestoneId) ? { value: currentMilestoneId, label: `${availableForCurrent.find(m => m.id === currentMilestoneId)?.milestone_name} (${availableForCurrent.find(m => m.id === currentMilestoneId)?.progress_percent}%)` } : null : null}
+                            value={currentMilestoneId
+                                ? milestonesForCurrentDropdown.find(m => m.id === currentMilestoneId || m.tempId === currentMilestoneId)
+                                    ? {
+                                        value: currentMilestoneId,
+                                        label: `${milestonesForCurrentDropdown.find(m => m.id === currentMilestoneId || m.tempId === currentMilestoneId)?.displayName} (${milestonesForCurrentDropdown.find(m => m.id === currentMilestoneId || m.tempId === currentMilestoneId)?.progress_percent || 0}%)`
+                                    }
+                                    : null
+                                : null
+                            }
                             onChange={(opt) => onCurrentMilestoneChange(opt?.value as string || '')}
                             placeholder="Select current active milestone..."
                         />
@@ -221,8 +321,8 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                             <td className="px-3 py-2">
                                                 <input
                                                     type="date"
-                                                    className="w-full border-slate-200 rounded px-1 py-1 text-xs"
-                                                    value={m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : ''}
+                                                    className="w-full border border-slate-200 rounded px-1 py-1 text-xs"
+                                                    value={formatDateForInput(m.due_date)}
                                                     onChange={(e) => handleUpdateMilestone(i, 'due_date', e.target.value)}
                                                     disabled={isLocked}
                                                 />
@@ -232,8 +332,8 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                             <td className="px-3 py-2">
                                                 <input
                                                     type="date"
-                                                    className="w-full border-slate-200 rounded px-1 py-1 text-xs"
-                                                    value={m.completed_date ? new Date(m.completed_date).toISOString().split('T')[0] : ''}
+                                                    className="w-full border border-slate-200 rounded px-1 py-1 text-xs"
+                                                    value={formatDateForInput(m.completed_date)}
                                                     onChange={(e) => handleUpdateMilestone(i, 'completed_date', e.target.value)}
                                                     disabled={isLocked}
                                                 />
@@ -364,7 +464,36 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
             {(!isTTDValid || !isMDCValid) && (
                 <div className="text-red-500 text-xs flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
-                    Total TTD and MDC weights must each assume to 100%.
+                    Total TTD and MDC weights must each sum to 100%.
+                </div>
+            )}
+
+            {/* Add Milestone Section */}
+            {availableMilestones.length > 0 && (
+                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex-1">
+                        <SmartCombobox
+                            options={availableMilestones.map(config => ({
+                                value: config.id,
+                                label: `${config.name} (TTD: ${config.ttd_weight || 0}%, MDC: ${config.mdc_weight || 0}%)`
+                            }))}
+                            value={null}
+                            onChange={(opt) => {
+                                if (opt?.value) {
+                                    handleAddMilestone(opt.value as string)
+                                }
+                            }}
+                            placeholder="Select milestone to add..."
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleAddAllMilestones}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        <PlusCircle className="w-4 h-4" />
+                        Add All ({availableMilestones.length})
+                    </button>
                 </div>
             )}
             {/* Verify Milestone Modal */}

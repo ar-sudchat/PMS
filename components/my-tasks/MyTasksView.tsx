@@ -1,25 +1,73 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { MyTask, getMyTasks, getMyTaskCounts, updateTaskStatus } from '@/lib/actions/my-tasks-actions'
 import { TaskCard } from './TaskCard'
 import { StatusFilter } from './StatusFilter'
 import { TaskDetailModal } from './TaskDetailModal'
 import { QuickLogTimeModal } from './QuickLogTimeModal'
-import { Search, Filter, Loader2 } from 'lucide-react'
+import { Search, Loader2, ChevronLeft, ChevronRight, Calendar, User } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { getCurrentWeek, type WeekOption } from '@/lib/utils/week-helper'
+import { format, addWeeks, startOfWeek, endOfWeek, getWeek, getYear } from 'date-fns'
+import { th } from 'date-fns/locale'
+
+interface Employee {
+    id: string
+    employee_code: string
+    first_name: string
+    last_name: string
+    nickname: string | null
+    full_name: string
+    position: string | null
+}
 
 interface MyTasksViewProps {
     initialTasks: MyTask[]
     initialCounts: Record<string, number>
+    currentUserId: string
+    currentUserName: string
+    userRole: string
+    employees: Employee[]
 }
 
-export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
+// Helper to calculate week info from Date
+function getWeekInfo(date: Date): WeekOption {
+    const weekStart = startOfWeek(date, { weekStartsOn: 1 })
+    const weekEnd = endOfWeek(date, { weekStartsOn: 1 })
+    const year = getYear(weekStart)
+    const weekNum = getWeek(weekStart, { weekStartsOn: 1 })
+
+    return {
+        value: `${year}-W${weekNum.toString().padStart(2, '0')}`,
+        label: `W${weekNum}: ${format(weekStart, 'd MMM', { locale: th })} - ${format(weekEnd, 'd MMM yyyy', { locale: th })}`,
+        week_start_date: format(weekStart, 'yyyy-MM-dd'),
+        week_end_date: format(weekEnd, 'yyyy-MM-dd'),
+        year,
+        week_number: weekNum
+    }
+}
+
+export function MyTasksView({
+    initialTasks,
+    initialCounts,
+    currentUserId,
+    currentUserName,
+    userRole,
+    employees
+}: MyTasksViewProps) {
     const [tasks, setTasks] = useState<MyTask[]>(initialTasks)
     const [counts, setCounts] = useState<Record<string, number>>(initialCounts)
     const [statusFilter, setStatusFilter] = useState('all')
     const [search, setSearch] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+
+    // New filters
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(currentUserId)
+    const [currentWeekDate, setCurrentWeekDate] = useState<Date>(new Date())
+    const currentWeek = useMemo(() => getWeekInfo(currentWeekDate), [currentWeekDate])
 
     // Modals
     const [detailTask, setDetailTask] = useState<MyTask | null>(null)
@@ -27,16 +75,46 @@ export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
     const [isDetailOpen, setIsDetailOpen] = useState(false)
     const [isLogTimeOpen, setIsLogTimeOpen] = useState(false)
 
-    const fetchTasks = async (status: string) => {
+    // Employee options for combobox
+    const employeeOptions = useMemo(() => {
+        return employees.map(emp => ({
+            value: emp.id,
+            label: emp.nickname
+                ? `${emp.full_name} (${emp.nickname})`
+                : emp.full_name
+        }))
+    }, [employees])
+
+    const selectedEmployeeOption = useMemo(() => {
+        return employeeOptions.find(opt => opt.value === selectedEmployeeId) || null
+    }, [employeeOptions, selectedEmployeeId])
+
+    // Week navigation
+    const handlePrevWeek = () => {
+        setCurrentWeekDate(prev => addWeeks(prev, -1))
+    }
+
+    const handleNextWeek = () => {
+        setCurrentWeekDate(prev => addWeeks(prev, 1))
+    }
+
+    const handleToday = () => {
+        setCurrentWeekDate(new Date())
+    }
+
+    const fetchTasks = async (status: string, employeeId?: string, weekStart?: string) => {
         setIsLoading(true)
         try {
-            // Fetch tasks filtered by status
-            // Note: Search is client-side filtered usually for speed unless large dataset.
-            // Server action supports filters. Let's use server filtering for status.
-            const res = await getMyTasks({ status })
+            const res = await getMyTasks({
+                status,
+                employeeId: employeeId || selectedEmployeeId,
+                weekStart: weekStart || currentWeek.week_start_date
+            })
 
-            // Also refresh counts
-            const newCounts = await getMyTaskCounts()
+            const newCounts = await getMyTaskCounts({
+                employeeId: employeeId || selectedEmployeeId,
+                weekStart: weekStart || currentWeek.week_start_date
+            })
 
             setTasks(res)
             setCounts(newCounts)
@@ -47,23 +125,33 @@ export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
         }
     }
 
+    // Handle employee change
+    const handleEmployeeChange = async (option: { value: string | number; label: string } | null) => {
+        if (option) {
+            const empId = String(option.value)
+            setSelectedEmployeeId(empId)
+            await fetchTasks(statusFilter, empId, currentWeek.week_start_date)
+        }
+    }
+
+    // Handle week change - refetch when week changes
+    const handleWeekChange = async (newWeekDate: Date) => {
+        const newWeek = getWeekInfo(newWeekDate)
+        setCurrentWeekDate(newWeekDate)
+        await fetchTasks(statusFilter, selectedEmployeeId, newWeek.week_start_date)
+    }
+
     const handleStatusChange = async (newStatus: string) => {
         setStatusFilter(newStatus)
-        await fetchTasks(newStatus)
+        await fetchTasks(newStatus, selectedEmployeeId, currentWeek.week_start_date)
     }
 
     const handleTaskStatusUpdate = async (task: MyTask, newStatus: string) => {
-        // Optimistic update
-        const oldStatus = task.status
-
-        // Update local state temporarily
-        // But if filtering by status, it might disappear. That's actually desired behavior usually.
-
         const result = await updateTaskStatus(task.task_id, newStatus)
         if (result.success) {
             toast.success(`Task status updated to ${newStatus}`)
             // Refresh list to ensure consistency and correct counts
-            await fetchTasks(statusFilter)
+            await fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)
 
             // If detail modal is open, update that task too
             if (detailTask && detailTask.task_id === task.task_id) {
@@ -81,13 +169,42 @@ export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
         t.project_name.toLowerCase().includes(search.toLowerCase()))
     )
 
+    // Get selected employee name for display
+    const selectedEmployeeName = useMemo(() => {
+        if (selectedEmployeeId === currentUserId) return currentUserName
+        const emp = employees.find(e => e.id === selectedEmployeeId)
+        return emp?.full_name || emp?.nickname || 'Employee'
+    }, [selectedEmployeeId, currentUserId, currentUserName, employees])
+
+    const isViewingOwnTasks = selectedEmployeeId === currentUserId
+    const canViewOthers = userRole === 'admin' || userRole === 'manager'
+
     return (
         <div className="flex flex-col h-full bg-slate-50/50">
             {/* Header / Filter Bar */}
             <div className="px-6 pt-6 pb-4 bg-white border-b border-slate-200">
                 <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-2xl font-bold text-slate-900">My Tasks</h1>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-bold text-slate-900">
+                            {isViewingOwnTasks ? 'My Tasks' : `Tasks: ${selectedEmployeeName}`}
+                        </h1>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {/* Employee Selector (for managers) */}
+                        {canViewOthers && (
+                            <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-slate-400" />
+                                <div className="w-56">
+                                    <SmartCombobox
+                                        options={employeeOptions}
+                                        value={selectedEmployeeOption}
+                                        onChange={handleEmployeeChange}
+                                        placeholder="Select employee..."
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         {/* Search */}
                         <div className="relative">
                             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -99,6 +216,45 @@ export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
                                 className="pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64 transition-all"
                             />
                         </div>
+                    </div>
+                </div>
+
+                {/* Week Navigator */}
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleWeekChange(addWeeks(currentWeekDate, -1))}
+                            className="h-8 px-2"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 rounded-lg border border-indigo-100">
+                            <Calendar className="w-4 h-4 text-indigo-600" />
+                            <span className="text-sm font-medium text-indigo-700">
+                                {currentWeek.label}
+                            </span>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleWeekChange(addWeeks(currentWeekDate, 1))}
+                            className="h-8 px-2"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleWeekChange(new Date())}
+                            className="h-8 ml-2"
+                        >
+                            Today
+                        </Button>
+                    </div>
+                    <div className="text-sm text-slate-500">
+                        {counts.all || 0} task{(counts.all || 0) !== 1 ? 's' : ''} this week
                     </div>
                 </div>
 
@@ -151,14 +307,14 @@ export function MyTasksView({ initialTasks, initialCounts }: MyTasksViewProps) {
                     setIsLogTimeOpen(true)
                 }}
                 onStatusChange={handleTaskStatusUpdate}
-                onDataChange={() => fetchTasks(statusFilter)}
+                onDataChange={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)}
             />
 
             <QuickLogTimeModal
                 open={isLogTimeOpen}
                 onOpenChange={setIsLogTimeOpen}
                 task={logTimeTask}
-                postLogAction={() => fetchTasks(statusFilter)}
+                postLogAction={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)}
             />
         </div>
     )

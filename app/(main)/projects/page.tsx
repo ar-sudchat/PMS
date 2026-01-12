@@ -17,6 +17,7 @@ interface FilterOptions {
     years: number[]
     statuses: { id: string; code: string; name: string; color: string }[]
     milestones: { id: string; code: string; name: string; color: string }[]
+    projectTypes: { id: string; code: string; name: string; color: string }[]
 }
 
 interface Filters {
@@ -25,6 +26,7 @@ interface Filters {
     managerId: string
     ownerId: string
     statusId: string
+    projectTypeId: string
     milestoneIds: string[]  // Multi-select
     search: string
 }
@@ -37,7 +39,8 @@ export default function ProjectsPage() {
         owners: [],
         years: [],
         statuses: [],
-        milestones: []
+        milestones: [],
+        projectTypes: []
     })
 
     // Filters
@@ -47,6 +50,7 @@ export default function ProjectsPage() {
         managerId: '',
         ownerId: '',
         statusId: '',
+        projectTypeId: '',
         milestoneIds: [],
         search: ''
     })
@@ -90,6 +94,7 @@ export default function ProjectsPage() {
             managerId: filters.managerId || undefined,
             ownerId: filters.ownerId || undefined,
             statusId: filters.statusId || undefined,
+            projectTypeId: filters.projectTypeId || undefined,
             milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
             search: filters.search || undefined
         })
@@ -165,6 +170,31 @@ export default function ProjectsPage() {
                     <span className="text-sm truncate" title={row.original.customer_name}>
                         {row.original.customer_name || '-'}
                     </span>
+                </div>
+            )
+        },
+        {
+            accessorKey: 'project_type_name',
+            header: 'Type',
+            cell: ({ row }: any) => (
+                <div className="flex justify-center">
+                    {row.original.project_type_code ? (
+                        <span
+                            className="px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap flex items-center gap-1"
+                            style={{
+                                backgroundColor: row.original.project_type_color ? `${row.original.project_type_color}15` : '#f1f5f9',
+                                color: row.original.project_type_color || '#64748b'
+                            }}
+                        >
+                            <span
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: row.original.project_type_color || '#64748b' }}
+                            />
+                            {row.original.project_type_code}
+                        </span>
+                    ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                    )}
                 </div>
             )
         },
@@ -353,6 +383,21 @@ export default function ProjectsPage() {
                             onChange={(option) => handleFilterChange('ownerId', option?.value === '' ? '' : option?.value || '')}
                             maxDisplayItems={10}
                         />
+                    </div>
+
+                    {/* Project Type */}
+                    <div>
+                        <label className="block text-xs text-slate-500 mb-1">Type</label>
+                        <select
+                            value={filters.projectTypeId}
+                            onChange={(e) => handleFilterChange('projectTypeId', e.target.value)}
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[100px]"
+                        >
+                            <option value="">All Types</option>
+                            {filterOptions.projectTypes.map(t => (
+                                <option key={t.id} value={t.id}>{t.code}</option>
+                            ))}
+                        </select>
                     </div>
 
                     {/* Status */}

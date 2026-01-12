@@ -13,8 +13,10 @@ import {
     updateProject,
     generateProjectCode,
     getProjectById,
-    updateDeliverable
+    updateDeliverable,
+    deleteProjectDeliverable
 } from '@/lib/actions/project-actions'
+import { getProjectTypes, ProjectType } from '@/lib/actions/project-type-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { MilestonesTab } from './ProjectModal/MilestonesTab'
 import { DeliverablesTab } from './ProjectModal/DeliverablesTab'
@@ -46,6 +48,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
         status_id: '',
         current_milestone_id: '',
         project_owner_id: '',
+        project_type_id: '',
     })
 
     // Form State - Milestones
@@ -57,6 +60,12 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
     const [milestoneConfigs, setMilestoneConfigs] = useState<any[]>([])
     const [deliverableConfigs, setDeliverableConfigs] = useState<any[]>([])
     const [statusConfigs, setStatusConfigs] = useState<any[]>([])
+    const [projectTypes, setProjectTypes] = useState<ProjectType[]>([])
+
+    // Computed: Get selected project type settings
+    const selectedProjectType = projectTypes.find(t => t.id === formData.project_type_id)
+    const showMilestonesTab = selectedProjectType?.has_milestones !== false
+    const showDeliverablesTab = selectedProjectType?.has_deliverables !== false
 
     // Loading & Error
     const [isLoading, setIsLoading] = useState(false)
@@ -64,6 +73,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
 
     // Batch Deliverable Changes
     const [deliverableChanges, setDeliverableChanges] = useState<Record<string, any>>({})
+
+    // Pending Deliverable Deletes (will be deleted on submit)
+    const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set())
 
     // Computed Values
     const totalValue = formData.sold_mandays * formData.manday_rate
@@ -114,6 +126,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                     status_id: projectData.status_id || '',
                     current_milestone_id: projectData.current_milestone_id || '',
                     project_owner_id: projectData.project_owner_id || '',
+                    project_type_id: projectData.project_type_id || '',
                 })
 
                 if (projectData.milestones) {
@@ -175,14 +188,22 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
         }
     }, [mode, project, open])
 
+    // Initialize milestones when milestoneConfigs are loaded (for create mode)
+    useEffect(() => {
+        if (mode === 'create' && open && milestoneConfigs.length > 0 && milestones.length === 0) {
+            initializeMilestonesFromConfigs()
+        }
+    }, [milestoneConfigs, mode, open])
+
     const loadOptions = async () => {
         try {
-            const [cust, empResult, ms, del, stat] = await Promise.all([
+            const [cust, empResult, ms, del, stat, typesResult] = await Promise.all([
                 getCustomers(),
                 getEmployees(),
                 getMilestoneConfigs(),
                 getDeliverableConfigs(),
                 getProjectStatusConfigs(),
+                getProjectTypes(),
             ])
             setCustomers(cust)
             // Handle getEmployees returning { success, data } or array (backward compat if needed)
@@ -195,6 +216,16 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             setMilestoneConfigs(ms)
             setDeliverableConfigs(del)
             setStatusConfigs(stat)
+
+            // Load project types
+            if (typesResult.success && typesResult.data) {
+                setProjectTypes(typesResult.data)
+                // Set default project type (first active one, typically DEV) for create mode
+                if (mode === 'create' && !formData.project_type_id && typesResult.data.length > 0) {
+                    const defaultType = typesResult.data.find(t => t.code === 'DEV') || typesResult.data[0]
+                    setFormData(prev => ({ ...prev, project_type_id: defaultType.id }))
+                }
+            }
         } catch (error) {
             console.error('Failed to load options:', error)
         }
@@ -210,6 +241,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
     }
 
     const resetForm = () => {
+        // Get default project type
+        const defaultType = projectTypes.find(t => t.code === 'DEV') || projectTypes[0]
         setFormData({
             project_year: new Date().getFullYear(),
             project_code: '',
@@ -222,18 +255,48 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             manday_rate: 15000,
             warranty_end_date: '',
             status_id: '',
-            current_milestone_id: '', // Reset
+            current_milestone_id: '',
             project_owner_id: '',
+            project_type_id: defaultType?.id || '',
         })
-        // Start with 4 empty milestone rows
-        setMilestones([
-            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
-            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
-            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
-            { milestone_config_id: '', milestone_name: '', milestone_color: '', weight_percent: 0, weight_ttd: 0, weight_mdc: 0, due_date: '', completed_date: '', planned_mandays: 0, actual_mandays: 0, deliverable_ids: [], deliverables: [], progress_percent: 0, is_locked: false, is_approved: false, kpi_ttd_pass: false, kpi_mdc_pass: false, sort_order: 0, status: undefined },
-        ])
+        // Initialize milestones from configs (sorted by sort_order)
+        initializeMilestonesFromConfigs()
         setActiveTab('info')
         setErrors({})
+    }
+
+    // Initialize milestones from milestone_configs template
+    const initializeMilestonesFromConfigs = () => {
+        if (milestoneConfigs.length > 0) {
+            const initialMilestones = milestoneConfigs
+                .filter(config => config.is_active !== false)
+                .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                .map(config => ({
+                    milestone_config_id: config.id,
+                    milestone_name: config.name,
+                    milestone_color: config.color || '#6B7280',
+                    weight_percent: 0,
+                    weight_ttd: config.ttd_weight || 0,
+                    weight_mdc: config.mdc_weight || 0,
+                    due_date: '',
+                    completed_date: '',
+                    planned_mandays: 0,
+                    actual_mandays: 0,
+                    deliverable_ids: [],
+                    deliverables: [],
+                    progress_percent: 0,
+                    is_locked: false,
+                    is_approved: false,
+                    kpi_ttd_pass: undefined,
+                    kpi_mdc_pass: undefined,
+                    sort_order: config.sort_order || 0,
+                    status: undefined,
+                    is_new: true
+                }))
+            setMilestones(initialMilestones)
+        } else {
+            setMilestones([])
+        }
     }
 
     // Milestone Actions
@@ -299,12 +362,23 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             } else {
                 await updateProject(project!.id, payload)
 
-                // Process batch deliverable updates
+                // Process batch deliverable deletes
+                if (pendingDeletes.size > 0) {
+                    await Promise.all(
+                        Array.from(pendingDeletes).map(id =>
+                            deleteProjectDeliverable(id)
+                        )
+                    )
+                }
+
+                // Process batch deliverable updates (skip deleted ones)
                 if (Object.keys(deliverableChanges).length > 0) {
                     await Promise.all(
-                        Object.entries(deliverableChanges).map(([id, changes]) =>
-                            updateDeliverable(id, changes)
-                        )
+                        Object.entries(deliverableChanges)
+                            .filter(([id]) => !pendingDeletes.has(id))
+                            .map(([id, changes]) =>
+                                updateDeliverable(id, changes)
+                            )
                     )
                 }
             }
@@ -361,31 +435,35 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                     >
                         📋 Project Info
                     </button>
-                    <button
-                        onClick={() => setActiveTab('milestones')}
-                        className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'milestones'
-                            ? 'border-blue-600 text-blue-600'
-                            : 'border-transparent text-slate-600 hover:text-slate-900'
-                            }`}
-                    >
-                        🎯 Milestones
-                        {milestones.length > 0 && (
-                            <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${isWeightValid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                                }`}>
-                                {milestones.length}
-                            </span>
-                        )}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('deliverables')}
-                        className={`pb-4 px-4 text-sm font-medium border-b-2 transition-colors flex items-center ${activeTab === 'deliverables'
-                            ? 'border-blue-600 text-blue-600'
-                            : 'border-transparent text-slate-600 hover:text-slate-900'
-                            }`}
-                    >
-                        📋 Deliverables
-                    </button>
+                    {showMilestonesTab && (
+                        <button
+                            onClick={() => setActiveTab('milestones')}
+                            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'milestones'
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                        >
+                            🎯 Milestones
+                            {milestones.length > 0 && (
+                                <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${isWeightValid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                    {milestones.length}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                    {showDeliverablesTab && (
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('deliverables')}
+                            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'deliverables'
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                        >
+                            📄 Deliverables
+                        </button>
+                    )}
                 </div>
 
                 {/* Body - Fixed height for stability */}
@@ -397,8 +475,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
               Actually conditional render is better for resetting validations if needed, but user asked for "No resize on switch". 
               Fixed height container above (h-[600px] or flex-1) solves the resize issue. 
           */}
-                        {/* Row 1: Year, Code, Status */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Row 1: Year, Code, Type, Status */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <SmartCombobox
                                 label="Project Year"
                                 required
@@ -425,6 +503,38 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                     placeholder="Enter or Auto-gen"
                                 />
                                 {errors.project_code && <p className="text-red-500 text-sm mt-1">{errors.project_code}</p>}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Project Type <span className="text-red-500">*</span>
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={formData.project_type_id}
+                                        onChange={(e) => setFormData({ ...formData, project_type_id: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                                    >
+                                        <option value="">Select type</option>
+                                        {projectTypes.map(type => (
+                                            <option key={type.id} value={type.id}>
+                                                [{type.code}] {type.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {selectedProjectType && (
+                                        <span
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full"
+                                            style={{ backgroundColor: selectedProjectType.color }}
+                                        />
+                                    )}
+                                </div>
+                                {selectedProjectType && (
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        {selectedProjectType.has_milestones ? '✓ Milestones' : '✗ Milestones'}
+                                        {' • '}
+                                        {selectedProjectType.has_deliverables ? '✓ Deliverables' : '✗ Deliverables'}
+                                    </p>
+                                )}
                             </div>
                             <SmartCombobox
                                 label="Status"
@@ -605,6 +715,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                     <div className={`${activeTab === 'deliverables' ? 'block' : 'hidden'} space-y-4`}>
                         <DeliverablesTab
                             milestones={milestones}
+                            deliverableConfigs={deliverableConfigs}
                             onRefresh={() => {
                                 if (project?.id) fetchProjectDetails(project.id)
                             }}
@@ -617,6 +728,10 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                                         [field]: value
                                     }
                                 }))
+                            }}
+                            pendingDeletes={pendingDeletes}
+                            onMarkDelete={(id, name) => {
+                                setPendingDeletes(prev => new Set([...prev, id]))
                             }}
                         />
                     </div>

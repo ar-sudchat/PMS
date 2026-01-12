@@ -13,6 +13,10 @@ export interface Project {
     project_owner_id?: string
     project_owner_name?: string
     project_owner_position?: string
+    project_type_id?: string
+    project_type_code?: string
+    project_type_name?: string
+    project_type_color?: string
     sold_mandays: number
     manday_rate: number
     total_value: number
@@ -103,6 +107,7 @@ export interface MilestoneRow extends ProjectMilestone {
     required_docs?: number
     submitted_required_docs?: number
     required_docs_pass?: boolean
+    is_new?: boolean // Flag for newly created milestones (not yet saved to DB)
 }
 
 export interface ProjectFormData {
@@ -114,6 +119,7 @@ export interface ProjectFormData {
     customer_id: string
     project_manager_id: string
     project_owner_id?: string
+    project_type_id?: string
     sold_mandays: number
     manday_rate: number
     warranty_end_date?: string
@@ -151,8 +157,12 @@ export interface DeliverableConfig {
     code: string
     name: string
     name_th?: string
+    description?: string
+    milestone_config_id?: string
+    milestone_name?: string
     sort_order: number
     is_required: boolean
+    is_active?: boolean
 }
 
 export interface ProjectStatusConfig {

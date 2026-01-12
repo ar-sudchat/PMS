@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { DeliverableConfig, deleteDeliverableConfig } from '@/lib/actions/deliverable-config-actions'
+import { useRouter } from 'next/navigation'
+import { DeliverableConfig, deleteDeliverableConfig, deactivateDeliverableConfig, activateDeliverableConfig } from '@/lib/actions/deliverable-config-actions'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil, Trash2, FileText, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileText, XCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { DeliverableConfigModal } from './DeliverableConfigModal'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -14,10 +15,12 @@ interface DeliverableConfigListProps {
 }
 
 export function DeliverableConfigList({ configs, milestoneConfigs }: DeliverableConfigListProps) {
+    const router = useRouter()
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [modalMode, setModalMode] = useState<'create' | 'edit'>('create')
     const [selectedMilestone, setSelectedMilestone] = useState<{ id: string, name: string } | null>(null)
     const [selectedConfig, setSelectedConfig] = useState<DeliverableConfig | null>(null)
+    const [loadingAction, setLoadingAction] = useState<string | null>(null) // Track which item is loading
 
     // Group configs by milestone
     // We use milestoneConfigs to ensure order and show empty milestones too
@@ -42,13 +45,55 @@ export function DeliverableConfigList({ configs, milestoneConfigs }: Deliverable
     }
 
     const handleDelete = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to delete default document "${name}"? Existing projects will NOT be affected.`)) return
+        if (!confirm(`Are you sure you want to delete "${name}"?\n\nNote: If this template is being used in projects, deletion will fail and you should use "Deactivate" instead.`)) return
 
-        const result = await deleteDeliverableConfig(id)
-        if (result.success) {
-            toast.success('Configuration deleted')
-        } else {
-            toast.error(result.error)
+        setLoadingAction(id)
+        try {
+            const result = await deleteDeliverableConfig(id)
+            if (result.success) {
+                toast.success('Document template deleted')
+                router.refresh()
+            } else {
+                toast.error(result.error || 'Failed to delete')
+            }
+        } catch (error) {
+            toast.error('An error occurred while deleting')
+        } finally {
+            setLoadingAction(null)
+        }
+    }
+
+    const handleDeactivate = async (id: string, name: string) => {
+        setLoadingAction(id)
+        try {
+            const result = await deactivateDeliverableConfig(id)
+            if (result.success) {
+                toast.success(`"${name}" has been deactivated. It will no longer appear for new projects.`)
+                router.refresh()
+            } else {
+                toast.error(result.error || 'Failed to deactivate')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setLoadingAction(null)
+        }
+    }
+
+    const handleActivate = async (id: string, name: string) => {
+        setLoadingAction(id)
+        try {
+            const result = await activateDeliverableConfig(id)
+            if (result.success) {
+                toast.success(`"${name}" has been activated`)
+                router.refresh()
+            } else {
+                toast.error(result.error || 'Failed to activate')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setLoadingAction(null)
         }
     }
 
@@ -96,43 +141,91 @@ export function DeliverableConfigList({ configs, milestoneConfigs }: Deliverable
                                         </td>
                                     </tr>
                                 ) : (
-                                    group.items.map((item: any, idx: number) => (
-                                        <tr key={item.id} className="hover:bg-slate-50/50 group transition-colors">
-                                            <td className="px-6 py-3 text-center text-slate-400">{item.sort_order}</td>
-                                            <td className="px-6 py-3 font-medium text-slate-700 flex items-center gap-2">
-                                                <FileText className="w-4 h-4 text-slate-400" />
-                                                {item.name}
-                                            </td>
-                                            <td className="px-6 py-3 text-slate-500">{item.name_th || '-'}</td>
-                                            <td className="px-6 py-3 text-center">
-                                                {item.is_required ? (
-                                                    <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">Yes</span>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs">Optional</span>
+                                    group.items.map((item: any, idx: number) => {
+                                        const isInactive = item.is_active === false
+                                        const isLoading = loadingAction === item.id
+
+                                        return (
+                                            <tr
+                                                key={item.id}
+                                                className={cn(
+                                                    "hover:bg-slate-50/50 group transition-colors",
+                                                    isInactive && "opacity-50 bg-slate-50"
                                                 )}
-                                            </td>
-                                            <td className="px-6 py-3 text-right">
-                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                                        onClick={() => handleEdit(item)}
-                                                    >
-                                                        <Pencil className="w-4 h-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                                        onClick={() => handleDelete(item.id, item.name)}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                            >
+                                                <td className="px-6 py-3 text-center text-slate-400">{item.sort_order}</td>
+                                                <td className="px-6 py-3 font-medium text-slate-700">
+                                                    <div className="flex items-center gap-2">
+                                                        <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                                        <span>{item.name}</span>
+                                                        {isInactive && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 text-xs">Inactive</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-3 text-slate-500">{item.name_th || '-'}</td>
+                                                <td className="px-6 py-3 text-center">
+                                                    {item.is_required ? (
+                                                        <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">Yes</span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs">Optional</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-3 text-right">
+                                                    {isLoading ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin text-slate-400 ml-auto" />
+                                                    ) : (
+                                                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {/* Edit Button */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleEdit(item)}
+                                                                title="Edit"
+                                                                className="h-8 w-8"
+                                                            >
+                                                                <Pencil className="h-4 w-4 text-slate-400 hover:text-blue-600" />
+                                                            </Button>
+
+                                                            {/* Activate/Deactivate Button */}
+                                                            {isInactive ? (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => handleActivate(item.id, item.name)}
+                                                                    title="Activate"
+                                                                    className="h-8 w-8"
+                                                                >
+                                                                    <CheckCircle className="h-4 w-4 text-slate-400 hover:text-green-600" />
+                                                                </Button>
+                                                            ) : (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => handleDeactivate(item.id, item.name)}
+                                                                    title="Deactivate"
+                                                                    className="h-8 w-8"
+                                                                >
+                                                                    <XCircle className="h-4 w-4 text-slate-400 hover:text-orange-600" />
+                                                                </Button>
+                                                            )}
+
+                                                            {/* Delete Button */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleDelete(item.id, item.name)}
+                                                                title="Delete"
+                                                                className="h-8 w-8"
+                                                            >
+                                                                <Trash2 className="h-4 w-4 text-slate-400 hover:text-red-600" />
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })
                                 )}
                             </tbody>
                         </table>

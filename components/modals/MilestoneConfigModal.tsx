@@ -56,6 +56,8 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
         is_active: true,
         kpi_weight_ttd: 0,
         kpi_weight_mdc: 0,
+        is_go_live: false,
+        is_post_go_live: false,
     });
 
     useEffect(() => {
@@ -71,6 +73,8 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                 is_active: data.is_active,
                 kpi_weight_ttd: data.kpi_weight_ttd || 0,
                 kpi_weight_mdc: data.kpi_weight_mdc || 0,
+                is_go_live: data.is_go_live || false,
+                is_post_go_live: data.is_post_go_live || false,
             });
         } else {
             setFormData({
@@ -84,6 +88,8 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                 is_active: true,
                 kpi_weight_ttd: 0,
                 kpi_weight_mdc: 0,
+                is_go_live: false,
+                is_post_go_live: false,
             });
         }
     }, [mode, data, open]);
@@ -231,6 +237,48 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                     placeholder="อธิบายรายละเอียดของ Milestone นี้..."
                     rows={3}
                 />
+
+                {/* KPI Flags Section */}
+                <div className="border-t border-slate-200 pt-4 mt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm font-medium text-slate-700">KPI Flags</span>
+                        <span className="text-xs text-slate-500">(สำหรับคำนวณ Post Go-Live Rework)</span>
+                    </div>
+
+                    <div className="space-y-3 bg-slate-50 rounded-lg p-4">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={formData.is_go_live}
+                                onChange={(e) => setFormData({ ...formData, is_go_live: e.target.checked })}
+                                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                            />
+                            <div>
+                                <span className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    Is Go-Live Milestone
+                                    {formData.is_go_live && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs">Go-Live</span>}
+                                </span>
+                                <p className="text-xs text-slate-500 mt-0.5">Milestone นี้คือจุด Go-Live (เริ่มนับ Rework หลังจากนี้)</p>
+                            </div>
+                        </label>
+
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={formData.is_post_go_live}
+                                onChange={(e) => setFormData({ ...formData, is_post_go_live: e.target.checked })}
+                                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div>
+                                <span className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                                    Is Post Go-Live Period
+                                    {formData.is_post_go_live && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">Post GL</span>}
+                                </span>
+                                <p className="text-xs text-slate-500 mt-0.5">Milestone นี้คือจุดสิ้นสุด Post Go-Live (หยุดนับ Rework)</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
             </div>
 
             {/* Footer */}

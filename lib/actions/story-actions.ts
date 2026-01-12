@@ -104,10 +104,18 @@ export async function getStoryById(id: string) {
   try {
     const pool = await getConnection()
 
+    // Check if name_th column exists in task_type_configs
+    const columnCheck = await pool.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'task_type_configs'
+      AND COLUMN_NAME = 'name_th'
+    `)
+    const hasTaskTypeNameTh = columnCheck.recordset.length > 0
+
     const storyResult = await pool.request()
       .input('id', sql.UniqueIdentifier, id)
       .query(`
-        SELECT 
+        SELECT
           s.*,
           p.project_code,
           p.name AS project_name,
@@ -130,16 +138,18 @@ export async function getStoryById(id: string) {
 
     const story = storyResult.recordset[0]
 
+    const taskTypeNameColumn = hasTaskTypeNameTh ? 'ttc.name_th' : 'ttc.name'
+
     const tasksResult = await pool.request()
       .input('storyId', sql.UniqueIdentifier, id)
       .query(`
-        SELECT 
+        SELECT
           t.*,
           CONCAT(ea.first_name_th, ' ', ea.last_name_th) AS assignee_name,
           ea.employee_code AS assignee_code,
           pa.code AS assignee_position,
           CONCAT(er.first_name_th, ' ', er.last_name_th) AS reviewer_name,
-          ttc.name_th AS task_type_name,
+          ${taskTypeNameColumn} AS task_type_name,
           ttc.color AS task_type_color,
           ttc.icon AS task_type_icon
         FROM pms.tasks t

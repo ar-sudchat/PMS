@@ -35,6 +35,16 @@ export interface Task {
     due_date: string | null
 }
 
+// Helper to check if task_type_configs has name_th column
+async function checkTaskTypeNameThColumn(pool: any): Promise<boolean> {
+    const columnCheck = await pool.request().query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'task_type_configs'
+        AND COLUMN_NAME = 'name_th'
+    `)
+    return columnCheck.recordset.length > 0
+}
+
 // ============================================
 // GET TASK BY ID
 // ============================================
@@ -42,14 +52,16 @@ export interface Task {
 export async function getTaskById(taskId: string) {
     try {
         const pool = await getConnection()
+        const hasTaskTypeNameTh = await checkTaskTypeNameThColumn(pool)
+        const taskTypeNameCol = hasTaskTypeNameTh ? 'ttc.name_th' : 'ttc.name'
 
         const result = await pool.request()
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`
-        SELECT 
+        SELECT
           t.id, t.task_code, t.title, t.description, t.story_id, s.story_code,
           p.id AS project_id, p.project_code, mc.code AS milestone_code,
-          t.task_type, ttc.name_th AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
+          t.task_type, ${taskTypeNameCol} AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
           t.assignee_id, CONCAT(assignee.first_name_th, ' ', assignee.last_name_th) AS assignee_name, assignee.nickname AS assignee_nickname,
           t.reviewer_id, CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th) AS reviewer_name,
           t.priority, t.[status], t.estimated_hours, t.actual_hours, t.due_date
@@ -83,14 +95,16 @@ export async function getTaskById(taskId: string) {
 export async function getTasksByStory(storyId: string) {
     try {
         const pool = await getConnection()
+        const hasTaskTypeNameTh = await checkTaskTypeNameThColumn(pool)
+        const taskTypeNameCol = hasTaskTypeNameTh ? 'ttc.name_th' : 'ttc.name'
 
         const result = await pool.request()
             .input('storyId', sql.UniqueIdentifier, storyId)
             .query(`
-        SELECT 
+        SELECT
           t.id, t.task_code, t.title, t.description, t.story_id, s.story_code,
           p.id AS project_id, p.project_code, mc.code AS milestone_code,
-          t.task_type, ttc.name_th AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
+          t.task_type, ${taskTypeNameCol} AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
           t.assignee_id, CONCAT(assignee.first_name_th, ' ', assignee.last_name_th) AS assignee_name, assignee.nickname AS assignee_nickname,
           t.reviewer_id, CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th) AS reviewer_name,
           t.priority, t.[status], t.estimated_hours, t.actual_hours, t.due_date
@@ -127,12 +141,14 @@ export async function getTasksByProject(projectId: string, filters?: {
 }) {
     try {
         const pool = await getConnection()
+        const hasTaskTypeNameTh = await checkTaskTypeNameThColumn(pool)
+        const taskTypeNameCol = hasTaskTypeNameTh ? 'ttc.name_th' : 'ttc.name'
 
         let query = `
-      SELECT 
+      SELECT
         t.id, t.task_code, t.title, t.description, t.story_id, s.story_code,
         p.id AS project_id, p.project_code, mc.code AS milestone_code,
-        t.task_type, ttc.name_th AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
+        t.task_type, ${taskTypeNameCol} AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
         t.assignee_id, CONCAT(assignee.first_name_th, ' ', assignee.last_name_th) AS assignee_name, assignee.nickname AS assignee_nickname,
         t.reviewer_id, CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th) AS reviewer_name,
         t.priority, t.[status], t.estimated_hours, t.actual_hours, t.due_date
@@ -378,13 +394,22 @@ export async function deleteTask(taskId: string) {
 export async function getTaskTypes() {
     try {
         const pool = await getConnection()
-        const result = await pool.request().query(`
-            SELECT code as value, name as label, name, name_th, color, icon, is_defect
-            FROM pms.task_type_configs
-            WHERE is_active = 1
-            ORDER BY sort_order
-        `)
 
+        // Check if name_th column exists
+        const columnCheck = await pool.request().query(`
+            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'task_type_configs'
+            AND COLUMN_NAME = 'name_th'
+        `)
+        const hasNameTh = columnCheck.recordset.length > 0
+
+        const query = hasNameTh
+            ? `SELECT code as value, name as label, name, name_th, color, icon, is_defect
+               FROM pms.task_type_configs WHERE is_active = 1 ORDER BY sort_order`
+            : `SELECT code as value, name as label, name, NULL as name_th, color, icon, is_defect
+               FROM pms.task_type_configs WHERE is_active = 1 ORDER BY sort_order`
+
+        const result = await pool.request().query(query)
         return result.recordset
     } catch (error) {
         console.error('getTaskTypes error:', error)

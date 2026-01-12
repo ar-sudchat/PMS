@@ -13,6 +13,16 @@ export interface DepartmentFormData {
     color?: string;
 }
 
+// Helper to check if name_th column exists in departments table
+async function checkDepartmentNameThColumn(pool: any): Promise<boolean> {
+    const columnCheck = await pool.request().query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'departments'
+        AND COLUMN_NAME = 'name_th'
+    `)
+    return columnCheck.recordset.length > 0
+}
+
 export async function getDepartments() {
     const pool = await getConnection()
     const result = await pool.request()
@@ -23,19 +33,31 @@ export async function getDepartments() {
 export async function createDepartment(data: DepartmentFormData) {
     try {
         const pool = await getConnection()
-        const result = await pool.request()
+        const hasNameTh = await checkDepartmentNameThColumn(pool)
+
+        const request = pool.request()
             .input('name', data.name)
-            .input('name_th', data.name_th)
             .input('code', data.code)
             .input('description', data.description)
             .input('head_id', data.head_id || null)
             .input('parent_id', data.parent_id || null)
             .input('color', data.color)
-            .query(`
-          INSERT INTO pms.departments (name, name_th, code, description, head_id, parent_id, color)
-          OUTPUT INSERTED.id
-          VALUES (@name, @name_th, @code, @description, @head_id, @parent_id, @color)
-        `)
+
+        let result
+        if (hasNameTh) {
+            request.input('name_th', data.name_th)
+            result = await request.query(`
+                INSERT INTO pms.departments (name, name_th, code, description, head_id, parent_id, color)
+                OUTPUT INSERTED.id
+                VALUES (@name, @name_th, @code, @description, @head_id, @parent_id, @color)
+            `)
+        } else {
+            result = await request.query(`
+                INSERT INTO pms.departments (name, code, description, head_id, parent_id, color)
+                OUTPUT INSERTED.id
+                VALUES (@name, @code, @description, @head_id, @parent_id, @color)
+            `)
+        }
 
         revalidatePath('/team/departments')
         return { success: true, id: result.recordset[0].id }
@@ -48,28 +70,46 @@ export async function createDepartment(data: DepartmentFormData) {
 export async function updateDepartment(id: string, data: DepartmentFormData) {
     try {
         const pool = await getConnection()
-        await pool.request()
+        const hasNameTh = await checkDepartmentNameThColumn(pool)
+
+        const request = pool.request()
             .input('id', id)
             .input('name', data.name)
-            .input('name_th', data.name_th)
             .input('code', data.code)
             .input('description', data.description)
             .input('head_id', data.head_id || null)
             .input('parent_id', data.parent_id || null)
             .input('color', data.color)
-            .query(`
-          UPDATE pms.departments 
-          SET 
-            name = @name,
-            name_th = @name_th,
-            code = @code,
-            description = @description,
-            head_id = @head_id,
-            parent_id = @parent_id,
-            color = @color,
-            updated_at = GETDATE()
-          WHERE id = @id
-        `)
+
+        if (hasNameTh) {
+            request.input('name_th', data.name_th)
+            await request.query(`
+                UPDATE pms.departments
+                SET
+                    name = @name,
+                    name_th = @name_th,
+                    code = @code,
+                    description = @description,
+                    head_id = @head_id,
+                    parent_id = @parent_id,
+                    color = @color,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+        } else {
+            await request.query(`
+                UPDATE pms.departments
+                SET
+                    name = @name,
+                    code = @code,
+                    description = @description,
+                    head_id = @head_id,
+                    parent_id = @parent_id,
+                    color = @color,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+        }
 
         revalidatePath('/team/departments')
         return { success: true }

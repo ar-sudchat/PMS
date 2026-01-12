@@ -57,8 +57,9 @@ export function GanttChart({
       {
         name: 'start_date', label: 'Start', width: 85, align: 'center',
         template: (task: any) => {
-          if (!task.start_date || task.unscheduled) return '-'
-          const d = new Date(task.start_date)
+          // ใช้ original_start_date เพื่อตรวจสอบว่ามีวันที่จริงหรือไม่
+          if (!task.original_start_date || task.unscheduled) return '-'
+          const d = new Date(task.original_start_date)
           return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })
         }
       },
@@ -66,7 +67,9 @@ export function GanttChart({
         name: 'duration', label: 'Days', width: 50, align: 'center',
         template: (task: any) => {
           if (task.type === 'milestone') return '-'
-          return task.duration || '-'
+          // ใช้ original_duration เพื่อแสดงค่าจริง ถ้าไม่มีให้แสดง '-'
+          if (task.unscheduled || !task.original_duration) return '-'
+          return task.original_duration
         }
       },
       {
@@ -403,25 +406,34 @@ export function GanttChart({
     const gantt = ganttInstanceRef.current
     if (!gantt || !isInitialized || !data) return
 
-    // แปลง NULL dates เป็นวันที่ปัจจุบัน เพื่อให้รายการไม่หายเมื่อเลื่อนช่วงเวลา
-    // แต่เก็บ flag unscheduled เพื่อไม่วาดแท่ง
+    // เก็บ flag unscheduled สำหรับ items ที่ไม่มีวันที่จริง
+    // dhtmlx-gantt ต้องการ start_date เพื่อให้รายการแสดงในตาราง
+    // แต่เราจะใช้ duration = 0 เพื่อไม่ให้วาดแท่ง
     const today = new Date().toISOString().split('T')[0]
 
     const processedData = {
       ...data,
       data: data.data.map(task => {
-        // Task/Story ถือว่า unscheduled ถ้า:
-        // 1. ไม่มี start_date หรือ end_date (NULL จาก SQL)
-        // 2. หรือ duration = 0 (Story ที่ SQL ใช้ COALESCE แล้วแต่ยังไม่มีวันที่จริง)
-        const hasNoDate = !task.start_date || !task.end_date
-        const isUnscheduled = hasNoDate || (task.duration === 0 && task.entity_type === 'task')
+        // ตรวจสอบว่ามีวันที่จริงหรือไม่
+        const hasStartDate = !!task.start_date
+        const hasEndDate = !!task.end_date
+        const hasNoDate = !hasStartDate || !hasEndDate
+
+        // unscheduled = ไม่มีวันที่ หรือ duration = 0
+        const isUnscheduled = hasNoDate || task.duration === 0
 
         return {
           ...task,
+          // กำหนดวันที่ให้ dhtmlx ใช้แสดง row แต่เก็บ flag ว่าไม่มีวันที่จริง
           start_date: task.start_date || today,
           end_date: task.end_date || today,
-          duration: hasNoDate ? 0 : task.duration, // duration = 0 จะไม่วาดแท่ง
-          unscheduled: isUnscheduled // flag สำหรับแสดง UI ว่ายังไม่กำหนดวันที่
+          // duration = 0 จะทำให้ไม่วาดแท่ง Gantt
+          duration: isUnscheduled ? 0 : task.duration,
+          // เก็บค่าจริงเพื่อแสดงใน column
+          original_start_date: task.start_date,
+          original_end_date: task.end_date,
+          original_duration: task.duration,
+          unscheduled: isUnscheduled
         }
       })
     }
