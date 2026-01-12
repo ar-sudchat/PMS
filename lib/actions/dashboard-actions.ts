@@ -683,9 +683,9 @@ export async function getProjectHealthDetail(projectId: string): Promise<{
         const projectResult = await pool.request()
             .input('projectId', sql.UniqueIdentifier, projectId)
             .query(`
-                SELECT 
+                SELECT
                     p.id, p.project_code AS code, p.name, c.name AS customer_name,
-                    p.status, p.start_date, p.target_end_date
+                    p.status, p.start_date, p.end_date
                 FROM pms.projects p
                 LEFT JOIN pms.customers c ON p.customer_id = c.id
                 WHERE p.id = @projectId
