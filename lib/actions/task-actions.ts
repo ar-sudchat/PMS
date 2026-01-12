@@ -29,7 +29,8 @@ export interface Task {
     reviewer_id: string | null
     reviewer_name: string | null
     priority: 'critical' | 'high' | 'medium' | 'low'
-    status: 'todo' | 'in_progress' | 'review' | 'done' | 'blocked' | 'cancelled'
+    status: 'todo' | 'in_progress' | 'review' | 'done' | 'done_not_planned' | 'blocked' | 'cancelled'
+    not_as_planned_reason?: string | null
     estimated_hours: number | null
     actual_hours: number
     due_date: string | null
@@ -278,6 +279,7 @@ export async function updateTask(taskId: string, data: Partial<{
     status: string
     estimated_hours: number
     due_date: string
+    not_as_planned_reason: string
 }>) {
     try {
         const user = await getCurrentUser()
@@ -316,7 +318,14 @@ export async function updateTask(taskId: string, data: Partial<{
         if (data.status !== undefined) {
             updates.push('[status] = @status')
             request.input('status', sql.NVarChar, data.status)
-            if (data.status === 'done') updates.push('completed_date = GETDATE()')
+            // Set completed_date for both 'done' and 'done_not_planned'
+            if (data.status === 'done' || data.status === 'done_not_planned') {
+                updates.push('completed_date = GETDATE()')
+            }
+        }
+        if (data.not_as_planned_reason !== undefined) {
+            updates.push('not_as_planned_reason = @notAsPlannedReason')
+            request.input('notAsPlannedReason', sql.NVarChar, data.not_as_planned_reason || null)
         }
         if (data.estimated_hours !== undefined) {
             updates.push('estimated_hours = @estimatedHours')

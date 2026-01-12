@@ -53,6 +53,30 @@ export interface TaskDetail {
     hours_logged: number | null
 }
 
+// New KPI Types for Done vs Done (Not as Planned)
+export interface IssueClearingKPIResult {
+    employee_id: string
+    employee_name: string
+    year: number
+    month: number | null
+    total_completed: number
+    done_as_planned: number
+    done_not_as_planned: number
+    clearing_rate: number
+    is_pass: boolean
+}
+
+export interface TaskNotAsPlanned {
+    id: string
+    task_code: string
+    title: string
+    assignee_name: string
+    completed_date: string
+    not_as_planned_reason: string | null
+    project_code: string
+    project_name: string
+}
+
 export interface IssueClearingFilters {
     year: number
     month: number
@@ -262,5 +286,198 @@ export async function getActiveEmployeesForIssueClearing() {
     } catch (error) {
         console.error('Error fetching active employees:', error)
         return { success: false, error: 'Failed to fetch employees', data: [] }
+    }
+}
+
+// ============================================
+// NEW KPI FUNCTIONS: Done vs Done (Not as Planned)
+// ============================================
+
+/**
+ * Get Issue Clearing KPI based on task status (done vs done_not_planned)
+ * KPI = (done_as_planned / total_completed) * 100
+ * Target: >= 85%
+ */
+export async function getIssueClearingKPI(params: {
+    employeeId?: string
+    year: number
+    month?: number
+}): Promise<{ success: boolean; data: IssueClearingKPIResult[]; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        let whereClause = `
+            t.status IN ('done', 'done_not_planned')
+            AND t.completed_date IS NOT NULL
+            AND t.is_active = 1
+            AND YEAR(t.completed_date) = @year
+        `
+        if (params.month) {
+            whereClause += ` AND MONTH(t.completed_date) = @month`
+        }
+        if (params.employeeId) {
+            whereClause += ` AND t.assignee_id = @employeeId`
+        }
+
+        const result = await pool.request()
+            .input('year', params.year)
+            .input('month', params.month || null)
+            .input('employeeId', params.employeeId || null)
+            .query(`
+                SELECT
+                    t.assignee_id AS employee_id,
+                    COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS employee_name,
+                    ${params.year} AS year,
+                    ${params.month ? params.month : 'NULL'} AS month,
+                    COUNT(*) AS total_completed,
+                    SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done_as_planned,
+                    SUM(CASE WHEN t.status = 'done_not_planned' THEN 1 ELSE 0 END) AS done_not_as_planned,
+                    CAST(
+                        CASE
+                            WHEN COUNT(*) > 0
+                            THEN (SUM(CASE WHEN t.status = 'done' THEN 1.0 ELSE 0 END) / COUNT(*)) * 100
+                            ELSE 100
+                        END
+                    AS DECIMAL(5,2)) AS clearing_rate
+                FROM pms.tasks t
+                INNER JOIN pms.employees e ON t.assignee_id = e.id
+                WHERE ${whereClause}
+                GROUP BY
+                    t.assignee_id,
+                    COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name)
+                ORDER BY clearing_rate DESC
+            `)
+
+        const data: IssueClearingKPIResult[] = result.recordset.map((r: any) => ({
+            ...r,
+            is_pass: r.clearing_rate >= 85
+        }))
+
+        return { success: true, data }
+    } catch (error: any) {
+        console.error('Error fetching issue clearing KPI:', error)
+        return { success: false, data: [], error: error.message }
+    }
+}
+
+/**
+ * Get Tasks completed "Not as Planned" for detail view
+ */
+export async function getTasksNotAsPlanned(params: {
+    employeeId?: string
+    year: number
+    month?: number
+}): Promise<{ success: boolean; data: TaskNotAsPlanned[]; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        let whereClause = `
+            t.status = 'done_not_planned'
+            AND t.is_active = 1
+            AND YEAR(t.completed_date) = @year
+        `
+        if (params.month) {
+            whereClause += ` AND MONTH(t.completed_date) = @month`
+        }
+        if (params.employeeId) {
+            whereClause += ` AND t.assignee_id = @employeeId`
+        }
+
+        const result = await pool.request()
+            .input('year', params.year)
+            .input('month', params.month || null)
+            .input('employeeId', params.employeeId || null)
+            .query(`
+                SELECT
+                    t.id,
+                    t.task_code,
+                    t.title,
+                    COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS assignee_name,
+                    t.completed_date,
+                    t.not_as_planned_reason,
+                    p.project_code,
+                    p.name AS project_name
+                FROM pms.tasks t
+                INNER JOIN pms.employees e ON t.assignee_id = e.id
+                LEFT JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.projects p ON s.project_id = p.id
+                WHERE ${whereClause}
+                ORDER BY t.completed_date DESC
+            `)
+
+        return { success: true, data: result.recordset }
+    } catch (error: any) {
+        console.error('Error fetching tasks not as planned:', error)
+        return { success: false, data: [], error: error.message }
+    }
+}
+
+/**
+ * Get KPI Summary by Month for a Year (for chart)
+ */
+export async function getIssueClearingMonthlyTrend(params: {
+    employeeId?: string
+    year: number
+}): Promise<{ success: boolean; data: any[]; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        let whereClause = `
+            t.status IN ('done', 'done_not_planned')
+            AND t.completed_date IS NOT NULL
+            AND t.is_active = 1
+            AND YEAR(t.completed_date) = @year
+        `
+        if (params.employeeId) {
+            whereClause += ` AND t.assignee_id = @employeeId`
+        }
+
+        const result = await pool.request()
+            .input('year', params.year)
+            .input('employeeId', params.employeeId || null)
+            .query(`
+                SELECT
+                    MONTH(t.completed_date) AS month,
+                    COUNT(*) AS total_completed,
+                    SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done_as_planned,
+                    SUM(CASE WHEN t.status = 'done_not_planned' THEN 1 ELSE 0 END) AS done_not_as_planned,
+                    CAST(
+                        CASE
+                            WHEN COUNT(*) > 0
+                            THEN (SUM(CASE WHEN t.status = 'done' THEN 1.0 ELSE 0 END) / COUNT(*)) * 100
+                            ELSE 100
+                        END
+                    AS DECIMAL(5,2)) AS clearing_rate
+                FROM pms.tasks t
+                WHERE ${whereClause}
+                GROUP BY MONTH(t.completed_date)
+                ORDER BY month
+            `)
+
+        // Fill missing months with 100% (no data = pass)
+        const monthlyData = []
+        for (let m = 1; m <= 12; m++) {
+            const found = result.recordset.find((r: any) => r.month === m)
+            if (found) {
+                monthlyData.push({
+                    ...found,
+                    is_pass: found.clearing_rate >= 85
+                })
+            } else {
+                monthlyData.push({
+                    month: m,
+                    total_completed: 0,
+                    done_as_planned: 0,
+                    done_not_as_planned: 0,
+                    clearing_rate: 100,
+                    is_pass: true
+                })
+            }
+        }
+
+        return { success: true, data: monthlyData }
+    } catch (error: any) {
+        console.error('Error fetching monthly trend:', error)
+        return { success: false, data: [], error: error.message }
     }
 }
