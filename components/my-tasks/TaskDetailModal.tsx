@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { MyTask } from '@/lib/actions/my-tasks-actions'
 import { getTimeEntriesForTask, deleteTimeEntry, TaskTimeEntry } from '@/lib/actions/timesheet-actions'
+import { getChecklistItems, toggleChecklistItem, ChecklistItem } from '@/lib/actions/checklist-actions'
 import { format } from 'date-fns'
-import { Calendar, Clock, CheckSquare, AlignLeft, AlertCircle, Trash2, History } from 'lucide-react'
+import { Calendar, Clock, CheckSquare, AlignLeft, AlertCircle, Trash2, History, ListChecks, Square, CheckSquare2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TaskStatusSelect } from '@/components/tasks/TaskStatusSelect'
 import { toast } from 'sonner'
@@ -22,10 +23,14 @@ interface TaskDetailModalProps {
 export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusChange, onDataChange }: TaskDetailModalProps) {
     const [timeEntries, setTimeEntries] = useState<TaskTimeEntry[]>([])
     const [loadingEntries, setLoadingEntries] = useState(false)
+    const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
+    const [loadingChecklist, setLoadingChecklist] = useState(false)
+    const [togglingItem, setTogglingItem] = useState<string | null>(null)
 
     useEffect(() => {
         if (open && task) {
             loadTimeEntries()
+            loadChecklistItems()
         }
     }, [open, task])
 
@@ -40,6 +45,41 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
         } finally {
             setLoadingEntries(false)
         }
+    }
+
+    const loadChecklistItems = async () => {
+        if (!task) return
+        setLoadingChecklist(true)
+        try {
+            const items = await getChecklistItems(task.task_id)
+            setChecklistItems(items)
+        } catch (error) {
+            console.error('Failed to load checklist items:', error)
+        } finally {
+            setLoadingChecklist(false)
+        }
+    }
+
+    const handleToggleChecklist = async (item: ChecklistItem) => {
+        setTogglingItem(item.id)
+        const newState = !item.is_completed
+
+        // Optimistic update
+        setChecklistItems(prev => prev.map(i =>
+            i.id === item.id ? { ...i, is_completed: newState } : i
+        ))
+
+        const result = await toggleChecklistItem(item.id, newState)
+        if (result.success) {
+            if (onDataChange) onDataChange() // Notify parent to refresh task data (for checklist_completed count)
+        } else {
+            // Revert on error
+            setChecklistItems(prev => prev.map(i =>
+                i.id === item.id ? { ...i, is_completed: !newState } : i
+            ))
+            toast.error(result.error || 'ไม่สามารถอัพเดทได้')
+        }
+        setTogglingItem(null)
     }
 
     const handleDeleteEntry = async (entryId: string) => {
@@ -118,6 +158,83 @@ export function TaskDetailModal({ open, onOpenChange, task, onLogTime, onStatusC
                                 <div className="bg-green-50/50 p-4 rounded-lg text-sm text-slate-700 whitespace-pre-wrap border border-green-100">
                                     {task.acceptance_criteria}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Checklist */}
+                        {(checklistItems.length > 0 || loadingChecklist) && (
+                            <div>
+                                <h4 className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">
+                                    <ListChecks className="w-4 h-4 text-emerald-500" />
+                                    Checklist
+                                    {checklistItems.length > 0 && (
+                                        <span className={cn(
+                                            "text-xs font-normal px-2 py-0.5 rounded-full",
+                                            checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                                ? "bg-emerald-100 text-emerald-700"
+                                                : "bg-slate-100 text-slate-500"
+                                        )}>
+                                            {checklistItems.filter(i => i.is_completed).length}/{checklistItems.length}
+                                        </span>
+                                    )}
+                                </h4>
+
+                                {loadingChecklist ? (
+                                    <div className="text-sm text-slate-500 text-center py-4">กำลังโหลด...</div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        {checklistItems.map((item) => (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => handleToggleChecklist(item)}
+                                                disabled={togglingItem === item.id}
+                                                className={cn(
+                                                    "w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left",
+                                                    item.is_completed
+                                                        ? "bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50"
+                                                        : "bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50",
+                                                    togglingItem === item.id && "opacity-60"
+                                                )}
+                                            >
+                                                {item.is_completed ? (
+                                                    <CheckSquare2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                                                ) : (
+                                                    <Square className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                                                )}
+                                                <span className={cn(
+                                                    "text-sm flex-1",
+                                                    item.is_completed ? "text-slate-500 line-through" : "text-slate-700"
+                                                )}>
+                                                    {item.title}
+                                                </span>
+                                                {item.is_completed && item.completed_by_name && (
+                                                    <span className="text-xs text-slate-400">
+                                                        {item.completed_by_name}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Progress bar */}
+                                {checklistItems.length > 0 && (
+                                    <div className="mt-3">
+                                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                                className={cn(
+                                                    "h-full rounded-full transition-all",
+                                                    checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                                        ? "bg-emerald-500"
+                                                        : "bg-emerald-400"
+                                                )}
+                                                style={{
+                                                    width: `${(checklistItems.filter(i => i.is_completed).length / checklistItems.length) * 100}%`
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 

@@ -5,13 +5,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { MyTask } from '@/lib/actions/my-tasks-actions'
 import { logTimeEntry } from '@/lib/actions/timesheet-actions'
 import { format } from 'date-fns'
-import { Calendar, Clock, Loader2, ArrowRightLeft } from 'lucide-react'
+import { Calendar, Clock, Loader2, ArrowRightLeft, ListChecks, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { getTaskTypes } from '@/lib/actions/task-actions'
+import { getChecklistItems, toggleChecklistItem, ChecklistItem } from '@/lib/actions/checklist-actions'
 
 interface QuickLogTimeModalProps {
     open: boolean
@@ -29,6 +30,10 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
     const [isOvertime, setIsOvertime] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [activityOptions, setActivityOptions] = useState<{ value: string, label: string }[]>([])
+
+    // Checklist State
+    const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
+    const [loadingChecklist, setLoadingChecklist] = useState(false)
 
     // Time Unit State
     const [timeUnit, setTimeUnit] = useState<TimeUnit>('hours')
@@ -76,8 +81,53 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
             setDescription('')
             setIsOvertime(false)
             setDisplayConversion('')
+
+            // Load checklist items
+            if (task?.task_id) {
+                loadChecklistItems(task.task_id)
+            }
         }
     }, [open, activityOptions, task])
+
+    // Load checklist items for the task
+    const loadChecklistItems = async (taskId: string) => {
+        setLoadingChecklist(true)
+        try {
+            const items = await getChecklistItems(taskId)
+            setChecklistItems(items)
+        } catch (error) {
+            console.error('Failed to load checklist:', error)
+            setChecklistItems([])
+        } finally {
+            setLoadingChecklist(false)
+        }
+    }
+
+    // Handle checklist item toggle
+    const handleToggleChecklist = async (item: ChecklistItem) => {
+        const newValue = !item.is_completed
+        // Optimistic update
+        setChecklistItems(prev =>
+            prev.map(i => i.id === item.id ? { ...i, is_completed: newValue } : i)
+        )
+
+        try {
+            const result = await toggleChecklistItem(item.id, newValue)
+            if (!result.success) {
+                // Revert on error
+                setChecklistItems(prev =>
+                    prev.map(i => i.id === item.id ? { ...i, is_completed: !newValue } : i)
+                )
+                toast.error('Failed to update checklist')
+            }
+        } catch (error) {
+            // Revert on error
+            setChecklistItems(prev =>
+                prev.map(i => i.id === item.id ? { ...i, is_completed: !newValue } : i)
+            )
+            toast.error('Failed to update checklist')
+        }
+    }
 
     // Handle Input Change
     const handleInputChange = (val: string) => {
@@ -260,11 +310,76 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            rows={3}
+                            rows={2}
                             placeholder="What did you work on?"
                             className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                         />
                     </div>
+
+                    {/* Checklist Section */}
+                    {checklistItems.length > 0 && (
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                                    <ListChecks className="w-3.5 h-3.5 text-emerald-500" />
+                                    Checklist
+                                </label>
+                                <span className={cn(
+                                    "text-xs font-medium",
+                                    checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                        ? "text-emerald-600"
+                                        : "text-slate-400"
+                                )}>
+                                    {checklistItems.filter(i => i.is_completed).length}/{checklistItems.length}
+                                </span>
+                            </div>
+                            <div className="border border-slate-200 rounded-md divide-y divide-slate-100 max-h-[120px] overflow-y-auto">
+                                {loadingChecklist ? (
+                                    <div className="p-3 text-center text-sm text-slate-400">
+                                        <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                                        Loading...
+                                    </div>
+                                ) : (
+                                    checklistItems.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className={cn(
+                                                "flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors",
+                                                item.is_completed && "bg-emerald-50/50"
+                                            )}
+                                            onClick={() => handleToggleChecklist(item)}
+                                        >
+                                            {item.is_completed ? (
+                                                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                            ) : (
+                                                <Circle className="w-4 h-4 text-slate-300 flex-shrink-0" />
+                                            )}
+                                            <span className={cn(
+                                                "text-sm flex-1",
+                                                item.is_completed ? "text-slate-500 line-through" : "text-slate-700"
+                                            )}>
+                                                {item.title}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                            {/* Progress bar */}
+                            <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+                                <div
+                                    className={cn(
+                                        "h-full rounded-full transition-all",
+                                        checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                            ? "bg-emerald-500"
+                                            : "bg-emerald-400"
+                                    )}
+                                    style={{
+                                        width: `${(checklistItems.filter(i => i.is_completed).length / checklistItems.length) * 100}%`
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                         <input

@@ -34,6 +34,9 @@ export interface MyTask {
     milestone_code: string
     milestone_name: string
     milestone_color: string
+    // Checklist summary
+    checklist_total: number
+    checklist_completed: number
 }
 
 export interface TaskFilters {

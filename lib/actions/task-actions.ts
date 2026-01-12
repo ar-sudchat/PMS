@@ -213,6 +213,7 @@ export async function createTask(data: {
     priority: string
     estimated_hours?: number
     due_date?: string
+    checklist_items?: { title: string; sort_order: number }[]
 }) {
     try {
         const user = await getCurrentUser()
@@ -247,6 +248,22 @@ export async function createTask(data: {
         OUTPUT INSERTED.id, INSERTED.task_code
         VALUES (@taskCode, @storyId, @title, @description, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy)
       `)
+
+        const taskId = result.recordset[0].id
+
+        // Create checklist items if provided
+        if (data.checklist_items && data.checklist_items.length > 0) {
+            for (const item of data.checklist_items) {
+                await pool.request()
+                    .input('taskId', sql.UniqueIdentifier, taskId)
+                    .input('title', sql.NVarChar, item.title)
+                    .input('sortOrder', sql.Int, item.sort_order)
+                    .query(`
+                        INSERT INTO pms.task_checklist_items (task_id, title, sort_order)
+                        VALUES (@taskId, @title, @sortOrder)
+                    `)
+            }
+        }
 
         // Revalidate
         const storyResult = await pool.request()

@@ -1,7 +1,7 @@
 'use client'
 
 import { MyTask } from '@/lib/actions/my-tasks-actions'
-import { Calendar, Clock, AlertCircle } from 'lucide-react'
+import { Calendar, Clock, AlertCircle, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TaskStatusSelect } from '@/components/tasks/TaskStatusSelect'
 
@@ -84,6 +84,33 @@ export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange }: Task
                     </div>
                 </div>
             </div>
+
+            {/* Checklist Progress */}
+            {task.checklist_total > 0 && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 mb-4 px-2">
+                    <ListChecks className="w-3.5 h-3.5 text-emerald-500" />
+                    <div className="flex-1">
+                        <div className="flex justify-between mb-1">
+                            <span>Checklist</span>
+                            <span className={cn(
+                                "font-medium",
+                                task.checklist_completed === task.checklist_total ? "text-emerald-600" : ""
+                            )}>
+                                {task.checklist_completed}/{task.checklist_total}
+                            </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                                className={cn(
+                                    "h-full rounded-full transition-all",
+                                    task.checklist_completed === task.checklist_total ? "bg-emerald-500" : "bg-emerald-400"
+                                )}
+                                style={{ width: `${(task.checklist_completed / task.checklist_total) * 100}%` }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                 <div className="flex gap-2">

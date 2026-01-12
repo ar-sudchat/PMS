@@ -15,6 +15,32 @@
 
 ## Pending Scripts (ยังไม่ได้รันที่ Production)
 
+### [2026-01-12] Update vw_my_tasks with Checklist
+- **File:** `update-vw-my-tasks-checklist.sql`
+- **Status:** PENDING
+- **Description:** อัพเดท view vw_my_tasks เพิ่ม checklist summary
+- **Changes:**
+  - เพิ่ม columns `checklist_total`, `checklist_completed` ใน view
+  - ใช้ LEFT JOIN subquery สำหรับ aggregation
+- **Impact:** My Tasks page - แสดง checklist progress
+- **Dependency:** ต้องรัน `task-checklist-schema.sql` ก่อน
+- **Rollback:** รัน script เดิมจาก timesheet-mytasks-schema.sql
+
+---
+
+### [2026-01-12] Task Checklist Schema
+- **File:** `task-checklist-schema.sql`
+- **Status:** PENDING
+- **Description:** สร้างตาราง task_checklist_items สำหรับ checklist ของ task
+- **Changes:**
+  - สร้างตาราง `pms.task_checklist_items`
+  - FK to tasks (ON DELETE CASCADE)
+  - FK to employees (completed_by)
+- **Impact:** Task management - เพิ่ม checklist feature
+- **Rollback:** DROP TABLE pms.task_checklist_items
+
+---
+
 ### [2026-01-12] Task Status - Done Not as Planned (Updated)
 - **File:** `task-status-done-not-planned.sql`
 - **Status:** PENDING
@@ -79,9 +105,15 @@ _ยังไม่มี - เพิ่มหลังจากรันสำ�
 -- 1. sprint-schema.sql
 -- 2. fix-all-name-th-columns.sql
 -- 3. task-status-done-not-planned.sql
+-- 4. task-checklist-schema.sql
+-- 5. update-vw-my-tasks-checklist.sql (ต้องรัน #4 ก่อน)
 
 -- หลังรัน task-status-done-not-planned.sql จะได้:
 -- - Task status ใหม่: done_not_planned
 -- - Views: vw_issue_clearing_weekly, vw_issue_clearing_kpi_monthly, vw_issue_clearing_kpi_yearly
 -- - KPI: Issue Clearing Rate = (Done / Total Completed) x 100, Target >= 85%
+
+-- หลังรัน task-checklist-schema.sql + update-vw-my-tasks-checklist.sql จะได้:
+-- - Table: pms.task_checklist_items
+-- - View vw_my_tasks จะมี columns: checklist_total, checklist_completed
 ```
