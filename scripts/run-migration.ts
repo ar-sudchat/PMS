@@ -1,30 +1,12 @@
-
+import * as dotenv from 'dotenv'
+import path from 'path'
 import sql from 'mssql'
 import fs from 'fs'
-import path from 'path'
-// import dotenv from 'dotenv'
 
-// Load environment variables from .env.local manually
-try {
-    const envContent = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8')
-    envContent.split('\n').forEach(line => {
-        const match = line.match(/^([^=]+)=(.*)$/)
-        if (match) {
-            const key = match[1].trim()
-            const value = match[2].trim().replace(/^['"]|['"]$/g, '') // remove quotes
-            process.env[key] = value
-        }
-    })
-} catch (e) {
-    console.warn("Could not read .env.local")
-}
+// Load env
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-if (!process.env.DB_SERVER) {
-    console.error("DB_SERVER is missing in .env.local")
-    process.exit(1)
-}
-
-const config: sql.config = {
+const config = {
     server: process.env.DB_SERVER!,
     database: process.env.DB_NAME!,
     user: process.env.DB_USER!,
@@ -36,35 +18,48 @@ const config: sql.config = {
 }
 
 async function runMigration() {
+    const filename = process.argv[2]
+    if (!filename) {
+        console.error('Usage: npx ts-node scripts/run-migration.ts <filename>')
+        console.error('Example: npx ts-node scripts/run-migration.ts database/migrations/001_fix_gantt_null_dates.sql')
+        process.exit(1)
+    }
+
     try {
-        console.log('Connecting to database...')
+        console.log(`[Migration] Connecting to ${config.database}@${config.server}...`)
         const pool = await sql.connect(config)
-        console.log('Connected.')
+        console.log('[Migration] Connected.')
 
-        const sqlPath = path.join(process.cwd(), 'scripts', 'kpi-milestone-schema.sql')
-        const sqlContent = fs.readFileSync(sqlPath, 'utf8')
+        const sqlPath = path.resolve(process.cwd(), filename)
+        if (!fs.existsSync(sqlPath)) {
+            console.error(`[Migration] File not found: ${filename}`)
+            process.exit(1)
+        }
 
-        // Split by GO
-        const batches = sqlContent.split(/^GO\s*$/gmi) // Regex for GO on its own line
+        const sqlContent = fs.readFileSync(sqlPath, 'utf-8')
 
-        for (const batch of batches) {
-            const query = batch.trim()
-            if (query) {
-                console.log('Executing batch...')
+        // Split by GO statements for SQL Server
+        const batches = sqlContent.split(/^GO$/gmi).filter(b => b.trim())
+
+        console.log(`[Migration] Executing ${batches.length} batch(es)...`)
+
+        for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i].trim()
+            if (batch) {
                 try {
-                    await pool.request().query(query)
-                } catch (e: any) {
-                    console.error('Error executing batch:', e.message)
-                    // Continue or throw? Continue for now as some might fail if exists (though I added checks)
+                    await pool.request().query(batch)
+                    console.log(`[Migration] Batch ${i + 1}/${batches.length} ✓`)
+                } catch (err: any) {
+                    console.error(`[Migration] Batch ${i + 1} failed:`, err.message)
+                    throw err
                 }
             }
         }
 
-        console.log('Migration completed.')
-        await pool.close()
-
-    } catch (err) {
-        console.error('Migration failed:', err)
+        console.log(`[Migration] ✅ ${filename} executed successfully!`)
+        process.exit(0)
+    } catch (error: any) {
+        console.error('[Migration] Error:', error.message)
         process.exit(1)
     }
 }

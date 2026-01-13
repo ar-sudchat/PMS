@@ -157,7 +157,8 @@ export default function ProjectsPage() {
                     </div>
                     <p className="text-xs text-slate-500">{row.original.project_code}</p>
                 </div>
-            )
+            ),
+            size: 250
         },
         {
             accessorKey: 'customer_name',
@@ -171,7 +172,8 @@ export default function ProjectsPage() {
                         {row.original.customer_name || '-'}
                     </span>
                 </div>
-            )
+            ),
+            size: 180
         },
         {
             accessorKey: 'project_type_name',
@@ -196,7 +198,8 @@ export default function ProjectsPage() {
                         <span className="text-xs text-slate-400">-</span>
                     )}
                 </div>
-            )
+            ),
+            size: 120
         },
         {
             accessorKey: 'status_name',
@@ -213,7 +216,8 @@ export default function ProjectsPage() {
                         {row.original.status_name || '-'}
                     </span>
                 </div>
-            )
+            ),
+            size: 140
         },
         {
             accessorKey: 'current_milestone_name',
@@ -228,7 +232,8 @@ export default function ProjectsPage() {
                         {row.original.current_milestone_name || 'Not started'}
                     </span>
                 </div>
-            )
+            ),
+            size: 160
         },
         {
             accessorKey: 'progress_percent',
@@ -250,7 +255,8 @@ export default function ProjectsPage() {
                         />
                     </div>
                 </div>
-            )
+            ),
+            size: 140
         },
         {
             accessorKey: 'pm_name',
@@ -264,7 +270,8 @@ export default function ProjectsPage() {
                         {row.original.pm_name || '-'}
                     </span>
                 </div>
-            )
+            ),
+            size: 150
         },
         {
             accessorKey: 'owner_name',
@@ -283,7 +290,8 @@ export default function ProjectsPage() {
                         )}
                     </div>
                 </div>
-            )
+            ),
+            size: 160
         }
     ]
 

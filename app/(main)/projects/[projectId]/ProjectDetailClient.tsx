@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { ExternalLink } from 'lucide-react'
 import { StoryCard } from '@/components/projects/detail/StoryCard'
 
 interface ProjectDetailClientProps {
@@ -42,9 +44,17 @@ export function ProjectDetailClient({ project, stories: initialStories, currentU
                             </div>
                         </div>
 
-                        <div className="text-right">
+                        <div className="text-right space-y-2">
                             <div className="text-sm text-slate-500">Progress</div>
                             <div className="text-2xl font-bold text-slate-900">{project.progress_percent}%</div>
+                            <Link
+                                href={`/projects/${project.id}/tracking`}
+                                target="_blank"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
+                            >
+                                <ExternalLink className="w-4 h-4" />
+                                Customer Tracking
+                            </Link>
                         </div>
                     </div>
 

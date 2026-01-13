@@ -242,7 +242,7 @@ export async function getDashboardData(): Promise<{ success: boolean; data: Dash
                         project_id, project_code, project_name, customer_name,
                         status_name, status_color, total_stories, completed_stories,
                         total_tasks, completed_tasks, sold_mandays, used_mandays,
-                        health_status, end_date
+                        health_status, contract_end_date AS end_date
                     FROM pms.vw_dashboard_my_projects_by_member 
                     WHERE owner_id = @employeeId OR team_member_id = @employeeId
                 ) AS sub
@@ -432,7 +432,7 @@ export async function getMyProjects(limit: number = 5) {
                         project_id, project_code, project_name, customer_name,
                         status_name, status_color, total_stories, completed_stories,
                         total_tasks, completed_tasks, sold_mandays, used_mandays,
-                        health_status, end_date
+                        health_status, contract_end_date AS end_date
                     FROM pms.vw_dashboard_my_projects_by_member 
                     WHERE owner_id = @employeeId OR team_member_id = @employeeId
                 ) AS sub
@@ -558,14 +558,19 @@ export interface MilestoneHealth {
 /**
  * Level 1: Get projects health overview for portfolio view
  */
+/**
+ * Level 1: Get projects health overview for portfolio view (Enhanced)
+ */
 export async function getProjectsHealthOverview(filters?: {
     year?: number
-    status?: string
-    pmId?: string
+    status?: string[]
+    projectTypeId?: string[]
+    pmId?: string[]
 }): Promise<{
     success: boolean
     summary: ProjectsOverviewSummary
     projects: ProjectHealthSummary[]
+    oee: { time: number; resource: number; docs: number; overall: number }
 }> {
     try {
         const pool = await getConnection()
@@ -578,6 +583,20 @@ export async function getProjectsHealthOverview(filters?: {
                 ISNULL(c.name, '-') AS customer_name,
                 ps.name AS status,
                 mc.name AS current_milestone_name,
+                -- Next Due Date Logic
+                (SELECT TOP 1 pm.due_date 
+                 FROM pms.project_milestones pm 
+                 WHERE pm.project_id = p.id 
+                 AND pm.completed_date IS NULL 
+                 ORDER BY pm.due_date ASC) AS next_due_date,
+
+                -- Delayed Milestones Count
+                (SELECT COUNT(*) 
+                 FROM pms.project_milestones pm 
+                 WHERE pm.project_id = p.id 
+                 AND pm.completed_date IS NULL 
+                 AND pm.due_date < GETDATE()) AS delayed_milestones_count,
+                
                 -- Calculate scores from verified milestones
                 (SELECT 
                     CASE WHEN COUNT(CASE WHEN pm.is_verified = 1 THEN 1 END) = 0 THEN NULL
@@ -617,9 +636,27 @@ export async function getProjectsHealthOverview(filters?: {
             request.input('year', sql.Int, filters.year)
         }
 
-        if (filters?.status) {
-            query += ` AND ps.name = @status`
-            request.input('status', sql.NVarChar, filters.status)
+        // Multi-select Filters using dynamic SQL injection safe approach (String split or multiple params)
+        // For simplicity in MSSQL w/ node-mssql, passing lists is tricky. We'll iterate.
+        if (filters?.status && filters.status.length > 0) {
+            // Handle status list if passed (Assuming status names for now based on existing logic, or IDs)
+            // Using simple IN clause with string injection (Safe if values are strictly controlled/validated)
+            // But better to use parameters. For short lists:
+            const params = filters.status.map((_, i) => `@status${i}`)
+            query += ` AND ps.name IN (${params.join(',')})`
+            filters.status.forEach((val, i) => request.input(`status${i}`, sql.NVarChar, val))
+        }
+
+        if (filters?.projectTypeId && filters.projectTypeId.length > 0) {
+            const params = filters.projectTypeId.map((_, i) => `@ptype${i}`)
+            query += ` AND p.project_type_id IN (${params.join(',')})`
+            filters.projectTypeId.forEach((val, i) => request.input(`ptype${i}`, sql.UniqueIdentifier, val))
+        }
+
+        if (filters?.pmId && filters.pmId.length > 0) {
+            const params = filters.pmId.map((_, i) => `@pm${i}`)
+            query += ` AND p.project_manager_id IN (${params.join(',')})`
+            filters.pmId.forEach((val, i) => request.input(`pm${i}`, sql.UniqueIdentifier, val))
         }
 
         query += ` ORDER BY p.project_code`
@@ -628,9 +665,15 @@ export async function getProjectsHealthOverview(filters?: {
 
         const projects: ProjectHealthSummary[] = result.recordset.map((p: any) => {
             const overall = calculateOverallHealth(p.time_score, p.resource_score, p.docs_score)
-            let health_status: 'on-track' | 'at-risk' | 'critical' = 'critical'
-            if (overall >= 80) health_status = 'on-track'
-            else if (overall >= 60) health_status = 'at-risk'
+
+            // Critical Attention Logic: < 50% OR Delayed Milestone
+            let health_status: 'on-track' | 'at-risk' | 'critical' = 'on-track'
+
+            if (overall < 50 || p.delayed_milestones_count > 0) {
+                health_status = 'critical'
+            } else if (overall < 80) {
+                health_status = 'at-risk'
+            }
 
             return {
                 project_id: p.project_id,
@@ -653,17 +696,31 @@ export async function getProjectsHealthOverview(filters?: {
         const critical = projects.filter(p => p.health_status === 'critical').length
         const avgHealth = total > 0 ? Math.round(projects.reduce((sum, p) => sum + p.overall_health, 0) / total) : 0
 
+        // Calculate OEE Aggregation
+        const validTime = projects.filter(p => p.time_score !== null)
+        const validResource = projects.filter(p => p.resource_score !== null)
+        const validDocs = projects.filter(p => p.docs_score !== null)
+
+        const oee = {
+            time: validTime.length > 0 ? Math.round(validTime.reduce((s, p) => s + (p.time_score || 0), 0) / validTime.length) : 0,
+            resource: validResource.length > 0 ? Math.round(validResource.reduce((s, p) => s + (p.resource_score || 0), 0) / validResource.length) : 0,
+            docs: validDocs.length > 0 ? Math.round(validDocs.reduce((s, p) => s + (p.docs_score || 0), 0) / validDocs.length) : 0,
+            overall: avgHealth
+        }
+
         return {
             success: true,
             summary: { total, onTrack, atRisk, critical, avgHealth },
-            projects
+            projects,
+            oee
         }
     } catch (error) {
         console.error('Error getting projects health overview:', error)
         return {
             success: false,
             summary: { total: 0, onTrack: 0, atRisk: 0, critical: 0, avgHealth: 0 },
-            projects: []
+            projects: [],
+            oee: { time: 0, resource: 0, docs: 0, overall: 0 }
         }
     }
 }
@@ -673,6 +730,7 @@ export async function getProjectsHealthOverview(filters?: {
  */
 export async function getProjectHealthDetail(projectId: string): Promise<{
     success: boolean
+    error?: string // Added error field
     project?: any
     overallHealth?: { time: number | null; resource: number | null; docs: number | null; overall: number }
     milestones?: MilestoneHealth[]
@@ -685,14 +743,16 @@ export async function getProjectHealthDetail(projectId: string): Promise<{
             .query(`
                 SELECT
                     p.id, p.project_code AS code, p.name, c.name AS customer_name,
-                    p.status, p.start_date, p.end_date
+                    ps.name AS status, ps.color AS status_color, -- Fixed: Join with status config
+                    p.created_at AS start_date, p.warranty_end_date AS end_date
                 FROM pms.projects p
                 LEFT JOIN pms.customers c ON p.customer_id = c.id
+                LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
                 WHERE p.id = @projectId
             `)
 
         if (projectResult.recordset.length === 0) {
-            return { success: false }
+            return { success: false, error: 'Project not found' }
         }
 
         const milestonesResult = await pool.request()
@@ -707,7 +767,7 @@ export async function getProjectHealthDetail(projectId: string): Promise<{
                     (SELECT COUNT(*) FROM pms.project_deliverables pd WHERE pd.project_milestone_id = pm.id AND pd.is_required = 1 AND pd.submitted_date IS NOT NULL) AS submitted_docs
                 FROM pms.project_milestones pm
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
-                WHERE pm.project_id = @projectId AND pm.is_active = 1
+                WHERE pm.project_id = @projectId
                 ORDER BY pm.sort_order
             `)
 
@@ -745,9 +805,9 @@ export async function getProjectHealthDetail(projectId: string): Promise<{
             overallHealth: { time, resource, docs, overall: calculateOverallHealth(time, resource, docs) },
             milestones
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error getting project health detail:', error)
-        return { success: false }
+        return { success: false, error: error.message }
     }
 }
 
@@ -834,5 +894,189 @@ export async function getMilestoneHealthDetail(milestoneId: string): Promise<{
     } catch (error) {
         console.error('Error getting milestone health detail:', error)
         return { success: false }
+    }
+}
+// ALIAS FOR USER COMPATIBILITY
+export const getProjectDetail = getProjectHealthDetail
+
+/**
+ * Level 4: Project Control Tower Data (All-in-One for new UI)
+ */
+export async function getProjectControlTowerData(projectId: string): Promise<{
+    success: boolean
+    error?: string // Added error field
+    project?: any
+    overallHealth?: { time: number | null; resource: number | null; docs: number | null; overall: number }
+    milestones?: MilestoneHealth[]
+    activeTasks?: any[]
+    currentDeliverables?: any[]
+}> {
+    try {
+        const healthResult = await getProjectHealthDetail(projectId)
+
+        if (!healthResult.success || !healthResult.project) {
+            return { success: false, error: healthResult.error || 'Project not found' }
+        }
+
+        const project = healthResult.project
+        const milestones = healthResult.milestones || []
+
+        // Identify Current Milestone
+        // Logic: First non-verified milestone, or last one if all verified
+        const currentMilestoneIndex = milestones.findIndex(m => !m.is_verified)
+        const currentMilestone = currentMilestoneIndex !== -1
+            ? milestones[currentMilestoneIndex]
+            : (milestones.length > 0 ? milestones[milestones.length - 1] : null)
+
+        const pool = await getConnection()
+
+        // 1. Fetch Active/Overdue Tasks (Top 10)
+        // Priorities: Overdue > Critical/High Priority > Active
+        const tasksResult = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT
+                    t.id, 
+                    t.task_code, 
+                    t.title, 
+                    t.description,
+                    t.status, 
+                    t.priority, 
+                    t.due_date, 
+                    t.estimated_hours,
+                    t.actual_hours,
+                    t.start_date, -- Added start_date for strict date logic
+                    e.first_name_th AS assignee_name,
+                    e.nickname AS assignee_nickname,
+                    mc.name AS milestone_name,
+                    pm.id AS milestone_id,
+                    s.id AS story_id,
+                    s.title AS story_title,
+                    DATEDIFF(DAY, t.due_date, CAST(GETDATE() AS DATE)) AS days_overdue
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+                LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                LEFT JOIN pms.employees e ON t.assignee_id = e.id
+                WHERE s.project_id = @projectId 
+                  AND t.is_active = 1
+                  AND t.status NOT IN ('done', 'cancelled')
+                ORDER BY 
+                    -- Hierarchy Sorting
+                    ISNULL(pm.sort_order, 9999),
+                    ISNULL(s.sort_order, 9999),
+                    -- High priority
+                    CASE t.priority 
+                        WHEN 'critical' THEN 1 
+                        WHEN 'high' THEN 2 
+                        WHEN 'medium' THEN 3 
+                        ELSE 4 
+                    END,
+                    t.due_date
+            `)
+
+        // 2. Fetch Deliverables for Current Milestone (or all if none active?)
+        // Let's focus on the CURRENT milestone deliverables as per requirement
+        let deliverables: any[] = []
+        if (currentMilestone) {
+            const docsResult = await pool.request()
+                .input('milestoneId', sql.UniqueIdentifier, currentMilestone.id)
+                .query(`
+                    SELECT 
+                        pd.id, 
+                        pdc.name, 
+                        pd.is_required, 
+                        pd.submitted_date, 
+                        -- pd.status removed
+                        pd.file_path,
+                        pd.is_verified, -- needed for frontend logic
+                        pdc.id as config_id 
+                        -- pdc.code removed as it does not exist
+                    FROM pms.project_deliverables pd
+                    INNER JOIN pms.deliverable_configs pdc ON pd.deliverable_config_id = pdc.id
+                    WHERE pd.project_milestone_id = @milestoneId AND pd.is_active = 1
+                    ORDER BY pd.sort_order
+                `)
+            deliverables = docsResult.recordset.map((d: any) => ({
+                ...d,
+                status: d.is_verified ? 'verified' : (d.submitted_date ? 'submitted' : 'pending'), // Derived status
+                verification_status: d.submitted_date ? 'submitted' : 'pending'
+            }))
+        }
+
+        return {
+            success: true,
+            project: project,
+            overallHealth: healthResult.overallHealth,
+            milestones: milestones,
+            activeTasks: tasksResult.recordset,
+            currentDeliverables: deliverables
+        }
+
+    } catch (error: any) {
+        console.error('getProjectControlTowerData error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+/**
+ * Verify all deliverables in a milestone and advance to the next milestone
+ */
+export async function verifyMilestoneAndAdvance(projectId: string, milestoneId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+        const user = await getCurrentUser()
+        const verifiedBy = user ? user.id : null
+
+        const transaction = new sql.Transaction(pool)
+        await transaction.begin()
+
+        try {
+            const request = new sql.Request(transaction)
+            request.input('milestoneId', sql.UniqueIdentifier, milestoneId)
+            request.input('projectId', sql.UniqueIdentifier, projectId)
+            request.input('userId', sql.UniqueIdentifier, verifiedBy)
+
+            // 1. Update Deliverables (Mark all as verified)
+            // Note: In a real flow, we might check if they are submitted first, but "Verify All" implies manual override/approval.
+            await request.query(`
+                UPDATE pms.project_deliverables
+                SET is_verified = 1, verified_at = GETDATE(), verified_by = @userId
+                WHERE project_milestone_id = @milestoneId AND is_active = 1
+            `)
+
+            // 2. Update Milestone (Mark as verified/completed)
+            await request.query(`
+                UPDATE pms.project_milestones
+                SET is_verified = 1, verified_at = GETDATE(), verified_by = @userId, completed_date = GETDATE()
+                WHERE id = @milestoneId
+            `)
+
+            // 3. Find Next Milestone
+            const nextMilestoneResult = await request.query(`
+                SELECT TOP 1 id FROM pms.project_milestones
+                WHERE project_id = @projectId 
+                AND sort_order > (SELECT sort_order FROM pms.project_milestones WHERE id = @milestoneId)
+                ORDER BY sort_order ASC
+            `)
+
+            if (nextMilestoneResult.recordset.length > 0) {
+                const nextId = nextMilestoneResult.recordset[0].id
+                await request.input('nextId', sql.UniqueIdentifier, nextId).query(`
+                    UPDATE pms.projects SET current_milestone_id = @nextId WHERE id = @projectId
+                 `)
+            }
+
+            await transaction.commit()
+            return { success: true }
+
+        } catch (err) {
+            await transaction.rollback()
+            throw err
+        }
+
+    } catch (error: any) {
+        console.error('verifyMilestoneAndAdvance error:', error)
+        return { success: false, error: error.message }
     }
 }

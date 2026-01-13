@@ -132,3 +132,220 @@ export function SummaryCard({ icon, value, label, color = 'gray', onClick }: Sum
         </div>
     )
 }
+
+// ============================================
+// NEW COMPONENTS FOR MODERN PM DASHBOARD
+// ============================================
+
+interface RadialProgressProps {
+    value: number
+    size?: 'sm' | 'md' | 'lg'
+    showLabel?: boolean
+    className?: string
+}
+
+export function RadialProgress({ value, size = 'md', showLabel = true, className }: RadialProgressProps) {
+    const sizes = {
+        sm: { width: 40, stroke: 4, fontSize: 'text-xs' },
+        md: { width: 56, stroke: 5, fontSize: 'text-sm' },
+        lg: { width: 72, stroke: 6, fontSize: 'text-base' }
+    }
+
+    const config = sizes[size]
+    const radius = (config.width - config.stroke) / 2
+    const circumference = radius * 2 * Math.PI
+    const offset = circumference - (Math.min(value, 100) / 100) * circumference
+
+    const getColor = (v: number) => {
+        if (v >= 80) return { stroke: '#22c55e', bg: '#dcfce7', text: 'text-green-700' }
+        if (v >= 60) return { stroke: '#eab308', bg: '#fef9c3', text: 'text-yellow-700' }
+        return { stroke: '#ef4444', bg: '#fee2e2', text: 'text-red-700' }
+    }
+
+    const colors = getColor(value)
+
+    return (
+        <div className={cn("relative inline-flex items-center justify-center", className)}>
+            <svg width={config.width} height={config.width} className="-rotate-90">
+                <circle
+                    cx={config.width / 2}
+                    cy={config.width / 2}
+                    r={radius}
+                    fill="none"
+                    stroke="#e2e8f0"
+                    strokeWidth={config.stroke}
+                />
+                <circle
+                    cx={config.width / 2}
+                    cy={config.width / 2}
+                    r={radius}
+                    fill="none"
+                    stroke={colors.stroke}
+                    strokeWidth={config.stroke}
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    className="transition-all duration-500"
+                />
+            </svg>
+            {showLabel && (
+                <span className={cn("absolute font-bold", config.fontSize, colors.text)}>
+                    {Math.round(value)}
+                </span>
+            )}
+        </div>
+    )
+}
+
+interface ScoreProgressBarProps {
+    time: number | null
+    resource: number | null
+    docs: number | null
+    compact?: boolean
+}
+
+export function ScoreProgressBar({ time, resource, docs, compact = false }: ScoreProgressBarProps) {
+    const getBarColor = (v: number | null) => {
+        if (v === null) return 'bg-slate-200'
+        if (v >= 80) return 'bg-green-500'
+        if (v >= 60) return 'bg-yellow-500'
+        return 'bg-red-500'
+    }
+
+    const getTextColor = (v: number | null) => {
+        if (v === null) return 'text-slate-400'
+        if (v >= 80) return 'text-green-700'
+        if (v >= 60) return 'text-yellow-700'
+        return 'text-red-700'
+    }
+
+    const formatValue = (v: number | null) => v !== null ? `${Math.round(v)}%` : '-'
+
+    const bars = [
+        { label: 'T', value: time, icon: '⏱️' },
+        { label: 'R', value: resource, icon: '👥' },
+        { label: 'D', value: docs, icon: '📄' }
+    ]
+
+    if (compact) {
+        return (
+            <div className="flex gap-1">
+                {bars.map((bar, i) => (
+                    <div key={i} className="flex-1">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                                className={cn("h-full rounded-full transition-all", getBarColor(bar.value))}
+                                style={{ width: `${Math.min(bar.value || 0, 100)}%` }}
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-1.5">
+            {bars.map((bar, i) => (
+                <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs w-4">{bar.icon}</span>
+                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                            className={cn("h-full rounded-full transition-all duration-300", getBarColor(bar.value))}
+                            style={{ width: `${Math.min(bar.value || 0, 100)}%` }}
+                        />
+                    </div>
+                    <span className={cn("text-xs font-medium w-8 text-right", getTextColor(bar.value))}>
+                        {formatValue(bar.value)}
+                    </span>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+interface MilestoneBadgeProps {
+    name: string
+    health?: number
+    color?: string
+}
+
+export function MilestoneBadge({ name, health, color }: MilestoneBadgeProps) {
+    const getHealthEmoji = (h: number | undefined) => {
+        if (h === undefined) return ''
+        if (h >= 80) return '🟢'
+        if (h >= 60) return '🟡'
+        return '🔴'
+    }
+
+    const bgColor = color ? `bg-[${color}]` : 'bg-slate-100'
+
+    return (
+        <span className={cn(
+            "inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
+            "bg-gradient-to-r from-slate-100 to-slate-50 border border-slate-200"
+        )}>
+            {health !== undefined && <span>{getHealthEmoji(health)}</span>}
+            <span className="truncate max-w-[100px]">{name || '-'}</span>
+        </span>
+    )
+}
+
+interface ModernSummaryCardProps {
+    icon: React.ReactNode
+    value: number | string
+    label: string
+    trend?: 'up' | 'down' | 'neutral'
+    trendValue?: string
+    variant: 'total' | 'success' | 'warning' | 'danger' | 'neutral'
+    onClick?: () => void
+}
+
+export function ModernSummaryCard({ icon, value, label, trend, trendValue, variant, onClick }: ModernSummaryCardProps) {
+    const variants = {
+        total: 'from-blue-500/10 to-blue-600/5 border-blue-200 text-blue-700',
+        success: 'from-green-500/10 to-green-600/5 border-green-200 text-green-700',
+        warning: 'from-yellow-500/10 to-yellow-600/5 border-yellow-200 text-yellow-700',
+        danger: 'from-red-500/10 to-red-600/5 border-red-200 text-red-700',
+        neutral: 'from-slate-500/10 to-slate-600/5 border-slate-200 text-slate-700'
+    }
+
+    const iconBg = {
+        total: 'bg-blue-100 text-blue-600',
+        success: 'bg-green-100 text-green-600',
+        warning: 'bg-yellow-100 text-yellow-600',
+        danger: 'bg-red-100 text-red-600',
+        neutral: 'bg-slate-100 text-slate-600'
+    }
+
+    return (
+        <div
+            onClick={onClick}
+            className={cn(
+                "rounded-xl border p-4 bg-gradient-to-br transition-all hover:shadow-md",
+                variants[variant],
+                onClick && "cursor-pointer"
+            )}
+        >
+            <div className="flex items-start justify-between">
+                <div className={cn("p-2 rounded-lg", iconBg[variant])}>
+                    {icon}
+                </div>
+                {trend && trendValue && (
+                    <div className={cn(
+                        "text-xs font-medium flex items-center gap-0.5",
+                        trend === 'up' ? 'text-green-600' : trend === 'down' ? 'text-red-600' : 'text-slate-500'
+                    )}>
+                        {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}
+                        {trendValue}
+                    </div>
+                )}
+            </div>
+            <div className="mt-3">
+                <div className="text-2xl font-bold">{value}</div>
+                <div className="text-sm opacity-80 mt-0.5">{label}</div>
+            </div>
+        </div>
+    )
+}
+

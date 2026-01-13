@@ -111,15 +111,30 @@ export async function getGanttData(filters?: {
         for (const rs of resultSets) {
             if ((result.recordsets as any)[rs.index]) {
                 for (const row of (result.recordsets as any)[rs.index]) {
+                    // 1. Strict Active Filter
+                    // Ensure we filter out inactive items explicitly as requested
+                    if (row.is_active === 0 || row.is_active === false) continue
+
+                    // 2. Strict Date Logic
+                    // If dates are missing, keep them null. DHTMLX client will handle rendering.
+                    // Prevent Parent Roll-up: Convert 'project' type to 'task' for Stories to stop auto-calculation
+                    // We only keep 'project' type for the Root Project entity if needed, or even that can be 'task' if we want manual start/end.
+                    // But usually Project entity is fine. Stories should NOT roll up.
+
+                    let dhtmlxType: 'project' | 'milestone' | 'task' = 'task'
+                    if (row.type === 'milestone') dhtmlxType = 'milestone'
+                    else if (row.type === 'project' && row.entity_type === 'project') dhtmlxType = 'project' // Keep project as project
+                    else if (row.entity_type === 'story') dhtmlxType = 'task' // Force Story to be Task to prevent roll-up
+
                     tasks.push({
                         id: row.id,
                         text: row.text || 'Untitled',
-                        start_date: row.start_date,
-                        end_date: row.end_date,
+                        start_date: row.start_date, // Pass null if null
+                        end_date: row.end_date,     // Pass null if null
                         duration: Math.max(row.duration || 0, 0),
                         progress: (row.progress || 0) / 100,
                         parent: row.parent || '0',
-                        type: row.type === 'milestone' ? 'milestone' : (row.type === 'task' ? 'task' : 'project'),
+                        type: dhtmlxType,
                         entity_type: row.entity_type,
                         entity_id: row.entity_id,
                         project_id: row.project_id,

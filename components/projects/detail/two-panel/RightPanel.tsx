@@ -97,8 +97,11 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
             accessorKey: 'title',
             header: 'Title',
             cell: ({ row }: any) => (
-                <div className="font-medium text-slate-700">{row.original.title}</div>
+                <div className="font-medium text-slate-700 truncate" title={row.original.title}>
+                    {row.original.title}
+                </div>
             ),
+            size: 300,
             enableSorting: true
         },
         {
@@ -113,15 +116,16 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
                 else if (status === 'in_progress') { color = 'bg-blue-100 text-blue-700'; icon = <Clock className="w-3 h-3 mr-1" /> }
                 else if (status === 'review') { color = 'bg-purple-100 text-purple-700'; icon = <AlertCircle className="w-3 h-3 mr-1" /> }
                 else if (status === 'blocked') { color = 'bg-red-100 text-red-700'; icon = <AlertCircle className="w-3 h-3 mr-1" /> }
+                else if (status === 'done_not_planned') { color = 'bg-slate-200 text-slate-600'; icon = <CheckCircle2 className="w-3 h-3 mr-1" /> }
 
                 return (
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${color} whitespace-nowrap`}>
                         {icon}
-                        {status ? status.replace('_', ' ').toUpperCase() : 'TODO'}
+                        {status ? status.split('_').join(' ').toUpperCase() : 'TODO'}
                     </span>
                 )
             },
-            size: 100,
+            size: 180,
             enableSorting: true
         },
         {
@@ -133,9 +137,9 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
                 if (p === 'critical') color = 'text-red-600 font-bold'
                 if (p === 'high') color = 'text-orange-500 font-semibold'
                 if (p === 'medium') color = 'text-blue-500'
-                return <span className={`text-xs ${color}`}>{p ? p.toUpperCase() : 'N/A'}</span>
+                return <span className={`text-xs ${color} whitespace-nowrap`}>{p ? p.toUpperCase() : 'N/A'}</span>
             },
-            size: 80,
+            size: 120,
             enableSorting: true
         },
         {
@@ -145,17 +149,19 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
                 <div className="flex items-center gap-2">
                     {row.original.assignee_id ? (
                         <>
-                            <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">
+                            <div className="w-6 h-6 shrink-0 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">
                                 {row.original.assignee_nickname?.[0] || row.original.assignee_name?.[0] || '?'}
                             </div>
-                            <span className="text-xs text-slate-600 truncate max-w-[100px]">{row.original.assignee_nickname || row.original.assignee_name}</span>
+                            <span className="text-xs text-slate-600 truncate max-w-[120px]" title={row.original.assignee_nickname || row.original.assignee_name}>
+                                {row.original.assignee_nickname || row.original.assignee_name}
+                            </span>
                         </>
                     ) : (
                         <span className="text-xs text-slate-400 italic">Unassigned</span>
                     )}
                 </div>
             ),
-            size: 120,
+            size: 160,
             enableSorting: true
         },
         {

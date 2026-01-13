@@ -32,7 +32,7 @@ async function inspectSchema() {
       SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, IS_NULLABLE
       FROM INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_SCHEMA = 'pms'
-      AND TABLE_NAME IN ('task_type_configs', 'project_milestones', 'employees', 'tasks', 'stories', 'milestone_configs')
+      AND TABLE_NAME IN ('projects')
       ORDER BY TABLE_NAME, ORDINAL_POSITION
     `)
 

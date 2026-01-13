@@ -23,7 +23,16 @@ async function runMigration() {
         const query = fs.readFileSync(migrationFile, 'utf8');
 
         console.log('Running migration...');
-        await pool.request().query(query);
+
+        // Split by GO batch separator (case insensitive, on its own line)
+        const batches = query.split(/^\s*GO\s*$/im).filter(batch => batch.trim().length > 0);
+
+        for (const batch of batches) {
+            if (batch.trim()) {
+                await pool.request().query(batch);
+            }
+        }
+
         console.log('Migration completed successfully.');
 
         await pool.close();

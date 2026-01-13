@@ -1,173 +1,351 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { SummaryCard, HealthIndicator } from '@/components/dashboard/HealthComponents'
+import { ActivityRings } from '@/components/dashboard/ActivityRings'
+import { FloatingProjectRow } from '@/components/dashboard/FloatingProjectRow'
 import { getProjectsHealthOverview, type ProjectHealthSummary, type ProjectsOverviewSummary } from '@/lib/actions/dashboard-actions'
-import { ChevronRight, Filter, RefreshCw } from 'lucide-react'
+import {
+    RefreshCw,
+    LayoutDashboard,
+    Search,
+    Filter,
+    ArrowRight,
+    Users,
+    Briefcase,
+    CalendarClock,
+    CheckCircle2,
+    AlertTriangle,
+    XCircle,
+    SlidersHorizontal
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 interface ProjectHealthDashboardClientProps {
     initialSummary: ProjectsOverviewSummary
     initialProjects: ProjectHealthSummary[]
+    initialOee: { time: number; resource: number; docs: number; overall: number }
     currentYear: number
 }
 
 export function ProjectHealthDashboardClient({
     initialSummary,
     initialProjects,
+    initialOee,
     currentYear
 }: ProjectHealthDashboardClientProps) {
     const router = useRouter()
-    const [summary, setSummary] = useState(initialSummary)
     const [projects, setProjects] = useState(initialProjects)
+    const [summary, setSummary] = useState(initialSummary)
+    const [oee, setOee] = useState(initialOee)
     const [year, setYear] = useState(currentYear)
-    const [status, setStatus] = useState<string>('')
     const [isLoading, setIsLoading] = useState(false)
+
+    // Filter States
+    const [searchQuery, setSearchQuery] = useState('')
+    const [selectedCustomer, setSelectedCustomer] = useState('All')
+    // const [selectedType, setSelectedType] = useState('All') // Disabled until backend supports it
+    const [selectedStatus, setSelectedStatus] = useState('All')
+
+    // Quick Action Tags
+    const [activeTag, setActiveTag] = useState<string | null>(null)
+
+    // Derived Options for Dropdowns
+    const customers = useMemo(() => Array.from(new Set(projects.map(p => p.customer_name))).sort(), [projects])
+    // const types = useMemo(() => Array.from(new Set(projects.map(p => p.project_type || 'Unknown'))).sort(), [projects])
+    // Mock PMs for now as data isn't in ProjectHealthSummary yet, or use generic
+    const pms = ['All']
 
     const handleRefresh = async () => {
         setIsLoading(true)
-        const result = await getProjectsHealthOverview({
-            year: year || undefined,
-            status: status || undefined
-        })
-        setSummary(result.summary)
+        const result = await getProjectsHealthOverview({ year, status: selectedStatus !== 'All' ? [selectedStatus] : undefined })
         setProjects(result.projects)
+        setSummary(result.summary)
+        setOee(result.oee || initialOee)
         setIsLoading(false)
     }
 
     const handleProjectClick = (projectId: string) => {
-        router.push(`/pm-dashboard/${projectId}`)
+        // Link to Control Tower as per instruction
+        router.push(`/pm-dashboard/control-tower?id=${projectId}`)
     }
 
-    const formatScore = (score: number | null) => {
-        return score !== null ? `${Math.round(score)}%` : '-'
+    // Filter Logic
+    const filteredProjects = projects.filter(p => {
+        const matchesSearch =
+            p.project_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.project_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.customer_name.toLowerCase().includes(searchQuery.toLowerCase())
+
+        const matchesCustomer = selectedCustomer === 'All' || p.customer_name === selectedCustomer
+        // const matchesType = selectedType === 'All' || p.project_type === selectedType
+
+        let matchesStatus = true
+        if (selectedStatus !== 'All') {
+            // Map UI status to backend status if needed, or stick to health_status
+            matchesStatus = p.health_status === selectedStatus.toLowerCase().replace(' ', '-')
+        }
+
+        // Quick Tags logic
+        if (activeTag === 'Critical') matchesStatus = p.health_status === 'critical'
+        if (activeTag === 'My Projects') matchesStatus = true // Placeholder for "My Projects" logic
+
+        return matchesSearch && matchesCustomer && matchesStatus
+    })
+
+    // Grouping Logic
+    const groupedProjects = {
+        critical: filteredProjects.filter(p => p.health_status === 'critical'),
+        atRisk: filteredProjects.filter(p => p.health_status === 'at-risk'),
+        onTrack: filteredProjects.filter(p => p.health_status === 'on-track')
     }
 
     return (
-        <div className="p-6 space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">📊 PM Dashboard</h1>
-                    <p className="text-sm text-slate-500">OEE-Style Project Health Overview</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {/* Filters */}
-                    <select
-                        className="border rounded-lg px-3 py-2 text-sm"
-                        value={year}
-                        onChange={(e) => setYear(Number(e.target.value))}
-                    >
-                        <option value={currentYear}>{currentYear}</option>
-                        <option value={currentYear - 1}>{currentYear - 1}</option>
-                        <option value={currentYear - 2}>{currentYear - 2}</option>
-                    </select>
-                    <select
-                        className="border rounded-lg px-3 py-2 text-sm"
-                        value={status}
-                        onChange={(e) => setStatus(e.target.value)}
-                    >
-                        <option value="">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="on_hold">On Hold</option>
-                        <option value="completed">Completed</option>
-                    </select>
-                    <Button onClick={handleRefresh} disabled={isLoading} variant="outline" size="sm">
-                        <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-                    </Button>
+        <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans text-slate-600">
+            {/* 1. COMPACT HEADER & ADVANCED FILTER (Sticky) */}
+            <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-slate-200 shadow-sm transition-all">
+                <div className="max-w-7xl mx-auto px-6 py-4">
+                    {/* Top Row: Title & Org Health */}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-slate-900 rounded-lg shadow-md shadow-slate-200">
+                                <LayoutDashboard className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-slate-800 tracking-tight">PM Dashboard</h1>
+                                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Enterprise Portfolio</p>
+                            </div>
+                        </div>
+
+                        {/* Org Health Micro-Rings */}
+                        <div className="flex items-center gap-6 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
+                            <div className="flex items-center gap-3 text-xs font-semibold text-slate-500 mr-2">
+                                <span className="uppercase tracking-wider text-[10px]">Org Health</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                    <span className="text-xs font-bold text-slate-700">{oee.overall}%</span>
+                                    <span className="text-[10px] text-slate-400">Overall</span>
+                                </div>
+                                <div className="h-4 w-[1px] bg-slate-200" />
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                    <span className="text-xs font-bold text-slate-700">{oee.time}%</span>
+                                    <span className="text-[10px] text-slate-400">Time</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                    <span className="text-xs font-bold text-slate-700">{oee.resource}%</span>
+                                    <span className="text-[10px] text-slate-400">Res</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filter Bar Row */}
+                    <div className="flex flex-col md:flex-row items-center gap-3">
+                        {/* Search */}
+                        <div className="relative w-full md:w-64 shrink-0">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input
+                                placeholder="Search..."
+                                className="pl-9 h-9 bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-slate-100 transition-all rounded-lg text-sm"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Dropdown Filters Group */}
+                        <div className="flex items-center gap-2 w-full overflow-x-auto no-scrollbar">
+                            <select
+                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[100px]"
+                                value={selectedCustomer}
+                                onChange={(e) => setSelectedCustomer(e.target.value)}
+                            >
+                                <option value="All">Customer: All</option>
+                                {customers.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+
+                            {/* Type Filter Disabled - No Backend Data Yet */}
+                            {/* <select
+                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[100px]"
+                                value={selectedType}
+                                onChange={(e) => setSelectedType(e.target.value)}
+                            >
+                                <option value="All">Type: All</option>
+                                {types.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select> */}
+
+                            <select
+                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[100px]"
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                            >
+                                <option value="All">Status: All</option>
+                                <option value="On Track">Healthy</option>
+                                <option value="At Risk">At Risk</option>
+                                <option value="Critical">Critical</option>
+                            </select>
+
+                            <select
+                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[80px]"
+                                value={year}
+                                onChange={(e) => setYear(Number(e.target.value))}
+                            >
+                                <option value={currentYear}>FY {currentYear}</option>
+                                <option value={currentYear - 1}>FY {currentYear - 1}</option>
+                            </select>
+                        </div>
+
+                        <div className="ml-auto flex items-center gap-2">
+                            <Button
+                                onClick={handleRefresh}
+                                disabled={isLoading}
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 p-0 rounded-lg border-slate-200 text-slate-500 hover:text-indigo-600"
+                            >
+                                <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Quick Action Tags */}
+                    <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
+                        {[
+                            { label: 'All Projects', id: null },
+                            { label: 'Critical Only', id: 'Critical', count: summary.critical, color: 'text-rose-600 bg-rose-50 border-rose-100' },
+                            { label: 'My Projects', id: 'My Projects', count: 3, color: 'text-indigo-600 bg-indigo-50 border-indigo-100' }, // mock count
+                            { label: 'Ending Warranty', id: 'Warranty', count: 0, color: 'text-amber-600 bg-amber-50 border-amber-100' }
+                        ].map(tag => (
+                            <button
+                                key={tag.label}
+                                onClick={() => setActiveTag(tag.id)}
+                                className={cn(
+                                    "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide transition-all whitespac-nowrap flex items-center gap-2",
+                                    activeTag === tag.id
+                                        ? "bg-slate-800 text-white border-slate-800 shadow-md"
+                                        : (tag.color || "bg-white text-slate-500 border-slate-200 hover:border-slate-300")
+                                )}
+                            >
+                                {tag.label}
+                                {tag.count !== undefined && (
+                                    <span className={cn("px-1.5 py-0.5 rounded-full text-[9px]", activeTag === tag.id ? "bg-slate-600 text-white" : "bg-white/50")}>
+                                        {tag.count}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-5 gap-4">
-                <SummaryCard icon="📁" value={summary.total} label="Total Projects" color="blue" />
-                <SummaryCard icon="🟢" value={summary.onTrack} label="On Track" color="green" />
-                <SummaryCard icon="🟡" value={summary.atRisk} label="At Risk" color="yellow" />
-                <SummaryCard icon="🔴" value={summary.critical} label="Critical" color="red" />
-                <SummaryCard icon="⚡" value={`${summary.avgHealth}%`} label="Avg Health" color="gray" />
-            </div>
+            {/* 3. PROJECT LIST (Floating Rows) */}
+            <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
 
-            {/* Projects Table */}
-            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b">
-                        <tr>
-                            <th className="text-left px-4 py-3 font-semibold">Project</th>
-                            <th className="text-left px-4 py-3 font-semibold">Customer</th>
-                            <th className="text-left px-4 py-3 font-semibold">Current MS</th>
-                            <th className="text-center px-3 py-3 font-semibold w-20">Time</th>
-                            <th className="text-center px-3 py-3 font-semibold w-20">Resource</th>
-                            <th className="text-center px-3 py-3 font-semibold w-20">Docs</th>
-                            <th className="text-center px-3 py-3 font-semibold w-24">Health</th>
-                            <th className="text-center px-3 py-3 font-semibold w-20">Status</th>
-                            <th className="w-12"></th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {projects.length === 0 ? (
-                            <tr>
-                                <td colSpan={9} className="text-center py-8 text-slate-400">
-                                    No projects found
-                                </td>
-                            </tr>
-                        ) : (
-                            projects.map((project) => (
-                                <tr
+                {/* CRITICAL SECTION */}
+                {groupedProjects.critical.length > 0 && (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 pl-2">
+                            <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
+                            <h3 className="text-sm font-bold text-rose-600 uppercase tracking-widest">Critical Attention ({groupedProjects.critical.length})</h3>
+                        </div>
+                        <div className="space-y-3">
+                            {groupedProjects.critical.map((project, idx) => (
+                                <FloatingProjectRow
                                     key={project.project_id}
-                                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                    index={idx + 1}
+                                    projectCode={project.project_code}
+                                    projectName={project.project_name}
+                                    customerName={project.customer_name}
+                                    currentMilestone={project.current_milestone_name}
+                                    timeScore={project.time_score}
+                                    resourceScore={project.resource_score}
+                                    docsScore={project.docs_score}
+                                    overallHealth={project.overall_health}
+                                    healthStatus={project.health_status}
                                     onClick={() => handleProjectClick(project.project_id)}
-                                >
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-blue-600 font-medium">{project.project_code}</span>
-                                            <span className="text-slate-700">{project.project_name}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-600">{project.customer_name}</td>
-                                    <td className="px-4 py-3 text-slate-600">{project.current_milestone_name || '-'}</td>
-                                    <td className="text-center px-3 py-3">
-                                        <span className={project.time_score !== null ? (project.time_score >= 80 ? 'text-green-600' : project.time_score >= 60 ? 'text-yellow-600' : 'text-red-600') : 'text-slate-400'}>
-                                            {formatScore(project.time_score)}
-                                        </span>
-                                    </td>
-                                    <td className="text-center px-3 py-3">
-                                        <span className={project.resource_score !== null ? (project.resource_score >= 80 ? 'text-green-600' : project.resource_score >= 60 ? 'text-yellow-600' : 'text-red-600') : 'text-slate-400'}>
-                                            {formatScore(project.resource_score)}
-                                        </span>
-                                    </td>
-                                    <td className="text-center px-3 py-3">
-                                        <span className={project.docs_score !== null ? (project.docs_score >= 80 ? 'text-green-600' : project.docs_score >= 60 ? 'text-yellow-600' : 'text-red-600') : 'text-slate-400'}>
-                                            {formatScore(project.docs_score)}
-                                        </span>
-                                    </td>
-                                    <td className="text-center px-3 py-3">
-                                        <HealthIndicator health={project.overall_health} size="sm" />
-                                    </td>
-                                    <td className="text-center px-3 py-3">
-                                        <span className={cn(
-                                            "text-xs px-2 py-1 rounded-full font-medium",
-                                            project.status === 'active' ? 'bg-green-100 text-green-700' :
-                                                project.status === 'on_hold' ? 'bg-yellow-100 text-yellow-700' :
-                                                    'bg-slate-100 text-slate-700'
-                                        )}>
-                                            {project.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-2 py-3 text-slate-400">
-                                        <ChevronRight className="w-4 h-4" />
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
 
-            {/* Click hint */}
-            <div className="text-center text-sm text-slate-400">
-                Click on a project to view detailed health breakdown ↑
+                {/* AT RISK SECTION */}
+                {groupedProjects.atRisk.length > 0 && (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 pl-2">
+                            <div className="w-2 h-2 bg-amber-500 rounded-full" />
+                            <h3 className="text-sm font-bold text-amber-600 uppercase tracking-widest">At Risk / Watching ({groupedProjects.atRisk.length})</h3>
+                        </div>
+                        <div className="space-y-3">
+                            {groupedProjects.atRisk.map((project, idx) => (
+                                <FloatingProjectRow
+                                    key={project.project_id}
+                                    index={idx + 1}
+                                    projectCode={project.project_code}
+                                    projectName={project.project_name}
+                                    customerName={project.customer_name}
+                                    currentMilestone={project.current_milestone_name}
+                                    timeScore={project.time_score}
+                                    resourceScore={project.resource_score}
+                                    docsScore={project.docs_score}
+                                    overallHealth={project.overall_health}
+                                    healthStatus={project.health_status}
+                                    onClick={() => handleProjectClick(project.project_id)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ON TRACK SECTION */}
+                {groupedProjects.onTrack.length > 0 && (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 pl-2">
+                            <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                            <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-widest">Healthy ({groupedProjects.onTrack.length})</h3>
+                        </div>
+                        <div className="space-y-3">
+                            {groupedProjects.onTrack.map((project, idx) => (
+                                <FloatingProjectRow
+                                    key={project.project_id}
+                                    index={idx + 1}
+                                    projectCode={project.project_code}
+                                    projectName={project.project_name}
+                                    customerName={project.customer_name}
+                                    currentMilestone={project.current_milestone_name}
+                                    timeScore={project.time_score}
+                                    resourceScore={project.resource_score}
+                                    docsScore={project.docs_score}
+                                    overallHealth={project.overall_health}
+                                    healthStatus={project.health_status}
+                                    onClick={() => handleProjectClick(project.project_id)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {filteredProjects.length === 0 && (
+                    <div className="text-center py-20">
+                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                            <Search className="w-6 h-6 text-slate-300" />
+                        </div>
+                        <h3 className="text-slate-800 font-semibold mb-1">No Projects Found</h3>
+                        <p className="text-sm text-slate-400">Try adjusting your filters or search query.</p>
+                        <Button variant="link" onClick={() => {
+                            setSearchQuery('')
+                            setSelectedCustomer('All')
+                            setSelectedStatus('All')
+                            setActiveTag(null)
+                        }}>Clear all filters</Button>
+                    </div>
+                )}
             </div>
         </div>
     )

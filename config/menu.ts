@@ -32,6 +32,7 @@ import {
   FileCheck,
   ClipboardList,
   Wrench,
+  Bell,
   type LucideIcon
 } from 'lucide-react'
 
@@ -72,8 +73,10 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Overview',
         titleTh: 'ภาพรวม',
         children: [
+          { id: 'project-onhand', label: 'Project Onhand', labelTh: 'โครงการในมือ (Project Onhand)', path: '/project-onhand', icon: TrendingUp },
           { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
           { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
+          { id: 'project-tracking', label: 'Project Tracking', labelTh: 'ติดตามโครงการ', path: '/tracking', icon: CalendarDays },
           { id: 'activities', label: 'Activities', labelTh: 'กิจกรรม', path: '/activities', icon: Activity },
         ]
       }
