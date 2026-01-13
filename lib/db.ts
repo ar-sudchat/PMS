@@ -7,7 +7,7 @@ const config: sql.config = {
     user: process.env.DB_USER!,
     password: process.env.DB_PASSWORD!,
     options: {
-        encrypt: true,
+        encrypt: process.env.DB_ENCRYPT === 'true' || (process.env.DB_SERVER ? !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(process.env.DB_SERVER) : true),
         trustServerCertificate: true,
     },
     connectionTimeout: 15000, // 15 seconds

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, Clock, AlertCircle, FileText, Calendar, User, ShieldCheck, CalendarDays, LayoutDashboard, Target, ChevronDown, ChevronRight, Layers, MapPin } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, AlertCircle, FileText, Calendar, User, ShieldCheck, CalendarDays, LayoutDashboard, Target, ChevronDown, ChevronRight, Layers, MapPin, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -114,42 +114,45 @@ export function ProjectHealthDetailClient({
     // Better to map to array.
 
     return (
-        <div className="min-h-screen bg-slate-50/50 pb-20 font-sans">
-            {/* 1. Header & Project Identity */}
-            <div className="bg-white border-b border-slate-100 sticky top-0 z-30 shadow-sm backdrop-blur-xl bg-white/80">
-                <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <Button variant="ghost" size="icon" onClick={() => router.push('/pm-dashboard')} className="rounded-full hover:bg-slate-100">
-                                <ArrowLeft className="w-5 h-5 text-slate-500" />
-                            </Button>
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="secondary" className="bg-slate-100 text-slate-600 font-mono tracking-wider text-[10px]">
-                                        {project.code}
-                                    </Badge>
-                                    <h1 className="text-lg font-bold text-slate-800 tracking-tight">{project.name}</h1>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-0.5 flex gap-2">
-                                    <span>Client: {project.customer_name}</span>
-                                    <span className="text-slate-300">|</span>
-                                    <span>Due: {formatStrictDate(project.end_date)}</span>
-                                </p>
-                            </div>
+        <div className="flex flex-col h-[calc(100vh-65px)] bg-slate-50/50">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => router.back()}
+                        className="h-9 w-9 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-full transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 font-mono tracking-wider text-[10px]">
+                                {project.code}
+                            </Badge>
+                            <h1 className="text-lg font-bold text-slate-800 tracking-tight">{project.name}</h1>
                         </div>
+                        <p className="text-xs text-slate-500 mt-0.5 flex gap-2">
+                            <span>Client: {project.customer_name}</span>
+                            <span className="text-slate-300">|</span>
+                            <span>Due: {formatStrictDate(project.end_date)}</span>
+                        </p>
+                    </div>
+                </div>
 
-                        {/* Quick Health Score */}
-                        <div className="text-right">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Project Health</p>
-                            <div className="flex items-baseline justify-end gap-1">
-                                <span className={`text-2xl font-black ${overallHealth.overall >= 80 ? 'text-emerald-500' :
-                                    overallHealth.overall >= 60 ? 'text-amber-500' :
-                                        'text-rose-500'
-                                    }`}>
-                                    {overallHealth.overall}%
-                                </span>
-                            </div>
-                        </div>
+                {/* Quick Health Score */}
+                {/* Quick Health Score */}
+                <div className="text-right">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Project Health</p>
+                    <div className="flex items-baseline justify-end gap-1">
+                        <span className={cn(
+                            "text-2xl font-black",
+                            overallHealth.overall >= 80 ? 'text-emerald-500' :
+                                overallHealth.overall >= 60 ? 'text-amber-500' : 'text-rose-500'
+                        )}>
+                            {overallHealth.overall}%
+                        </span>
                     </div>
                 </div>
             </div>

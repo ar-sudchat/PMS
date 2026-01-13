@@ -20,6 +20,7 @@ export interface SmartComboboxProps {
     disabled?: boolean
     isLoading?: boolean
     maxDisplayItems?: number
+    searchable?: boolean
 }
 
 export function SmartCombobox({
@@ -32,7 +33,8 @@ export function SmartCombobox({
     required,
     disabled,
     isLoading,
-    maxDisplayItems = 10
+    maxDisplayItems = 10,
+    searchable = true
 }: SmartComboboxProps) {
     const [query, setQuery] = useState('')
     const [showAll, setShowAll] = useState(false)
@@ -91,6 +93,7 @@ export function SmartCombobox({
                             className={cn(
                                 "w-full px-3 py-2 text-left border rounded-md bg-background",
                                 "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                                "data-[state=open]:ring-2 data-[state=open]:ring-ring data-[state=open]:ring-offset-2",
                                 error && "border-destructive",
                                 disabled && "opacity-50 cursor-not-allowed",
                                 !disabled && "cursor-pointer hover:border-input"
@@ -116,18 +119,20 @@ export function SmartCombobox({
                             className="z-[100] mt-1 w-[var(--button-width)] rounded-md bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 focus:outline-none"
                         >
                             {/* Search Input */}
-                            <div className="p-2 border-b">
-                                <input
-                                    type="text"
-                                    className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                                    placeholder="ค้นหา..."
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    // Prevent Popover from closing when clicking input
-                                    onClick={(e) => e.stopPropagation()}
-                                    autoFocus
-                                />
-                            </div>
+                            {searchable && (
+                                <div className="p-2 border-b">
+                                    <input
+                                        type="text"
+                                        className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                                        placeholder="ค้นหา..."
+                                        value={query}
+                                        onChange={(e) => setQuery(e.target.value)}
+                                        // Prevent Popover from closing when clicking input
+                                        onClick={(e) => e.stopPropagation()}
+                                        autoFocus
+                                    />
+                                </div>
+                            )}
 
                             {/* Header with count */}
                             {!query && (

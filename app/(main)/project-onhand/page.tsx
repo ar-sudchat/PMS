@@ -32,6 +32,7 @@ export default function SalesForecastPage() {
         year: 2026,
         search: '',
         myPortfolio: false,
+        criticalOnly: false,
         statusId: '',
         pmId: '',
         ownerId: '',
@@ -61,6 +62,7 @@ export default function SalesForecastPage() {
                         year: filters.year,
                         search: filters.search,
                         myPortfolio: filters.myPortfolio,
+                        criticalOnly: filters.criticalOnly,
                         statusId: filters.statusId,
                         pmId: filters.pmId,
                         ownerId: filters.ownerId
@@ -112,10 +114,10 @@ export default function SalesForecastPage() {
 
             <div className="flex-1 overflow-hidden flex">
                 <div id="project-roadmap-snapshot" className="flex-1 flex flex-col p-6 gap-6 overflow-hidden bg-[#F8FAFC]">
-                    {/* 1. Hero Metrics (Compact) */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
-                        {metrics.map((m, i) => (
-                            <HeroMetricsCard key={i} metric={m} />
+                    {/* 1. Hero Metrics (Compact) */}            {/* Metrics Grid - 3 Cards per Master Design */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        {metrics.map((metric, i) => (
+                            <HeroMetricsCard key={i} metric={metric} />
                         ))}
                     </div>
 

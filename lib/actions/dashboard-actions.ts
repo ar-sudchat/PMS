@@ -522,6 +522,10 @@ export interface ProjectHealthSummary {
     customer_name: string
     status: string
     current_milestone_name?: string
+    next_due_date?: string | null
+    delayed_milestones_count?: number
+    pm_name?: string
+    owner_name?: string
     time_score: number | null
     resource_score: number | null
     docs_score: number | null
@@ -682,6 +686,10 @@ export async function getProjectsHealthOverview(filters?: {
                 customer_name: p.customer_name,
                 status: p.status,
                 current_milestone_name: p.current_milestone_name,
+                next_due_date: p.next_due_date,
+                delayed_milestones_count: p.delayed_milestones_count,
+                pm_name: p.pm_name,
+                owner_name: p.owner_name,
                 time_score: p.time_score,
                 resource_score: p.resource_score,
                 docs_score: p.docs_score,

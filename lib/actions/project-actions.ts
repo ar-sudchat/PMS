@@ -191,6 +191,16 @@ export interface ProjectFilters {
     search?: string
 }
 
+export interface FilterOptions {
+    customers: any[]
+    managers: any[]
+    owners: any[]
+    years: number[]
+    statuses: any[]
+    milestones: any[]
+    projectTypes: any[]
+}
+
 // ============================================
 // GET FILTER OPTIONS
 // ============================================

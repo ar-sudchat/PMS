@@ -3,6 +3,8 @@
 import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 
+import { getCurrentUser } from '@/lib/auth'
+
 export interface SalesMetric {
     title: string
     value: string
@@ -39,92 +41,86 @@ export interface ProjectRow {
 export async function getSalesForecastMetrics(): Promise<SalesMetric[]> {
     try {
         const pool = await getConnection()
+        const year = new Date().getFullYear();
 
-        // 1. Current Month Commitment (Sum of payment_amount for milestones due this month)
-        // Assuming 'payment_amount' exists in project_milestones, or we use 0 if not.
-        // Let's try to query it. If it fails, we catch.
-        // 1. Current Month Commitment (Sum of payment_amount for milestones due this month)
-        // Calculated as Project Total Value * Milestone Weight %
-        const commitQuery = `
-            SELECT SUM((p.total_value * ISNULL(pm.weight_percent, 0) / 100)) as total
+        // 1. Handover This Month: Count of milestones due in current month (Active Projects)
+        const currentMonthStart = new Date(year, new Date().getMonth(), 1).toISOString().slice(0, 10);
+        const currentMonthEnd = new Date(year, new Date().getMonth() + 1, 0).toISOString().slice(0, 10);
+
+        const handoverQuery = `
+            SELECT COUNT(pm.id) as count
             FROM pms.project_milestones pm
             JOIN pms.projects p ON pm.project_id = p.id
-            WHERE MONTH(pm.due_date) = MONTH(GETDATE()) 
-              AND YEAR(pm.due_date) = YEAR(GETDATE())
+            WHERE pm.due_date BETWEEN @start AND @end
+            AND p.status_id = 'active'
+            AND pm.status != 'completed'
         `
-        let currentMonthCommit = 0
-        try {
-            const commitResult = await pool.request().query(commitQuery)
-            currentMonthCommit = commitResult.recordset[0].total || 0
-        } catch (e) {
-            console.warn("Failed to calc commitment", e)
-        }
+        const handoverRequest = pool.request()
+        handoverRequest.input('start', sql.Date, currentMonthStart)
+        handoverRequest.input('end', sql.Date, currentMonthEnd)
+        const handoverResult = await handoverRequest.query(handoverQuery);
 
-        // 2. Handover Confidence (Avg % of milestones on track)
-        // On Track = Not delayed (due_date > now OR completed_date <= due_date)
-        const confidenceResult = await pool.request().query(`
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE 
-                    WHEN pm.completed_date IS NOT NULL AND pm.completed_date <= pm.due_date THEN 1
-                    WHEN pm.completed_date IS NULL AND pm.due_date >= GETDATE() THEN 1
-                    ELSE 0 
-                END) as on_track
-            FROM pms.project_milestones pm
-            LEFT JOIN pms.projects p ON pm.project_id = p.id
-            WHERE p.status_id = (SELECT id FROM pms.project_status_configs WHERE name = 'Production') -- Filter active/relevant? Or just all.
-               OR p.is_active = 1
-        `)
+        // 2. Pending Verify: Count of deliverables with status 'submitted' (Active Projects)
+        const pendingVerifyQuery = `
+            SELECT COUNT(pd.id) as count
+            FROM pms.project_deliverables pd
+            JOIN pms.projects p ON pd.project_id = p.id
+            WHERE pd.verification_status = 'submitted'
+            AND p.status_id = 'active'
+        `
+        const pendingVerifyResult = await pool.request().query(pendingVerifyQuery);
 
-        const totalActive = confidenceResult.recordset[0].total || 1
-        const onTrack = confidenceResult.recordset[0].on_track || 0
-        const confidenceScore = Math.round((onTrack / totalActive) * 100) || 100
-
-        // 3. High Priority Dues (Milestones due in next 7 days and NOT completed)
-        const urgentResult = await pool.request().query(`
-            SELECT COUNT(*) as exact_count
-            FROM pms.project_milestones pm
-            JOIN pms.projects p ON pm.project_id = p.id
-            WHERE pm.completed_date IS NULL
-              AND p.is_active = 1
-              AND pm.due_date BETWEEN GETDATE() AND DATEADD(DAY, 7, GETDATE())
-        `)
-        const urgentCount = urgentResult.recordset[0].exact_count || 0
+        // 3. Critical Overdue: Count of projects with Critical status (health score < 50) and overdue milestones
+        // Using vw_project_health if available, or calculating
+        const overdueQuery = `
+             SELECT COUNT(DISTINCT p.id) as count
+            FROM pms.projects p
+            JOIN pms.project_milestones pm ON p.id = pm.project_id
+            WHERE p.status_id = 'active'
+            AND pm.status != 'completed'
+            AND pm.due_date < GETDATE()
+        `
+        const overdueResult = await pool.request().query(overdueQuery);
 
         return [
             {
-                title: 'Current Month Commitment',
-                value: `฿${currentMonthCommit.toLocaleString()}`,
-                subValue: 'Due this month',
-                trend: 'neutral',
-                color: 'blue'
+                title: "Handover This Month",
+                value: handoverResult.recordset[0].count.toString(),
+                subValue: "Milestones",
+                trend: "neutral",
+                color: "blue"
             },
             {
-                title: 'Handover Confidence',
-                value: `${confidenceScore}%`,
-                subValue: 'Based on Milestone status',
-                trend: confidenceScore > 80 ? 'up' : 'down',
-                color: confidenceScore > 80 ? 'emerald' : 'rose'
+                title: "Pending Verify",
+                value: pendingVerifyResult.recordset[0].count.toString(),
+                subValue: "Deliverables",
+                trend: "neutral", // Orange/Yellow handled by color
+                color: "amber"
             },
             {
-                title: 'High-Priority Dues',
-                value: `${urgentCount}`,
-                subValue: 'Due next 7 days',
-                trend: urgentCount > 0 ? 'down' : 'neutral',
-                color: urgentCount > 0 ? 'amber' : 'slate'
+                title: "Critical Overdue", // Renamed from Late Projects
+                value: overdueResult.recordset[0].count.toString(),
+                subValue: "Projects",
+                trend: "down", // Red
+                color: "rose"
             }
-        ]
+        ];
 
-    } catch (e) {
-        console.error("Error fetching metrics", e)
-        return []
+    } catch (error) {
+        console.error('Error fetching sales metrics:', error);
+        return [
+            { title: "Handover This Month", value: "0", subValue: "Milestones", trend: "neutral", color: "blue" },
+            { title: "Pending Verify", value: "0", subValue: "Deliverables", trend: "neutral", color: "amber" },
+            { title: "Critical Overdue", value: "0", subValue: "Projects", trend: "neutral", color: "rose" }
+        ];
     }
 }
 
 export interface TimelineFilters {
     year: number
     search?: string
-    myPortfolio?: boolean // Kept for interface compatibility but removed from UI
+    myPortfolio?: boolean
+    criticalOnly?: boolean
     statusId?: string
     pmId?: string
     ownerId?: string
@@ -135,6 +131,7 @@ export interface TimelineFilters {
 export async function getMilestoneTimeline(filters: TimelineFilters): Promise<ProjectRow[]> {
     try {
         const pool = await getConnection()
+        const user = await getCurrentUser()
 
         let query = `
                 SELECT 
@@ -143,6 +140,8 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     p.name as project_name,
                     p.status_id,
                     p.total_value,
+                    p.project_manager_id,
+                    p.project_owner_id,
                     
                     -- PM Info
                     e.first_name_th, e.last_name_th,
@@ -179,6 +178,11 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
         if (filters.search) {
             query += ` AND (p.project_code LIKE @search OR p.name LIKE @search)`
             request.input('search', sql.NVarChar, `%${filters.search}%`)
+        }
+
+        if (filters.myPortfolio && user) {
+            query += ` AND (p.project_manager_id = @userId OR p.project_owner_id = @userId)`
+            request.input('userId', sql.UniqueIdentifier, user.id)
         }
 
         if (filters.statusId) {
@@ -252,14 +256,21 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
         })
 
         // Recalculate Health Score based on delayed milestones
-        for (const p of projectMap.values()) {
+        let results = Array.from(projectMap.values())
+
+        for (const p of results) {
             const total = p.milestones.length
             const delayed = p.milestones.filter(m => m.riskStatus === 'delayed').length
             const score = total === 0 ? 100 : Math.round(((total - delayed) / total) * 100)
             p.healthScore = score
         }
 
-        return Array.from(projectMap.values())
+        // Apply Critical Only Filter (In-Memory)
+        if (filters.criticalOnly) {
+            results = results.filter(p => p.healthScore < 80)
+        }
+
+        return results
 
     } catch (e) {
         console.error("Error fetching timeline", e)

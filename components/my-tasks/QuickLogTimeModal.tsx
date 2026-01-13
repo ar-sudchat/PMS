@@ -234,13 +234,14 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-4xl">
                 <DialogHeader>
                     <DialogTitle>Log Time</DialogTitle>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                    <div className="bg-slate-50 p-3 rounded-md border border-slate-100 flex justify-between items-center text-sm">
+                <form onSubmit={handleSubmit} className="mt-2">
+                    {/* Task Info Header */}
+                    <div className="bg-slate-50 p-3 rounded-md border border-slate-100 flex justify-between items-center text-sm mb-6">
                         <div>
                             <div className="font-medium text-slate-900">{task.task_code}</div>
                             <div className="text-slate-500 line-clamp-1">{task.task_title}</div>
@@ -250,149 +251,183 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-slate-500">Date</label>
-                            <input
-                                type="date"
-                                value={date}
-                                onChange={(e) => setDate(e.target.value)}
-                                className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                required
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs font-medium text-slate-500">
-                                    Time ({timeUnit === 'hours' ? 'Hours' : 'Minutes'})
-                                </label>
-                                <button
-                                    type="button"
-                                    onClick={toggleUnit}
-                                    className="text-[10px] flex items-center gap-1 text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer"
-                                >
-                                    <ArrowRightLeft className="w-3 h-3" />
-                                    Switch to {timeUnit === 'hours' ? 'Mins' : 'Hrs'}
-                                </button>
-                            </div>
-                            <div className="relative">
-                                <Clock className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step={timeUnit === 'hours' ? "0.25" : "15"}
-                                    value={inputValue}
-                                    onChange={(e) => handleInputChange(e.target.value)}
-                                    className="w-full text-sm p-2 pl-9 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                    required
-                                />
-                                {displayConversion && (
-                                    <div className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">
-                                        = {displayConversion}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-500">Activity Type</label>
-                        <SmartCombobox
-                            value={activityOptions.find(opt => opt.value === activityType) || activityOptions[0]}
-                            onChange={(opt) => setActivityType(opt?.value?.toString() || '')}
-                            options={activityOptions}
-                            placeholder="Select Activity"
-                        />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-500">Description</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={2}
-                            placeholder="What did you work on?"
-                            className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                        />
-                    </div>
-
-                    {/* Checklist Section */}
-                    {checklistItems.length > 0 && (
-                        <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
-                                    <ListChecks className="w-3.5 h-3.5 text-emerald-500" />
-                                    Checklist
-                                </label>
-                                <span className={cn(
-                                    "text-xs font-medium",
-                                    checklistItems.filter(i => i.is_completed).length === checklistItems.length
-                                        ? "text-emerald-600"
-                                        : "text-slate-400"
-                                )}>
-                                    {checklistItems.filter(i => i.is_completed).length}/{checklistItems.length}
-                                </span>
-                            </div>
-                            <div className="border border-slate-200 rounded-md divide-y divide-slate-100 max-h-[120px] overflow-y-auto">
-                                {loadingChecklist ? (
-                                    <div className="p-3 text-center text-sm text-slate-400">
-                                        <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
-                                        Loading...
-                                    </div>
-                                ) : (
-                                    checklistItems.map((item) => (
-                                        <div
-                                            key={item.id}
-                                            className={cn(
-                                                "flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors",
-                                                item.is_completed && "bg-emerald-50/50"
-                                            )}
-                                            onClick={() => handleToggleChecklist(item)}
+                    {/* 2 Column Layout */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Column - Form */}
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-slate-500">Date</label>
+                                    <input
+                                        type="date"
+                                        value={date}
+                                        onChange={(e) => setDate(e.target.value)}
+                                        className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-medium text-slate-500">
+                                            Time ({timeUnit === 'hours' ? 'Hours' : 'Minutes'})
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={toggleUnit}
+                                            className="text-[10px] flex items-center gap-1 text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded cursor-pointer"
                                         >
-                                            {item.is_completed ? (
-                                                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                                            ) : (
-                                                <Circle className="w-4 h-4 text-slate-300 flex-shrink-0" />
-                                            )}
+                                            <ArrowRightLeft className="w-3 h-3" />
+                                            Switch to {timeUnit === 'hours' ? 'Mins' : 'Hrs'}
+                                        </button>
+                                    </div>
+                                    <div className="relative">
+                                        <Clock className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step={timeUnit === 'hours' ? "0.25" : "15"}
+                                            value={inputValue}
+                                            onChange={(e) => handleInputChange(e.target.value)}
+                                            className="w-full text-sm p-2 pl-9 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                            required
+                                        />
+                                        {displayConversion && (
+                                            <div className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">
+                                                = {displayConversion}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-500">Activity Type</label>
+                                <SmartCombobox
+                                    value={activityOptions.find(opt => opt.value === activityType) || activityOptions[0]}
+                                    onChange={(opt) => setActivityType(opt?.value?.toString() || '')}
+                                    options={activityOptions}
+                                    placeholder="Select Activity"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-slate-500">Description</label>
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    rows={4}
+                                    placeholder="What did you work on?"
+                                    className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="ot"
+                                    checked={isOvertime}
+                                    onChange={(e) => setIsOvertime(e.target.checked)}
+                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                />
+                                <label htmlFor="ot" className="text-sm text-slate-700">This is Overtime (OT)</label>
+                            </div>
+                        </div>
+
+                        {/* Right Column - Checklist */}
+                        <div className="space-y-3">
+                            {checklistItems.length > 0 ? (
+                                <>
+                                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                            <ListChecks className="w-4 h-4 text-emerald-500" />
+                                            Checklist
+                                        </label>
+                                        <span className={cn(
+                                            "text-sm font-bold px-2 py-0.5 rounded-full",
+                                            checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                                ? "bg-emerald-100 text-emerald-700"
+                                                : "bg-slate-100 text-slate-600"
+                                        )}>
+                                            {checklistItems.filter(i => i.is_completed).length}/{checklistItems.length}
+                                        </span>
+                                    </div>
+
+                                    {/* Checklist Items */}
+                                    <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[380px] overflow-y-auto">
+                                        {loadingChecklist ? (
+                                            <div className="p-4 text-center text-sm text-slate-400">
+                                                <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
+                                                Loading checklist...
+                                            </div>
+                                        ) : (
+                                            checklistItems.map((item) => (
+                                                <div
+                                                    key={item.id}
+                                                    className={cn(
+                                                        "flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors",
+                                                        item.is_completed && "bg-emerald-50/30"
+                                                    )}
+                                                    onClick={() => handleToggleChecklist(item)}
+                                                >
+                                                    <div className="pt-0.5">
+                                                        {item.is_completed ? (
+                                                            <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                                                        ) : (
+                                                            <Circle className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                                                        )}
+                                                    </div>
+                                                    <span className={cn(
+                                                        "text-sm flex-1 leading-relaxed",
+                                                        item.is_completed ? "text-slate-500 line-through" : "text-slate-700 font-medium"
+                                                    )}>
+                                                        {item.title}
+                                                    </span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    {/* Progress bar */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-500">Progress</span>
                                             <span className={cn(
-                                                "text-sm flex-1",
-                                                item.is_completed ? "text-slate-500 line-through" : "text-slate-700"
+                                                "font-semibold",
+                                                checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                                    ? "text-emerald-600"
+                                                    : "text-slate-600"
                                             )}>
-                                                {item.title}
+                                                {Math.round((checklistItems.filter(i => i.is_completed).length / checklistItems.length) * 100)}%
                                             </span>
                                         </div>
-                                    ))
-                                )}
-                            </div>
-                            {/* Progress bar */}
-                            <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
-                                <div
-                                    className={cn(
-                                        "h-full rounded-full transition-all",
-                                        checklistItems.filter(i => i.is_completed).length === checklistItems.length
-                                            ? "bg-emerald-500"
-                                            : "bg-emerald-400"
-                                    )}
-                                    style={{
-                                        width: `${(checklistItems.filter(i => i.is_completed).length / checklistItems.length) * 100}%`
-                                    }}
-                                />
-                            </div>
+                                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                                className={cn(
+                                                    "h-full rounded-full transition-all duration-500",
+                                                    checklistItems.filter(i => i.is_completed).length === checklistItems.length
+                                                        ? "bg-emerald-500"
+                                                        : "bg-emerald-400"
+                                                )}
+                                                style={{
+                                                    width: `${(checklistItems.filter(i => i.is_completed).length / checklistItems.length) * 100}%`
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-center p-8">
+                                    <div>
+                                        <ListChecks className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                        <p className="text-sm text-slate-400">No checklist items for this task</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            id="ot"
-                            checked={isOvertime}
-                            onChange={(e) => setIsOvertime(e.target.checked)}
-                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                        />
-                        <label htmlFor="ot" className="text-sm text-slate-700">This is Overtime (OT)</label>
                     </div>
 
-                    <DialogFooter className="mt-4">
+                    {/* Footer Buttons */}
+                    <DialogFooter className="mt-6">
                         <Button
                             type="button"
                             variant="secondary"

@@ -4,6 +4,10 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ActivityRings } from '@/components/dashboard/ActivityRings'
 import { FloatingProjectRow } from '@/components/dashboard/FloatingProjectRow'
+import { TimelineView } from '@/components/dashboard/TimelineView'
+import { BoardView } from '@/components/dashboard/BoardView'
+import { CalendarView } from '@/components/dashboard/CalendarView'
+import { ProjectDetailModal } from '@/components/dashboard/ProjectDetailModal'
 import { getProjectsHealthOverview, type ProjectHealthSummary, type ProjectsOverviewSummary } from '@/lib/actions/dashboard-actions'
 import {
     RefreshCw,
@@ -17,7 +21,13 @@ import {
     CheckCircle2,
     AlertTriangle,
     XCircle,
-    SlidersHorizontal
+    SlidersHorizontal,
+    List,
+    Calendar as CalendarIcon,
+    LayoutGrid,
+    Download,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,6 +63,21 @@ export function ProjectHealthDashboardClient({
     // Quick Action Tags
     const [activeTag, setActiveTag] = useState<string | null>(null)
 
+    // View State
+    const [currentView, setCurrentView] = useState<'list' | 'timeline' | 'board' | 'calendar'>('list')
+
+    // Modal State
+    const [selectedProject, setSelectedProject] = useState<ProjectHealthSummary | null>(null)
+    const [isModalOpen, setIsModalOpen] = useState(false)
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+
+    // Sorting State
+    const [sortField, setSortField] = useState<'name' | 'customer' | 'overall_health'>('overall_health')
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
     // Derived Options for Dropdowns
     const customers = useMemo(() => Array.from(new Set(projects.map(p => p.customer_name))).sort(), [projects])
     // const types = useMemo(() => Array.from(new Set(projects.map(p => p.project_type || 'Unknown'))).sort(), [projects])
@@ -69,8 +94,40 @@ export function ProjectHealthDashboardClient({
     }
 
     const handleProjectClick = (projectId: string) => {
-        // Link to Control Tower as per instruction
+        const project = projects.find(p => p.project_id === projectId)
+        if (project) {
+            setSelectedProject(project)
+            setIsModalOpen(true)
+        }
+    }
+
+    const handleGoToControlTower = (projectId: string) => {
         router.push(`/pm-dashboard/control-tower?id=${projectId}`)
+        setIsModalOpen(false)
+    }
+
+    const handleExport = () => {
+        const csv = [
+            ['Project Code', 'Project Name', 'Customer', 'Status', 'Overall Health', 'Time', 'Resource', 'Docs'].join(','),
+            ...filteredProjects.map(p => [
+                p.project_code,
+                `"${p.project_name}"`,
+                `"${p.customer_name}"`,
+                p.health_status,
+                p.overall_health,
+                p.time_score,
+                p.resource_score,
+                p.docs_score
+            ].join(','))
+        ].join('\n')
+
+        const blob = new Blob([csv], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'pm-dashboard-export.csv'
+        a.click()
+        URL.revokeObjectURL(url)
     }
 
     // Filter Logic
@@ -96,11 +153,37 @@ export function ProjectHealthDashboardClient({
         return matchesSearch && matchesCustomer && matchesStatus
     })
 
-    // Grouping Logic
+    // Sorting Logic
+    const sortedProjects = [...filteredProjects].sort((a, b) => {
+        let aVal, bVal
+
+        if (sortField === 'name') {
+            aVal = a.project_name.toLowerCase()
+            bVal = b.project_name.toLowerCase()
+        } else if (sortField === 'customer') {
+            aVal = a.customer_name.toLowerCase()
+            bVal = b.customer_name.toLowerCase()
+        } else {
+            aVal = a.overall_health
+            bVal = b.overall_health
+        }
+
+        if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1
+        if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1
+        return 0
+    })
+
+    // Pagination Logic
+    const totalPages = Math.ceil(sortedProjects.length / pageSize)
+    const paginatedProjects = currentView === 'list'
+        ? sortedProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+        : sortedProjects
+
+    // Grouping Logic (for list view)
     const groupedProjects = {
-        critical: filteredProjects.filter(p => p.health_status === 'critical'),
-        atRisk: filteredProjects.filter(p => p.health_status === 'at-risk'),
-        onTrack: filteredProjects.filter(p => p.health_status === 'on-track')
+        critical: paginatedProjects.filter(p => p.health_status === 'critical'),
+        atRisk: paginatedProjects.filter(p => p.health_status === 'at-risk'),
+        onTrack: paginatedProjects.filter(p => p.health_status === 'on-track')
     }
 
     return (
@@ -144,6 +227,58 @@ export function ProjectHealthDashboardClient({
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* View Tabs */}
+                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg mb-4">
+                        <button
+                            onClick={() => setCurrentView('list')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                                currentView === 'list'
+                                    ? "bg-white text-slate-800 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            <List className="w-4 h-4" />
+                            List
+                        </button>
+                        <button
+                            onClick={() => setCurrentView('timeline')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                                currentView === 'timeline'
+                                    ? "bg-white text-slate-800 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            <LayoutDashboard className="w-4 h-4" />
+                            Timeline
+                        </button>
+                        <button
+                            onClick={() => setCurrentView('board')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                                currentView === 'board'
+                                    ? "bg-white text-slate-800 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            <LayoutGrid className="w-4 h-4" />
+                            Board
+                        </button>
+                        <button
+                            onClick={() => setCurrentView('calendar')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                                currentView === 'calendar'
+                                    ? "bg-white text-slate-800 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                            )}
+                        >
+                            <CalendarIcon className="w-4 h-4" />
+                            Calendar
+                        </button>
                     </div>
 
                     {/* Filter Bar Row */}
@@ -203,6 +338,15 @@ export function ProjectHealthDashboardClient({
 
                         <div className="ml-auto flex items-center gap-2">
                             <Button
+                                onClick={handleExport}
+                                size="sm"
+                                variant="outline"
+                                className="h-9 gap-2 rounded-lg border-slate-200 text-slate-600 hover:text-indigo-600"
+                            >
+                                <Download className="w-4 h-4" />
+                                <span className="hidden sm:inline">Export</span>
+                            </Button>
+                            <Button
                                 onClick={handleRefresh}
                                 disabled={isLoading}
                                 size="sm"
@@ -244,92 +388,198 @@ export function ProjectHealthDashboardClient({
                 </div>
             </div>
 
-            {/* 3. PROJECT LIST (Floating Rows) */}
-            <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
+            {/* 3. CONTENT AREA - Views */}
+            <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+                {/* LIST VIEW */}
+                {currentView === 'list' && (
+                    <div className="space-y-8">
+                        {/* Sorting & Count */}
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm text-slate-500">
+                                Showing {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, sortedProjects.length)} of {sortedProjects.length} projects
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-500">Sort by:</span>
+                                <select
+                                    className="h-8 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600"
+                                    value={sortField}
+                                    onChange={(e) => setSortField(e.target.value as any)}
+                                >
+                                    <option value="overall_health">Health Score</option>
+                                    <option value="name">Project Name</option>
+                                    <option value="customer">Customer</option>
+                                </select>
+                                <button
+                                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                                    className="h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
+                                >
+                                    {sortOrder === 'asc' ? '↑' : '↓'}
+                                </button>
+                            </div>
+                        </div>
 
-                {/* CRITICAL SECTION */}
-                {groupedProjects.critical.length > 0 && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 pl-2">
-                            <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
-                            <h3 className="text-sm font-bold text-rose-600 uppercase tracking-widest">Critical Attention ({groupedProjects.critical.length})</h3>
-                        </div>
-                        <div className="space-y-3">
-                            {groupedProjects.critical.map((project, idx) => (
-                                <FloatingProjectRow
-                                    key={project.project_id}
-                                    index={idx + 1}
-                                    projectCode={project.project_code}
-                                    projectName={project.project_name}
-                                    customerName={project.customer_name}
-                                    currentMilestone={project.current_milestone_name}
-                                    timeScore={project.time_score}
-                                    resourceScore={project.resource_score}
-                                    docsScore={project.docs_score}
-                                    overallHealth={project.overall_health}
-                                    healthStatus={project.health_status}
-                                    onClick={() => handleProjectClick(project.project_id)}
-                                />
-                            ))}
-                        </div>
+                        {/* CRITICAL SECTION */}
+                        {groupedProjects.critical.length > 0 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 pl-2">
+                                    <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
+                                    <h3 className="text-sm font-bold text-rose-600 uppercase tracking-widest">Critical Attention ({groupedProjects.critical.length})</h3>
+                                </div>
+                                <div className="space-y-3">
+                                    {groupedProjects.critical.map((project, idx) => (
+                                        <FloatingProjectRow
+                                            key={project.project_id}
+                                            index={((currentPage - 1) * pageSize) + idx + 1}
+                                            projectCode={project.project_code}
+                                            projectName={project.project_name}
+                                            customerName={project.customer_name}
+                                            currentMilestone={project.current_milestone_name}
+                                            timeScore={project.time_score}
+                                            resourceScore={project.resource_score}
+                                            docsScore={project.docs_score}
+                                            overallHealth={project.overall_health}
+                                            healthStatus={project.health_status}
+                                            onClick={() => handleProjectClick(project.project_id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* AT RISK SECTION */}
+                        {groupedProjects.atRisk.length > 0 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 pl-2">
+                                    <div className="w-2 h-2 bg-amber-500 rounded-full" />
+                                    <h3 className="text-sm font-bold text-amber-600 uppercase tracking-widest">At Risk / Watching ({groupedProjects.atRisk.length})</h3>
+                                </div>
+                                <div className="space-y-3">
+                                    {groupedProjects.atRisk.map((project, idx) => (
+                                        <FloatingProjectRow
+                                            key={project.project_id}
+                                            index={((currentPage - 1) * pageSize) + groupedProjects.critical.length + idx + 1}
+                                            projectCode={project.project_code}
+                                            projectName={project.project_name}
+                                            customerName={project.customer_name}
+                                            currentMilestone={project.current_milestone_name}
+                                            timeScore={project.time_score}
+                                            resourceScore={project.resource_score}
+                                            docsScore={project.docs_score}
+                                            overallHealth={project.overall_health}
+                                            healthStatus={project.health_status}
+                                            onClick={() => handleProjectClick(project.project_id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ON TRACK SECTION */}
+                        {groupedProjects.onTrack.length > 0 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 pl-2">
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                                    <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-widest">Healthy ({groupedProjects.onTrack.length})</h3>
+                                </div>
+                                <div className="space-y-3">
+                                    {groupedProjects.onTrack.map((project, idx) => (
+                                        <FloatingProjectRow
+                                            key={project.project_id}
+                                            index={((currentPage - 1) * pageSize) + groupedProjects.critical.length + groupedProjects.atRisk.length + idx + 1}
+                                            projectCode={project.project_code}
+                                            projectName={project.project_name}
+                                            customerName={project.customer_name}
+                                            currentMilestone={project.current_milestone_name}
+                                            timeScore={project.time_score}
+                                            resourceScore={project.resource_score}
+                                            docsScore={project.docs_score}
+                                            overallHealth={project.overall_health}
+                                            healthStatus={project.health_status}
+                                            onClick={() => handleProjectClick(project.project_id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-between pt-6 border-t border-slate-200">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-slate-500">Show:</span>
+                                    <select
+                                        className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-sm"
+                                        value={pageSize}
+                                        onChange={(e) => {
+                                            setPageSize(Number(e.target.value))
+                                            setCurrentPage(1)
+                                        }}
+                                    >
+                                        <option value={10}>10</option>
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                    </select>
+                                    <span className="text-sm text-slate-500">per page</span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-9"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" />
+                                    </Button>
+
+                                    <div className="flex items-center gap-1">
+                                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                            .filter(page => {
+                                                return page === 1 || page === totalPages ||
+                                                    (page >= currentPage - 1 && page <= currentPage + 1)
+                                            })
+                                            .map((page, idx, arr) => (
+                                                <div key={page} className="flex items-center gap-1">
+                                                    {idx > 0 && arr[idx - 1] !== page - 1 && (
+                                                        <span className="px-2 text-slate-400">...</span>
+                                                    )}
+                                                    <Button
+                                                        onClick={() => setCurrentPage(page)}
+                                                        size="sm"
+                                                        variant={currentPage === page ? "primary" : "outline"}
+                                                        className="h-9 w-9 p-0"
+                                                    >
+                                                        {page}
+                                                    </Button>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+
+                                    <Button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-9"
+                                    >
+                                        <ChevronRight className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* AT RISK SECTION */}
-                {groupedProjects.atRisk.length > 0 && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 pl-2">
-                            <div className="w-2 h-2 bg-amber-500 rounded-full" />
-                            <h3 className="text-sm font-bold text-amber-600 uppercase tracking-widest">At Risk / Watching ({groupedProjects.atRisk.length})</h3>
-                        </div>
-                        <div className="space-y-3">
-                            {groupedProjects.atRisk.map((project, idx) => (
-                                <FloatingProjectRow
-                                    key={project.project_id}
-                                    index={idx + 1}
-                                    projectCode={project.project_code}
-                                    projectName={project.project_name}
-                                    customerName={project.customer_name}
-                                    currentMilestone={project.current_milestone_name}
-                                    timeScore={project.time_score}
-                                    resourceScore={project.resource_score}
-                                    docsScore={project.docs_score}
-                                    overallHealth={project.overall_health}
-                                    healthStatus={project.health_status}
-                                    onClick={() => handleProjectClick(project.project_id)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {/* TIMELINE VIEW */}
+                {currentView === 'timeline' && <TimelineView projects={sortedProjects} />}
 
-                {/* ON TRACK SECTION */}
-                {groupedProjects.onTrack.length > 0 && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 pl-2">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-                            <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-widest">Healthy ({groupedProjects.onTrack.length})</h3>
-                        </div>
-                        <div className="space-y-3">
-                            {groupedProjects.onTrack.map((project, idx) => (
-                                <FloatingProjectRow
-                                    key={project.project_id}
-                                    index={idx + 1}
-                                    projectCode={project.project_code}
-                                    projectName={project.project_name}
-                                    customerName={project.customer_name}
-                                    currentMilestone={project.current_milestone_name}
-                                    timeScore={project.time_score}
-                                    resourceScore={project.resource_score}
-                                    docsScore={project.docs_score}
-                                    overallHealth={project.overall_health}
-                                    healthStatus={project.health_status}
-                                    onClick={() => handleProjectClick(project.project_id)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {/* BOARD VIEW */}
+                {currentView === 'board' && <BoardView projects={sortedProjects} onProjectClick={handleProjectClick} />}
+
+                {/* CALENDAR VIEW */}
+                {currentView === 'calendar' && <CalendarView projects={sortedProjects} onProjectClick={handleProjectClick} />}
 
                 {filteredProjects.length === 0 && (
                     <div className="text-center py-20">
@@ -347,6 +597,14 @@ export function ProjectHealthDashboardClient({
                     </div>
                 )}
             </div>
+
+            {/* Project Detail Modal */}
+            <ProjectDetailModal
+                project={selectedProject}
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onGoToControlTower={handleGoToControlTower}
+            />
         </div>
     )
 }

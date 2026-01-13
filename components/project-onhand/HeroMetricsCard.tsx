@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowUp, ArrowDown, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { type SalesMetric } from '@/lib/actions/sales-actions'
+import { type SalesMetric } from '@/lib/actions/project-onhand-actions'
 
 interface HeroMetricsCardProps {
     metric: SalesMetric

@@ -108,8 +108,8 @@ export function FloatingProjectRow({
                 </p>
             </div>
 
-            {/* Health Bars */}
-            <div className="w-48 shrink-0 px-4">
+            {/* Health Bars - Made Larger */}
+            <div className="w-56 shrink-0 px-4">
                 <TripleHealthBar
                     time={timeScore}
                     resource={resourceScore}
@@ -117,13 +117,13 @@ export function FloatingProjectRow({
                 />
             </div>
 
-            {/* Activity Rings (Compact) */}
-            <div className="w-16 shrink-0 flex justify-center px-2">
+            {/* Activity Rings - Made Larger */}
+            <div className="w-24 shrink-0 flex justify-center px-2">
                 <CompactActivityRings
                     time={timeScore}
                     resource={resourceScore}
                     docs={docsScore}
-                    size={48}
+                    size={80}
                 />
             </div>
 
@@ -132,13 +132,13 @@ export function FloatingProjectRow({
                 <SemiCircularGauge value={overallHealth} size="sm" />
             </div>
 
-            {/* Status Badge */}
-            <div className="w-24 shrink-0 flex justify-center px-2">
+            {/* Status Badge - Made Larger and Bolder */}
+            <div className="w-32 shrink-0 flex justify-center px-2">
                 <span className={cn(
-                    "inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border",
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold border-2",
                     statusConfig.className
                 )}>
-                    <StatusIcon className="w-3 h-3" />
+                    <StatusIcon className="w-4 h-4" />
                     {statusConfig.label}
                 </span>
             </div>
