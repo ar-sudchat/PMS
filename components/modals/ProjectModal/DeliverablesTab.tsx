@@ -187,7 +187,7 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
                                 {/* Add from Template Dropdown */}
                                 {!m.is_locked && m.id && (() => {
                                     const availableConfigs = getAvailableConfigs(m)
-                                    if (availableConfigs.length === 0) return null
+                                    // Always show dropdown if not locked (for Custom Add)
 
                                     return (
                                         <DropdownMenu>
@@ -198,24 +198,37 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" className="w-64">
                                                 <DropdownMenuItem
-                                                    onClick={() => m.id && m.milestone_config_id && handleAddAllFromConfig(m.id, m.milestone_config_id)}
-                                                    className="font-medium text-blue-600"
+                                                    onClick={() => m.id && handleOpenAddModal(m.id)}
+                                                    className="font-medium"
                                                 >
-                                                    <PlusCircle className="w-4 h-4 mr-2" />
-                                                    Add All ({availableConfigs.length})
+                                                    <Plus className="w-4 h-4 mr-2" />
+                                                    Add Custom Document
                                                 </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
-                                                {availableConfigs.map(config => (
-                                                    <DropdownMenuItem
-                                                        key={config.id}
-                                                        onClick={() => m.id && handleAddFromConfig(m.id, config.id)}
-                                                    >
-                                                        {config.name}
-                                                        {config.is_required && (
-                                                            <span className="ml-auto text-xs text-amber-600">(Required)</span>
-                                                        )}
-                                                    </DropdownMenuItem>
-                                                ))}
+
+                                                {availableConfigs.length > 0 && (
+                                                    <>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem
+                                                            onClick={() => m.id && m.milestone_config_id && handleAddAllFromConfig(m.id, m.milestone_config_id)}
+                                                            className="font-medium text-blue-600"
+                                                        >
+                                                            <PlusCircle className="w-4 h-4 mr-2" />
+                                                            Add All Templates ({availableConfigs.length})
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        {availableConfigs.map(config => (
+                                                            <DropdownMenuItem
+                                                                key={config.id}
+                                                                onClick={() => m.id && handleAddFromConfig(m.id, config.id)}
+                                                            >
+                                                                {config.name}
+                                                                {config.is_required && (
+                                                                    <span className="ml-auto text-xs text-amber-600">(Required)</span>
+                                                                )}
+                                                            </DropdownMenuItem>
+                                                        ))}
+                                                    </>
+                                                )}
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )
@@ -246,19 +259,20 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
                                                 {/* Show Add buttons when no deliverables */}
                                                 {!m.is_locked && m.id && (() => {
                                                     const availableConfigs = getAvailableConfigs(m)
-                                                    if (availableConfigs.length === 0) return null
 
                                                     return (
                                                         <div className="flex justify-center gap-2">
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => m.id && m.milestone_config_id && handleAddAllFromConfig(m.id, m.milestone_config_id)}
-                                                                disabled={isSubmitting}
-                                                            >
-                                                                <PlusCircle className="w-4 h-4 mr-1" />
-                                                                Add from Template ({availableConfigs.length})
-                                                            </Button>
+                                                            {availableConfigs.length > 0 && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => m.id && m.milestone_config_id && handleAddAllFromConfig(m.id, m.milestone_config_id)}
+                                                                    disabled={isSubmitting}
+                                                                >
+                                                                    <PlusCircle className="w-4 h-4 mr-1" />
+                                                                    Add from Template ({availableConfigs.length})
+                                                                </Button>
+                                                            )}
                                                             <Button
                                                                 variant="outline"
                                                                 size="sm"
@@ -283,108 +297,108 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
                                         m.deliverables
                                             .filter(d => !pendingDeletes.has(d.id)) // Filter out pending deletes
                                             .map((d, idx) => {
-                                            // Merge current DB data with pending changes
-                                            const changes = deliverableChanges[d.id] || {}
-                                            // Handle submitted_date: if in changes use it (can be null), otherwise DB
-                                            // If changes.submitted_date is explicitly null/empty string, it means cleared.
-                                            // DB submitted_date is string or null.
-                                            const submittedDateValue = changes.submitted_date !== undefined ? changes.submitted_date : d.submitted_date
-                                            const isSubmitted = !!submittedDateValue
-                                            const verifiedValue = changes.is_verified !== undefined ? changes.is_verified : d.is_verified
+                                                // Merge current DB data with pending changes
+                                                const changes = deliverableChanges[d.id] || {}
+                                                // Handle submitted_date: if in changes use it (can be null), otherwise DB
+                                                // If changes.submitted_date is explicitly null/empty string, it means cleared.
+                                                // DB submitted_date is string or null.
+                                                const submittedDateValue = changes.submitted_date !== undefined ? changes.submitted_date : d.submitted_date
+                                                const isSubmitted = !!submittedDateValue
+                                                const verifiedValue = changes.is_verified !== undefined ? changes.is_verified : d.is_verified
 
-                                            // On-time Calculation
-                                            let onTimeElement = <span className="text-slate-300">-</span>
+                                                // On-time Calculation
+                                                let onTimeElement = <span className="text-slate-300">-</span>
 
-                                            if (isSubmitted && m.due_date) {
-                                                const subDate = new Date(submittedDateValue)
-                                                const dueDate = new Date(m.due_date)
-                                                if (subDate <= dueDate) {
-                                                    onTimeElement = <span className="text-green-600 font-bold">✓ On-time</span>
-                                                } else {
-                                                    onTimeElement = <span className="text-red-500 font-bold">Late</span>
+                                                if (isSubmitted && m.due_date) {
+                                                    const subDate = new Date(submittedDateValue)
+                                                    const dueDate = new Date(m.due_date)
+                                                    if (subDate <= dueDate) {
+                                                        onTimeElement = <span className="text-green-600 font-bold">✓ On-time</span>
+                                                    } else {
+                                                        onTimeElement = <span className="text-red-500 font-bold">Late</span>
+                                                    }
+                                                } else if (!isSubmitted && d.is_required && m.due_date) {
+                                                    const dueDate = new Date(m.due_date)
+                                                    if (new Date() > dueDate) {
+                                                        onTimeElement = <span className="text-red-400 font-medium text-xs">Overdue</span>
+                                                    }
                                                 }
-                                            } else if (!isSubmitted && d.is_required && m.due_date) {
-                                                const dueDate = new Date(m.due_date)
-                                                if (new Date() > dueDate) {
-                                                    onTimeElement = <span className="text-red-400 font-medium text-xs">Overdue</span>
-                                                }
-                                            }
 
-                                            return (
-                                                <tr key={d.id || idx} className="hover:bg-slate-50/50 group">
-                                                    <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="font-medium text-slate-900">{d.name}</div>
-                                                        {d.description && (
-                                                            <div className="text-xs text-slate-500 truncate max-w-xs" title={d.description}>
-                                                                {d.description}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        {d.is_required ? (
-                                                            <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" />
-                                                        ) : (
-                                                            <span className="text-slate-300">-</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center text-slate-600 text-xs">
-                                                        <Input
-                                                            type="date"
-                                                            value={formatDateForInput(submittedDateValue)}
-                                                            onChange={(e) => onDeliverableChange?.(d.id, 'submitted_date', e.target.value || null)}
-                                                            disabled={m.is_locked}
-                                                            className="h-8 w-32 mx-auto text-xs"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center text-xs">
-                                                        {onTimeElement}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <div className="flex justify-center">
-                                                            <Checkbox
-                                                                checked={!!verifiedValue}
-                                                                onChange={(e) => onDeliverableChange?.(d.id, 'is_verified', e.target.checked)}
-                                                                disabled={!isSubmitted || m.is_locked}
-                                                                className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                                                            />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            {d.file_path ? (
-                                                                <a
-                                                                    href={d.file_path}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs"
-                                                                >
-                                                                    <LinkIcon className="w-3 h-3" /> View
-                                                                </a>
+                                                return (
+                                                    <tr key={d.id || idx} className="hover:bg-slate-50/50 group">
+                                                        <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-medium text-slate-900">{d.name}</div>
+                                                            {d.description && (
+                                                                <div className="text-xs text-slate-500 truncate max-w-xs" title={d.description}>
+                                                                    {d.description}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {d.is_required ? (
+                                                                <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" />
                                                             ) : (
-                                                                <button
-                                                                    className="text-slate-400 hover:text-blue-600 disabled:opacity-50 inline-flex items-center gap-1 border px-2 py-1 rounded hover:bg-slate-50 text-xs"
-                                                                    disabled={d.is_locked}
-                                                                    title="Upload functionalities coming soon"
-                                                                >
-                                                                    <Upload className="w-3 h-3" /> Upload
-                                                                </button>
+                                                                <span className="text-slate-300">-</span>
                                                             )}
-                                                            {/* Delete Button - Always visible when not locked */}
-                                                            {!m.is_locked && (
-                                                                <button
-                                                                    className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
-                                                                    onClick={() => handleDelete(d.id, d.name)}
-                                                                    title="Remove document"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )
-                                        })
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center text-slate-600 text-xs">
+                                                            <Input
+                                                                type="date"
+                                                                value={formatDateForInput(submittedDateValue)}
+                                                                onChange={(e) => onDeliverableChange?.(d.id, 'submitted_date', e.target.value || null)}
+                                                                disabled={m.is_locked}
+                                                                className="h-8 w-32 mx-auto text-xs"
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center text-xs">
+                                                            {onTimeElement}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <div className="flex justify-center">
+                                                                <Checkbox
+                                                                    checked={!!verifiedValue}
+                                                                    onChange={(e) => onDeliverableChange?.(d.id, 'is_verified', e.target.checked)}
+                                                                    disabled={!isSubmitted || m.is_locked}
+                                                                    className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                {d.file_path ? (
+                                                                    <a
+                                                                        href={d.file_path}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs"
+                                                                    >
+                                                                        <LinkIcon className="w-3 h-3" /> View
+                                                                    </a>
+                                                                ) : (
+                                                                    <button
+                                                                        className="text-slate-400 hover:text-blue-600 disabled:opacity-50 inline-flex items-center gap-1 border px-2 py-1 rounded hover:bg-slate-50 text-xs"
+                                                                        disabled={d.is_locked}
+                                                                        title="Upload functionalities coming soon"
+                                                                    >
+                                                                        <Upload className="w-3 h-3" /> Upload
+                                                                    </button>
+                                                                )}
+                                                                {/* Delete Button - Always visible when not locked */}
+                                                                {!m.is_locked && (
+                                                                    <button
+                                                                        className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                                                                        onClick={() => handleDelete(d.id, d.name)}
+                                                                        title="Remove document"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })
                                     )}
                                     {/* Add Custom Deliverable Row */}
                                     {!m.is_locked && m.id && (

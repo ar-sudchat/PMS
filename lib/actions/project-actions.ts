@@ -803,17 +803,17 @@ export async function createProject(data: ProjectFormData) {
             // 4. Insert Actual Project Deliverables (New System)
             const deliverableInsertQuery = hasDeliverableNameTh
                 ? `INSERT INTO pms.project_deliverables (
-                        project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active
+                        id, project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at
                     )
                     SELECT
-                        @ms_id, id, name, name_th, is_required, sort_order, 1
+                        NEWID(), @ms_id, id, name, name_th, is_required, sort_order, 1, 0, 0, GETDATE(), GETDATE()
                     FROM pms.deliverable_configs
                     WHERE milestone_config_id = @config_id`
                 : `INSERT INTO pms.project_deliverables (
-                        project_milestone_id, deliverable_config_id, name, is_required, sort_order, is_active
+                        id, project_milestone_id, deliverable_config_id, name, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at
                     )
                     SELECT
-                        @ms_id, id, name, is_required, sort_order, 1
+                        NEWID(), @ms_id, id, name, is_required, sort_order, 1, 0, 0, GETDATE(), GETDATE()
                     FROM pms.deliverable_configs
                     WHERE milestone_config_id = @config_id`
 
@@ -1019,17 +1019,17 @@ export async function updateProject(id: string, data: ProjectFormData) {
             if (!existingMap.get(configId)) {
                 const deliverableInsertQuery = hasDeliverableNameTh
                     ? `INSERT INTO pms.project_deliverables (
-                            project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active
+                            id, project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at
                         )
                         SELECT
-                            @ms_id, id, name, name_th, is_required, sort_order, 1
+                            NEWID(), @ms_id, id, name, name_th, is_required, sort_order, 1, 0, 0, GETDATE(), GETDATE()
                         FROM pms.deliverable_configs
                         WHERE milestone_config_id = @config_id`
                     : `INSERT INTO pms.project_deliverables (
-                            project_milestone_id, deliverable_config_id, name, is_required, sort_order, is_active
+                            id, project_milestone_id, deliverable_config_id, name, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at
                         )
                         SELECT
-                            @ms_id, id, name, is_required, sort_order, 1
+                            NEWID(), @ms_id, id, name, is_required, sort_order, 1, 0, 0, GETDATE(), GETDATE()
                         FROM pms.deliverable_configs
                         WHERE milestone_config_id = @config_id`
 
@@ -1212,8 +1212,8 @@ export async function createCustomDeliverable(data: {
             .input('is_required', sql.Bit, data.is_required)
             .input('sort_order', sql.Int, nextOrder)
             .query(`
-                INSERT INTO pms.project_deliverables (project_milestone_id, name, is_required, sort_order, is_active)
-                VALUES (@project_milestone_id, @name, @is_required, @sort_order, 1)
+                INSERT INTO pms.project_deliverables (id, project_milestone_id, name, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at)
+                VALUES (NEWID(), @project_milestone_id, @name, @is_required, @sort_order, 1, 0, 0, GETDATE(), GETDATE())
             `)
 
         return { success: true }
@@ -1268,8 +1268,8 @@ export async function createDeliverableFromConfig(data: {
             .input('sort_order', sql.Int, nextOrder)
             .query(`
                 INSERT INTO pms.project_deliverables
-                (project_milestone_id, deliverable_config_id, name, description, is_required, sort_order, is_active)
-                VALUES (@project_milestone_id, @deliverable_config_id, @name, @description, @is_required, @sort_order, 1)
+                (id, project_milestone_id, deliverable_config_id, name, description, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at)
+                VALUES (NEWID(), @project_milestone_id, @deliverable_config_id, @name, @description, @is_required, @sort_order, 1, 0, 0, GETDATE(), GETDATE())
             `)
 
         return { success: true }
