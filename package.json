@@ -48,6 +48,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@next/swc-darwin-arm64": "^16.1.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^20",
