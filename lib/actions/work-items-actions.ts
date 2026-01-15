@@ -443,31 +443,32 @@ export async function createStory(data: any) {
         const nextNum = codeResult.recordset[0].count + 1
         const storyCode = `S-${nextNum.toString().padStart(3, '0')}`
 
+        const newId = require('crypto').randomUUID()
+
         const result = await pool.request()
-            .input('project_id', data.project_id)
-            .input('milestone_id', data.milestone_id)
-            .input('story_code', storyCode)
-            .input('title', data.title)
-            .input('title_th', data.title_th || null)
-            .input('description', data.description || null)
-            .input('priority', data.priority || 'Medium')
-            .input('estimated_md', data.estimated_md || 0)
-            .input('due_date', data.due_date || null)
-            .input('sort_order', nextNum) // Put at end
+            .input('id', sql.UniqueIdentifier, newId)
+            .input('project_id', sql.UniqueIdentifier, data.project_id)
+            .input('milestone_id', sql.UniqueIdentifier, data.milestone_id)
+            .input('story_code', sql.NVarChar, storyCode)
+            .input('title', sql.NVarChar, data.title)
+            .input('description', sql.NVarChar, data.description || null)
+            .input('priority', sql.NVarChar, data.priority || 'medium')
+            .input('due_date', sql.Date, data.due_date || null)
+            .input('sort_order', sql.Int, nextNum)
             .query(`
-                INSERT INTO pms.stories 
-                (project_id, milestone_id, story_code, title, title_th, description, priority, estimated_md, due_date, sort_order, status)
+                INSERT INTO pms.stories
+                (id, project_id, milestone_id, story_code, title, description, priority, due_date, sort_order, status, is_active, created_at, updated_at)
                 OUTPUT INSERTED.id
-                VALUES 
-                (@project_id, @milestone_id, @story_code, @title, @title_th, @description, @priority, @estimated_md, @due_date, @sort_order, 'backlog')
+                VALUES
+                (@id, @project_id, @milestone_id, @story_code, @title, @description, @priority, @due_date, @sort_order, 'backlog', 1, GETDATE(), GETDATE())
             `)
 
         revalidatePath(`/projects/${data.project_id}`)
-        return { success: true, id: result.recordset[0].id }
+        return { success: true, data: { id: result.recordset[0].id, code: storyCode } }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('createStory error:', error)
-        return { success: false, error: 'Failed to create story' }
+        return { success: false, error: error.message || 'Failed to create story' }
     }
 }
 
@@ -576,28 +577,31 @@ export async function createTask(data: any) {
         const nextNum = codeResult.recordset[0].count + 1
         const taskCode = `T-${nextNum.toString().padStart(3, '0')}`
 
+        const newId = require('crypto').randomUUID()
+
         const result = await pool.request()
-            .input('story_id', data.story_id)
-            .input('task_code', taskCode)
-            .input('title', data.title)
-            .input('task_type', data.task_type || 'Feature')
-            .input('priority', data.priority || 'Medium')
-            .input('assignee_id', data.assignee_id || null)
-            .input('estimated_hours', data.estimated_hours || 8)
-            .input('due_date', data.due_date || null)
+            .input('id', sql.UniqueIdentifier, newId)
+            .input('story_id', sql.UniqueIdentifier, data.story_id)
+            .input('task_code', sql.NVarChar, taskCode)
+            .input('title', sql.NVarChar, data.title)
+            .input('task_type', sql.NVarChar, data.task_type || 'DEV')
+            .input('priority', sql.NVarChar, data.priority || 'medium')
+            .input('assignee_id', sql.UniqueIdentifier, data.assignee_id || null)
+            .input('estimated_hours', sql.Decimal(10, 2), data.estimated_hours || 8)
+            .input('due_date', sql.Date, data.due_date || null)
             .query(`
-                INSERT INTO pms.tasks 
-                (story_id, task_code, title, task_type, priority, assignee_id, estimated_hours, status, due_date)
+                INSERT INTO pms.tasks
+                (id, story_id, task_code, title, task_type, priority, assignee_id, estimated_hours, status, due_date, is_active, created_at, updated_at)
                 OUTPUT INSERTED.id
-                VALUES 
-                (@story_id, @task_code, @title, @task_type, @priority, @assignee_id, @estimated_hours, 'todo', @due_date)
+                VALUES
+                (@id, @story_id, @task_code, @title, @task_type, @priority, @assignee_id, @estimated_hours, 'todo', @due_date, 1, GETDATE(), GETDATE())
             `)
 
-        return { success: true, id: result.recordset[0].id }
+        return { success: true, id: result.recordset[0].id, code: taskCode }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('createTask error:', error)
-        return { success: false, error: 'Failed to create task' }
+        return { success: false, error: error.message || 'Failed to create task' }
     }
 }
 

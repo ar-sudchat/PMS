@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
+import { randomUUID } from 'crypto'
 // Force revalidation
 import { isMilestoneLocked } from './milestone-actions'
 
@@ -252,8 +253,10 @@ export async function createStory(data: {
       `)
 
     const sortOrder = sortResult.recordset[0].next_sort
+    const newId = randomUUID()
 
     const result = await pool.request()
+      .input('id', sql.UniqueIdentifier, newId)
       .input('projectId', sql.UniqueIdentifier, data.project_id)
       .input('milestoneId', sql.UniqueIdentifier, data.milestone_id || null)
       .input('storyCode', sql.NVarChar, storyCode)
@@ -274,11 +277,13 @@ export async function createStory(data: {
           description, priority, estimated_hours,
           start_date, due_date, sort_order, created_by,
           status, is_active, created_at, updated_at
-        ) OUTPUT INSERTED.id VALUES (
-          NEWID(), @projectId, @milestoneId, @storyCode, @title,
+        )
+        OUTPUT INSERTED.id
+        VALUES (
+          @id, @projectId, @milestoneId, @storyCode, @title,
           @description, @priority, @estimatedMd * 8,
           @startDate, @dueDate, @sortOrder, @createdBy,
-          'todo', 1, GETDATE(), GETDATE()
+          'backlog', 1, GETDATE(), GETDATE()
         )
       `)
 

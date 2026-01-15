@@ -230,8 +230,10 @@ export async function createTask(data: {
       `)
 
         const taskCode = codeResult.recordset[0].new_code
+        const newId = require('crypto').randomUUID()
 
         const result = await pool.request()
+            .input('id', sql.UniqueIdentifier, newId)
             .input('taskCode', sql.NVarChar, taskCode)
             .input('storyId', sql.UniqueIdentifier, data.story_id)
             .input('title', sql.NVarChar, data.title)
@@ -244,9 +246,9 @@ export async function createTask(data: {
             .input('dueDate', sql.Date, data.due_date ? new Date(data.due_date) : null)
             .input('createdBy', sql.UniqueIdentifier, user.id)
             .query(`
-        INSERT INTO pms.tasks (task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by)
+        INSERT INTO pms.tasks (id, task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, created_at, updated_at)
         OUTPUT INSERTED.id, INSERTED.task_code
-        VALUES (@taskCode, @storyId, @title, @description, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy)
+        VALUES (@id, @taskCode, @storyId, @title, @description, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, 'todo', 1, GETDATE(), GETDATE())
       `)
 
         const taskId = result.recordset[0].id
