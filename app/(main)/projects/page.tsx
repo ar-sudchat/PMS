@@ -527,6 +527,7 @@ export default function ProjectsPage() {
                     enableGlobalFilter={false}
                     pageSize={10}
                     pageSizeOptions={[10, 20, 50]}
+                    size="lg"
                 />
             </div>
 

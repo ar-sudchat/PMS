@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
+// Force revalidation
 import { isMilestoneLocked } from './milestone-actions'
 
 export interface Story {
@@ -50,7 +51,8 @@ export async function getStories(filters: StoryFilters) {
         (SELECT COUNT(*) FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS total_tasks,
         (SELECT COUNT(*) FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1 AND t.status = 'done') AS completed_tasks,
         (SELECT ISNULL(SUM(t.estimated_hours), 0) / 8 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_estimated_md,
-        (SELECT ISNULL(SUM(t.actual_hours), 0) / 8 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_actual_md
+        (SELECT ISNULL(SUM(t.actual_hours), 0) / 8 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_actual_md,
+        (ISNULL(s.estimated_hours, 0) / 8.0) AS estimated_md
       FROM pms.stories s
       LEFT JOIN pms.projects p ON s.project_id = p.id
       LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
@@ -77,7 +79,7 @@ export async function getStories(filters: StoryFilters) {
     }
 
     if (filters.search) {
-      query += ` AND (s.title LIKE @search OR s.title_th LIKE @search OR s.story_code LIKE @search)`
+      query += ` AND (s.title LIKE @search OR s.story_code LIKE @search)`
       request.input('search', sql.NVarChar, `%${filters.search}%`)
     }
 
@@ -122,13 +124,11 @@ export async function getStoryById(id: string) {
           mc.code AS milestone_code,
           mc.name AS milestone_name,
           mc.color AS milestone_color,
-          ds.story_code AS depends_on_code,
-          ds.title AS depends_on_title
+          (ISNULL(s.estimated_hours, 0) / 8.0) AS estimated_md
         FROM pms.stories s
         LEFT JOIN pms.projects p ON s.project_id = p.id
         LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
         LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
-        LEFT JOIN pms.stories ds ON s.depends_on_story_id = ds.id
         WHERE s.id = @id
       `)
 
@@ -215,16 +215,31 @@ export async function createStory(data: {
       }
     }
 
+    // 1. Get Project Code
+    const projectResult = await pool.request()
+      .input('projectId', sql.UniqueIdentifier, data.project_id)
+      .query('SELECT project_code FROM pms.projects WHERE id = @projectId')
+
+    if (projectResult.recordset.length === 0) {
+      return { success: false, error: 'Project not found' }
+    }
+
+    const projectCode = projectResult.recordset[0].project_code
+    const prefix = `${projectCode}-S-`
+
+    // 2. Find next number for this project prefix
     const codeResult = await pool.request()
       .input('projectId', sql.UniqueIdentifier, data.project_id)
+      .input('prefix', sql.NVarChar, `${prefix}%`)
+      .input('prefixLen', sql.Int, prefix.length)
       .query(`
-        SELECT ISNULL(MAX(CAST(REPLACE(story_code, 'S-', '') AS INT)), 0) + 1 AS next_num
+        SELECT ISNULL(MAX(TRY_CAST(SUBSTRING(story_code, @prefixLen + 1, LEN(story_code)) AS INT)), 0) + 1 AS next_num
         FROM pms.stories
-        WHERE project_id = @projectId
+        WHERE project_id = @projectId AND story_code LIKE @prefix
       `)
 
     const nextNum = codeResult.recordset[0].next_num
-    const storyCode = 'S-' + String(nextNum).padStart(3, '0')
+    const storyCode = `${prefix}${String(nextNum).padStart(3, '0')}`
 
     const sortResult = await pool.request()
       .input('projectId', sql.UniqueIdentifier, data.project_id)
@@ -255,13 +270,15 @@ export async function createStory(data: {
       .input('createdBy', sql.UniqueIdentifier, user.id)
       .query(`
         INSERT INTO pms.stories (
-          project_id, milestone_id, story_code, title, title_th,
-          description, acceptance_criteria, priority, estimated_md,
-          start_date, due_date, depends_on_story_id, sort_order, created_by
+          id, project_id, milestone_id, story_code, title,
+          description, priority, estimated_hours,
+          start_date, due_date, sort_order, created_by,
+          status, is_active, created_at, updated_at
         ) OUTPUT INSERTED.id VALUES (
-          @projectId, @milestoneId, @storyCode, @title, @titleTh,
-          @description, @acceptanceCriteria, @priority, @estimatedMd,
-          @startDate, @dueDate, @dependsOnStoryId, @sortOrder, @createdBy
+          NEWID(), @projectId, @milestoneId, @storyCode, @title,
+          @description, @priority, @estimatedMd * 8,
+          @startDate, @dueDate, @sortOrder, @createdBy,
+          'todo', 1, GETDATE(), GETDATE()
         )
       `)
 
@@ -326,6 +343,36 @@ export async function updateStory(id: string, data: Partial<Story>) {
       } else {
         updates.push('completed_date = NULL')
       }
+    }
+
+    if (data.description !== undefined) {
+      updates.push('description = @description')
+      request.input('description', sql.NVarChar, data.description)
+    }
+
+    if (data.priority !== undefined) {
+      updates.push('priority = @priority')
+      request.input('priority', sql.NVarChar, data.priority)
+    }
+
+    if (data.estimated_md !== undefined) {
+      updates.push('estimated_hours = @estimatedHours')
+      request.input('estimatedHours', sql.Decimal(10, 2), data.estimated_md * 8)
+    }
+
+    if (data.start_date !== undefined) {
+      updates.push('start_date = @startDate')
+      request.input('startDate', sql.Date, data.start_date ? new Date(data.start_date) : null)
+    }
+
+    if (data.due_date !== undefined) {
+      updates.push('due_date = @dueDate')
+      request.input('dueDate', sql.Date, data.due_date ? new Date(data.due_date) : null)
+    }
+
+    if (data.sort_order !== undefined) {
+      updates.push('sort_order = @sortOrder')
+      request.input('sortOrder', sql.Int, data.sort_order)
     }
 
     updates.push('updated_by = @updatedBy')
