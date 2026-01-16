@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { X, CheckCircle } from 'lucide-react'
 import { createStory, updateStory } from '@/lib/actions/work-items-actions'
 import { StorySimple } from '@/lib/actions/project-detail-actions'
@@ -43,6 +43,21 @@ export function CreateStoryModal({
     const [keepValues, setKeepValues] = useState(false)
 
     const titleInputRef = useRef<HTMLInputElement>(null)
+    const formRef = useRef<HTMLFormElement>(null)
+
+    // Handle Enter key to move to next field
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            const inputs = Array.from(formRef.current?.querySelectorAll(
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]), textarea:not([disabled])'
+            ) || []) as HTMLElement[]
+            const currentIdx = inputs.indexOf(e.currentTarget)
+            if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
+                inputs[currentIdx + 1].focus()
+            }
+        }
+    }
 
     useEffect(() => {
         if (isOpen) {
@@ -207,7 +222,7 @@ export function CreateStoryModal({
                         </div>
                     )}
 
-                    <form className="space-y-6">
+                    <form ref={formRef} className="space-y-6">
                         {/* Title */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -218,6 +233,7 @@ export function CreateStoryModal({
                                 type="text"
                                 value={formData.title}
                                 onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                                onKeyDown={handleEnterKey}
                                 placeholder="e.g. User Authentication"
                                 className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm"
                                 required
@@ -257,6 +273,7 @@ export function CreateStoryModal({
                                     type="number"
                                     value={formData.estimatedMd}
                                     onChange={(e) => setFormData(prev => ({ ...prev, estimatedMd: e.target.value }))}
+                                    onKeyDown={handleEnterKey}
                                     placeholder="0"
                                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                                 />

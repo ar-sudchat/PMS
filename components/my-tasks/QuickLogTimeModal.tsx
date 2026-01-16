@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { MyTask } from '@/lib/actions/my-tasks-actions'
 import { logTimeEntry } from '@/lib/actions/timesheet-actions'
@@ -30,6 +30,21 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
     const [isOvertime, setIsOvertime] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [activityOptions, setActivityOptions] = useState<{ value: string, label: string }[]>([])
+    const formRef = useRef<HTMLFormElement>(null)
+
+    // Handle Enter key to move to next field
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            const inputs = Array.from(formRef.current?.querySelectorAll(
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]), textarea:not([disabled])'
+            ) || []) as HTMLElement[]
+            const currentIdx = inputs.indexOf(e.currentTarget)
+            if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
+                inputs[currentIdx + 1].focus()
+            }
+        }
+    }
 
     // Checklist State
     const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
@@ -239,7 +254,7 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
                     <DialogTitle>Log Time</DialogTitle>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="mt-2">
+                <form ref={formRef} onSubmit={handleSubmit} className="mt-2">
                     {/* Task Info Header */}
                     <div className="bg-slate-50 p-3 rounded-md border border-slate-100 flex justify-between items-center text-sm mb-6">
                         <div>
@@ -262,6 +277,7 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
                                         type="date"
                                         value={date}
                                         onChange={(e) => setDate(e.target.value)}
+                                        onKeyDown={handleEnterKey}
                                         className="w-full text-sm p-2 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                         required
                                     />
@@ -288,6 +304,7 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
                                             step={timeUnit === 'hours' ? "0.25" : "15"}
                                             value={inputValue}
                                             onChange={(e) => handleInputChange(e.target.value)}
+                                            onKeyDown={handleEnterKey}
                                             className="w-full text-sm p-2 pl-9 rounded-md border border-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                             required
                                         />

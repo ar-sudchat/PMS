@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,21 @@ const Textarea = ({
 export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: MilestoneConfigModalProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const formRef = useRef<HTMLDivElement>(null);
+
+    // Handle Enter key to move to next field
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const inputs = Array.from(formRef.current?.querySelectorAll(
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="color"]), textarea:not([disabled])'
+            ) || []) as HTMLElement[];
+            const currentIdx = inputs.indexOf(e.currentTarget);
+            if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
+                inputs[currentIdx + 1].focus();
+            }
+        }
+    };
 
     const [formData, setFormData] = useState<MilestoneConfigFormData>({
         code: "",
@@ -122,7 +137,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
             title={mode === 'create' ? 'เพิ่ม Milestone' : 'แก้ไข Milestone'}
             size="md"
         >
-            <div className="space-y-4">
+            <div ref={formRef} className="space-y-4">
                 {errors.submit && (
                     <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
                         {errors.submit}
@@ -136,6 +151,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                         <Input
                             value={formData.code}
                             onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                            onKeyDown={handleEnterKey}
                             placeholder="e.g. INITIATE"
                             required
                             disabled={mode === 'edit'}
@@ -147,6 +163,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                             type="number"
                             value={formData.sort_order}
                             onChange={(e) => setFormData({ ...formData, sort_order: parseInt(e.target.value) || 0 })}
+                            onKeyDown={handleEnterKey}
                         />
                     </div>
                 </div>
@@ -158,6 +175,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                         <Input
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onKeyDown={handleEnterKey}
                             placeholder="e.g. Project Initiation"
                             required
                         />
@@ -167,6 +185,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                         <Input
                             value={formData.name_th}
                             onChange={(e) => setFormData({ ...formData, name_th: e.target.value })}
+                            onKeyDown={handleEnterKey}
                             placeholder="e.g. เริ่มต้นโครงการ"
                         />
                     </div>
@@ -180,6 +199,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                             type="number"
                             value={formData.kpi_weight_ttd}
                             onChange={(e) => setFormData({ ...formData, kpi_weight_ttd: parseFloat(e.target.value) || 0 })}
+                            onKeyDown={handleEnterKey}
                             placeholder="e.g. 35"
                             min={0}
                             max={100}
@@ -191,6 +211,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                             type="number"
                             value={formData.kpi_weight_mdc}
                             onChange={(e) => setFormData({ ...formData, kpi_weight_mdc: parseFloat(e.target.value) || 0 })}
+                            onKeyDown={handleEnterKey}
                             placeholder="e.g. 30"
                             min={0}
                             max={100}
@@ -212,6 +233,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                             <Input
                                 value={formData.color}
                                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                                onKeyDown={handleEnterKey}
                                 placeholder="#6366f1"
                                 className="flex-1"
                             />

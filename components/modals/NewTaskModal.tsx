@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { X, CheckCircle, Calendar, Clock, Plus, Trash2, ListChecks } from 'lucide-react'
 import { createTask, updateTask, getTaskTypes } from '@/lib/actions/task-actions'
 import { getAssignableEmployees, getEmployees } from '@/lib/actions/employee-actions'
@@ -67,6 +67,21 @@ export function NewTaskModal({
     const [newChecklistItem, setNewChecklistItem] = useState('')
 
     const titleInputRef = useRef<HTMLInputElement>(null)
+    const formRef = useRef<HTMLFormElement>(null)
+
+    // Handle Enter key to move to next field
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            const inputs = Array.from(formRef.current?.querySelectorAll(
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]), textarea:not([disabled])'
+            ) || []) as HTMLElement[]
+            const currentIdx = inputs.indexOf(e.currentTarget)
+            if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
+                inputs[currentIdx + 1].focus()
+            }
+        }
+    }
 
     useEffect(() => {
         if (isOpen) {
@@ -357,7 +372,7 @@ export function NewTaskModal({
                         </div>
                     )}
 
-                    <form className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <form ref={formRef} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Left Column - Form Fields */}
                         <div className="space-y-4">
                             {/* Title - Full Width in Left Column */}
@@ -370,6 +385,7 @@ export function NewTaskModal({
                                     type="text"
                                     value={formData.title}
                                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                    onKeyDown={handleEnterKey}
                                     placeholder="Enter task title"
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm"
                                     required
@@ -412,6 +428,7 @@ export function NewTaskModal({
                                             type="number"
                                             value={formData.estimated_hours}
                                             onChange={(e) => setFormData({ ...formData, estimated_hours: e.target.value })}
+                                            onKeyDown={handleEnterKey}
                                             placeholder="e.g. 8"
                                             min="0"
                                             step="0.5"
@@ -428,6 +445,7 @@ export function NewTaskModal({
                                             type="date"
                                             value={formData.due_date}
                                             onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                                            onKeyDown={handleEnterKey}
                                             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm"
                                             required
                                         />

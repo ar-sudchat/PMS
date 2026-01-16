@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,21 @@ interface DepartmentModalProps {
 export function DepartmentModal({ open, onClose, mode, department, onSuccess }: DepartmentModalProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const formRef = useRef<HTMLDivElement>(null);
+
+    // Handle Enter key to move to next field
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const inputs = Array.from(formRef.current?.querySelectorAll(
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="color"]), textarea:not([disabled])'
+            ) || []) as HTMLElement[];
+            const currentIdx = inputs.indexOf(e.currentTarget);
+            if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
+                inputs[currentIdx + 1].focus();
+            }
+        }
+    };
 
     // Dropdown Data
     const [departments, setDepartments] = useState<any[]>([]);
@@ -115,7 +130,7 @@ export function DepartmentModal({ open, onClose, mode, department, onSuccess }: 
             title={mode === 'create' ? 'เพิ่มแผนก' : 'แก้ไขแผนก'}
             size="md"
         >
-            <div className="space-y-4">
+            <div ref={formRef} className="space-y-4">
                 {errors.submit && (
                     <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
                         {errors.submit}
@@ -128,6 +143,7 @@ export function DepartmentModal({ open, onClose, mode, department, onSuccess }: 
                         <Input
                             value={formData.code}
                             onChange={e => setFormData({ ...formData, code: e.target.value })}
+                            onKeyDown={handleEnterKey}
                             required
                         />
                     </div>
@@ -143,6 +159,7 @@ export function DepartmentModal({ open, onClose, mode, department, onSuccess }: 
                             <Input
                                 value={formData.color}
                                 onChange={e => setFormData({ ...formData, color: e.target.value })}
+                                onKeyDown={handleEnterKey}
                                 className="flex-1"
                             />
                         </div>
@@ -155,6 +172,7 @@ export function DepartmentModal({ open, onClose, mode, department, onSuccess }: 
                         <Input
                             value={formData.name}
                             onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            onKeyDown={handleEnterKey}
                             required
                         />
                     </div>
@@ -163,6 +181,7 @@ export function DepartmentModal({ open, onClose, mode, department, onSuccess }: 
                         <Input
                             value={formData.name_th}
                             onChange={e => setFormData({ ...formData, name_th: e.target.value })}
+                            onKeyDown={handleEnterKey}
                         />
                     </div>
                 </div>

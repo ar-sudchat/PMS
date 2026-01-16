@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Customer, CustomerFormData } from '@/types/customer';
 import { createCustomer, updateCustomer } from '@/lib/actions/customer-actions';
@@ -17,6 +17,22 @@ interface CustomerModalProps {
 
 export function CustomerModal({ open, onClose, mode, data, onSuccess }: CustomerModalProps) {
     const [isLoading, setIsLoading] = useState(false);
+    const formRef = useRef<HTMLDivElement>(null);
+
+    // Handle Enter key to move to next field
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const inputs = Array.from(formRef.current?.querySelectorAll(
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"])'
+            ) || []) as HTMLElement[];
+            const currentIdx = inputs.indexOf(e.currentTarget);
+            if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
+                inputs[currentIdx + 1].focus();
+            }
+        }
+    };
+
     const [formData, setFormData] = useState<CustomerFormData>({
         code: '',
         name: '',
@@ -66,7 +82,7 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
             title={mode === 'create' ? 'เพิ่มลูกค้า' : 'แก้ไขลูกค้า'}
             size="sm"
         >
-            <div className="space-y-4">
+            <div ref={formRef} className="space-y-4">
                 {/* Code */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">รหัสลูกค้า</label>
@@ -74,6 +90,7 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         value={formData.code}
                         onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                        onKeyDown={handleEnterKey}
                         placeholder="e.g. CUST-001"
                         required
                         disabled={mode === 'edit'}
@@ -87,6 +104,7 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        onKeyDown={handleEnterKey}
                         placeholder="e.g. บริษัท ABC จำกัด"
                         required
                     />
