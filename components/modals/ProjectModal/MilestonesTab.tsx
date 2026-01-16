@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, KeyboardEvent } from 'react'
 import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle } from 'lucide-react'
 import { MilestoneRow } from '@/types/project'
 import { Switch } from '@/components/ui/Switch'
@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { VerifyMilestoneModal } from '@/components/modals/VerifyMilestoneModal'
+
+// Field order for Enter key navigation
+const FIELD_ORDER = ['weight_ttd', 'weight_mdc', 'planned_mandays', 'due_date', 'completed_date'] as const
 
 interface MilestonesTabProps {
     milestones: MilestoneRow[]
@@ -26,6 +29,45 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
         completedDate?: string
         dueDate?: string
     }>({ open: false })
+
+    // Ref for table to find inputs
+    const tableRef = useRef<HTMLTableElement>(null)
+
+    // Handle Enter key to move to next field in row, or next row
+    const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, rowIndex: number, fieldName: string) => {
+        if (e.key === 'Enter') {
+            e.preventDefault()
+
+            const currentFieldIndex = FIELD_ORDER.indexOf(fieldName as typeof FIELD_ORDER[number])
+            if (currentFieldIndex === -1) return
+
+            // Try to move to next field in same row
+            if (currentFieldIndex < FIELD_ORDER.length - 1) {
+                const nextField = FIELD_ORDER[currentFieldIndex + 1]
+                const nextInput = tableRef.current?.querySelector(
+                    `input[data-row="${rowIndex}"][data-field="${nextField}"]`
+                ) as HTMLInputElement
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus()
+                    nextInput.select()
+                    return
+                }
+            }
+
+            // If last field in row, move to first field of next row
+            const nextRowIndex = rowIndex + 1
+            if (nextRowIndex < milestones.length) {
+                const firstField = FIELD_ORDER[0]
+                const nextInput = tableRef.current?.querySelector(
+                    `input[data-row="${nextRowIndex}"][data-field="${firstField}"]`
+                ) as HTMLInputElement
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus()
+                    nextInput.select()
+                }
+            }
+        }
+    }
 
     // --- Computed Totals & Validation ---
     const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
@@ -209,7 +251,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
 
             <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table ref={tableRef} className="w-full text-sm">
                         <thead className="bg-slate-50 text-slate-700 font-semibold border-b">
                             <tr>
                                 <th className="px-3 py-3 w-10 text-center">🔒</th>
@@ -286,6 +328,9 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                     className="w-full text-center border-slate-200 rounded px-1 py-1 text-xs"
                                                     value={m.weight_ttd || 0}
                                                     onChange={(e) => handleUpdateMilestone(i, 'weight_ttd', parseFloat(e.target.value))}
+                                                    onKeyDown={(e) => handleKeyDown(e, i, 'weight_ttd')}
+                                                    data-row={i}
+                                                    data-field="weight_ttd"
                                                     disabled={isLocked}
                                                 />
                                             </td>
@@ -297,6 +342,9 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                     className="w-full text-center border-slate-200 rounded px-1 py-1 text-xs"
                                                     value={m.weight_mdc || 0}
                                                     onChange={(e) => handleUpdateMilestone(i, 'weight_mdc', parseFloat(e.target.value))}
+                                                    onKeyDown={(e) => handleKeyDown(e, i, 'weight_mdc')}
+                                                    data-row={i}
+                                                    data-field="weight_mdc"
                                                     disabled={isLocked}
                                                 />
                                             </td>
@@ -308,6 +356,9 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                     className="w-full text-center border-slate-200 rounded px-1 py-1 text-xs"
                                                     value={m.planned_mandays || 0}
                                                     onChange={(e) => handleUpdateMilestone(i, 'planned_mandays', parseFloat(e.target.value))}
+                                                    onKeyDown={(e) => handleKeyDown(e, i, 'planned_mandays')}
+                                                    data-row={i}
+                                                    data-field="planned_mandays"
                                                     disabled={isLocked}
                                                 />
                                             </td>
@@ -324,6 +375,9 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                     className="w-full border border-slate-200 rounded px-1 py-1 text-xs"
                                                     value={formatDateForInput(m.due_date)}
                                                     onChange={(e) => handleUpdateMilestone(i, 'due_date', e.target.value)}
+                                                    onKeyDown={(e) => handleKeyDown(e, i, 'due_date')}
+                                                    data-row={i}
+                                                    data-field="due_date"
                                                     disabled={isLocked}
                                                 />
                                             </td>
@@ -335,6 +389,9 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                     className="w-full border border-slate-200 rounded px-1 py-1 text-xs"
                                                     value={formatDateForInput(m.completed_date)}
                                                     onChange={(e) => handleUpdateMilestone(i, 'completed_date', e.target.value)}
+                                                    onKeyDown={(e) => handleKeyDown(e, i, 'completed_date')}
+                                                    data-row={i}
+                                                    data-field="completed_date"
                                                     disabled={isLocked}
                                                 />
                                             </td>
