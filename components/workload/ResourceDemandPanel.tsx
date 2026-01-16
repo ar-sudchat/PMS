@@ -102,12 +102,14 @@ function DemandTaskCard({ task }: { task: UnassignedTask }) {
 
 interface ResourceDemandPanelProps {
     onRefresh?: () => void
+    excludeTaskIds?: string[]  // Tasks to hide (already assigned)
+    refreshTrigger?: number    // Increment to trigger reload
     startDate: string
     endDate: string
     dates: Date[]
 }
 
-export function ResourceDemandPanel({ onRefresh, startDate, endDate, dates }: ResourceDemandPanelProps) {
+export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTrigger = 0, startDate, endDate, dates }: ResourceDemandPanelProps) {
     const [tasks, setTasks] = useState<UnassignedTask[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isAutoAssigning, setIsAutoAssigning] = useState(false)
@@ -115,22 +117,43 @@ export function ResourceDemandPanel({ onRefresh, startDate, endDate, dates }: Re
     const [selectedAssignmentStatus, setSelectedAssignmentStatus] = useState<string>('all')
     const [selectedPositionType, setSelectedPositionType] = useState<'all' | 'PG' | 'SA_BA'>('PG')
 
+    // Reload when date range changes
     useEffect(() => {
         loadTasks()
     }, [startDate, endDate])
 
+    // Reload when refreshTrigger changes (background sync - don't show loading)
+    useEffect(() => {
+        if (refreshTrigger > 0) {
+            loadTasksBackground()
+        }
+    }, [refreshTrigger])
+
     const loadTasks = async () => {
         setIsLoading(true)
         try {
-            // Load tasks - 'all' shows both assigned and unassigned
             const result = await getUnassignedTasks({
-                assignmentStatus: 'all' // Load all tasks, filter in UI
+                assignmentStatus: 'all'
             })
             if (result.success) {
                 setTasks(result.data)
             }
         } finally {
             setIsLoading(false)
+        }
+    }
+
+    // Background load - doesn't show loading spinner, keeps current data visible
+    const loadTasksBackground = async () => {
+        try {
+            const result = await getUnassignedTasks({
+                assignmentStatus: 'all'
+            })
+            if (result.success) {
+                setTasks(result.data)
+            }
+        } catch (e) {
+            // Silently fail on background refresh
         }
     }
 
@@ -146,6 +169,8 @@ export function ResourceDemandPanel({ onRefresh, startDate, endDate, dates }: Re
     // Filter tasks
     const filteredTasks = useMemo(() => {
         return tasks.filter(t => {
+            // Hide tasks that have been assigned (optimistic removal)
+            if (excludeTaskIds.includes(t.id)) return false
             if (selectedProject !== 'all' && t.project_code !== selectedProject) return false
             if (selectedAssignmentStatus !== 'all' && t.assignment_status !== selectedAssignmentStatus) return false
             // Filter by position type
@@ -158,7 +183,7 @@ export function ResourceDemandPanel({ onRefresh, startDate, endDate, dates }: Re
             }
             return true
         })
-    }, [tasks, selectedProject, selectedAssignmentStatus, selectedPositionType])
+    }, [tasks, excludeTaskIds, selectedProject, selectedAssignmentStatus, selectedPositionType])
 
     // Get SA/BA tasks for auto assign
     const saBaTasks = useMemo(() => {

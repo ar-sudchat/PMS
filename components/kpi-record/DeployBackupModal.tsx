@@ -41,7 +41,9 @@ export function DeployBackupModal({ open, onClose, record, currentUserId }: Depl
         if (record) {
             setFormData({
                 backup_source_id: record.backup_source_id,
-                backup_date: record.backup_date?.split('T')[0] || '',
+                backup_date: record.backup_date instanceof Date
+                    ? record.backup_date.toISOString().split('T')[0]
+                    : (typeof record.backup_date === 'string' ? record.backup_date.split('T')[0] : ''),
                 deploy_record_id: record.deploy_record_id || '',
                 backup_type: record.backup_type,
                 backup_location: record.backup_location || '',

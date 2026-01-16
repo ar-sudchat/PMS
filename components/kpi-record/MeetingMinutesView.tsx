@@ -181,12 +181,12 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
         {
             accessorKey: "project_code",
             header: "Project",
-            size: 150,
+            size: 200,
             cell: ({ row }) => (
                 row.original.project_code ? (
                     <div>
                         <div className="font-medium text-slate-800">{row.original.project_code}</div>
-                        <div className="text-xs text-slate-500 truncate max-w-[130px]">{row.original.project_name}</div>
+                        <div className="text-xs text-slate-500 truncate max-w-[180px]">{row.original.project_name}</div>
                     </div>
                 ) : (
                     <span className="text-xs text-slate-400 italic">Internal</span>
@@ -206,9 +206,9 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
         {
             accessorKey: "meeting_title",
             header: "Title",
-            size: 180,
+            size: 300,
             cell: ({ row }) => (
-                <span className="text-sm text-slate-700 truncate block max-w-[160px]" title={row.original.meeting_title}>
+                <span className="text-sm text-slate-700 truncate block max-w-[280px]" title={row.original.meeting_title}>
                     {row.original.meeting_title}
                 </span>
             ),
@@ -336,9 +336,10 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
     return (
-        <div className={embedded ? "p-4" : "p-6 max-w-[1400px] mx-auto"}>
+        <div className={embedded ? "p-4" : "p-6 w-full"}>
             {/* Page Header */}
-            <div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`}>
+            < div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`
+            }>
                 {!embedded && (
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800">Meeting Minutes Records</h1>
@@ -353,10 +354,10 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                     <Plus size={16} />
                     New Meeting
                 </button>
-            </div>
+            </div >
 
             {/* KPI Summary Cards */}
-            <div className="grid grid-cols-5 gap-4 mb-6">
+            < div className="grid grid-cols-5 gap-4 mb-6" >
                 <div className="bg-white rounded-xl border p-4">
                     <div className="text-2xl font-bold text-slate-800">{summary.total}</div>
                     <div className="text-sm text-slate-500">Total Meetings</div>
@@ -381,10 +382,10 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                     </div>
                     <div className="text-sm text-slate-500">On Time Rate</div>
                 </div>
-            </div>
+            </div >
 
             {/* Filters */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+            < div className="bg-white border border-slate-200 rounded-xl p-4 mb-4" >
                 <div className="flex items-center gap-4 flex-wrap">
                     {/* Search */}
                     <div className="relative flex-1 min-w-[200px]">
@@ -473,10 +474,10 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                         </button>
                     )}
                 </div>
-            </div>
+            </div >
 
             {/* Table */}
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            < div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" >
                 <SuperTable
                     data={data}
                     columns={columns}
@@ -485,71 +486,75 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                 />
 
                 {/* Pagination */}
-                {pagination.totalPages > 1 && (
-                    <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-                        <div className="text-sm text-slate-500">
-                            Showing {(pagination.page - 1) * pagination.pageSize + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total}
+                {
+                    pagination.totalPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                            <div className="text-sm text-slate-500">
+                                Showing {(pagination.page - 1) * pagination.pageSize + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                    disabled={pagination.page === 1}
+                                    className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Previous
+                                </button>
+                                <span className="text-sm text-slate-600">
+                                    Page {pagination.page} of {pagination.totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                    disabled={pagination.page >= pagination.totalPages}
+                                    className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Next
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                                disabled={pagination.page === 1}
-                                className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Previous
-                            </button>
-                            <span className="text-sm text-slate-600">
-                                Page {pagination.page} of {pagination.totalPages}
-                            </span>
-                            <button
-                                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                                disabled={pagination.page >= pagination.totalPages}
-                                className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Next
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
+                    )
+                }
+            </div >
 
             {/* KPI Summary by Organizer */}
-            {organizerKPIs.length > 0 && (
-                <div className="bg-white border border-slate-200 rounded-xl p-4 mt-4">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-slate-800">KPI Summary by Organizer ({yearFilter})</h3>
-                        <span className="text-sm text-slate-500">Target: ส่งช้าไม่เกิน 3 ครั้ง/ปี</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {organizerKPIs.map((kpi) => (
-                            <div
-                                key={kpi.organizer_id}
-                                className={`flex items-center justify-between p-3 rounded-lg border ${kpi.is_pass ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}
-                            >
-                                <div className="flex-1">
-                                    <div className="font-medium text-slate-800">{kpi.organizer_name}</div>
-                                    <div className="text-xs text-slate-500">
-                                        {kpi.total_meetings} meetings | <span className="text-green-600">{kpi.on_time_count} On-time</span> | <span className="text-red-600">{kpi.late_count} Late</span>
+            {
+                organizerKPIs.length > 0 && (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 mt-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-slate-800">KPI Summary by Organizer ({yearFilter})</h3>
+                            <span className="text-sm text-slate-500">Target: ส่งช้าไม่เกิน 3 ครั้ง/ปี</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {organizerKPIs.map((kpi) => (
+                                <div
+                                    key={kpi.organizer_id}
+                                    className={`flex items-center justify-between p-3 rounded-lg border ${kpi.is_pass ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}
+                                >
+                                    <div className="flex-1">
+                                        <div className="font-medium text-slate-800">{kpi.organizer_name}</div>
+                                        <div className="text-xs text-slate-500">
+                                            {kpi.total_meetings} meetings | <span className="text-green-600">{kpi.on_time_count} On-time</span> | <span className="text-red-600">{kpi.late_count} Late</span>
+                                        </div>
+                                    </div>
+                                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${kpi.is_pass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        {kpi.is_pass ? (
+                                            <>
+                                                <CheckCircle2 size={14} />
+                                                Pass
+                                            </>
+                                        ) : (
+                                            <>
+                                                <AlertCircle size={14} />
+                                                Fail
+                                            </>
+                                        )}
                                     </div>
                                 </div>
-                                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${kpi.is_pass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                    {kpi.is_pass ? (
-                                        <>
-                                            <CheckCircle2 size={14} />
-                                            Pass
-                                        </>
-                                    ) : (
-                                        <>
-                                            <AlertCircle size={14} />
-                                            Fail
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Modal */}
             <MeetingMinutesModal
@@ -558,6 +563,6 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                 record={selectedRecord}
                 currentUserId={currentUserId}
             />
-        </div>
+        </div >
     )
 }

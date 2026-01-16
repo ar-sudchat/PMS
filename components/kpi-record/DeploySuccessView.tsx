@@ -159,7 +159,7 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
         {
             accessorKey: "customer_name",
             header: "Customer",
-            size: 200,
+            size: 300,
             cell: ({ row }) => (
                 <div className="font-medium text-slate-800">
                     {row.original.customer_name || '-'}
@@ -249,7 +249,7 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
     return (
-        <div className={embedded ? "p-4" : "p-6 max-w-[1400px] mx-auto"}>
+        <div className={embedded ? "p-4" : "p-6 w-full"}>
             {/* Page Header */}
             <div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`}>
                 {!embedded && (

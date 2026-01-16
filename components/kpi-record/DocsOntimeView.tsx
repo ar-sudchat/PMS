@@ -139,11 +139,11 @@ export default function DocsOntimeView({ currentUserId, currentUserName, embedde
         {
             accessorKey: "project_code",
             header: "Project",
-            size: 150,
+            size: 200,
             cell: ({ row }) => (
                 <div>
                     <div className="font-medium text-slate-800">{row.original.project_code}</div>
-                    <div className="text-xs text-slate-500 truncate max-w-[130px]">{row.original.project_name}</div>
+                    <div className="text-xs text-slate-500 truncate max-w-[180px]">{row.original.project_name}</div>
                 </div>
             ),
         },
@@ -158,11 +158,11 @@ export default function DocsOntimeView({ currentUserId, currentUserName, embedde
         {
             accessorKey: "document_name",
             header: "Document",
-            size: 200,
+            size: 400,
             cell: ({ row }) => (
                 <div className="flex items-center gap-2">
                     <FileText size={16} className="text-blue-500" />
-                    <span className="text-sm font-medium text-slate-800 truncate max-w-[170px]" title={row.original.document_name}>
+                    <span className="text-sm font-medium text-slate-800 truncate max-w-[380px]" title={row.original.document_name}>
                         {row.original.document_name}
                     </span>
                 </div>
@@ -220,7 +220,7 @@ export default function DocsOntimeView({ currentUserId, currentUserName, embedde
     const displayOwnerName = currentOwnerKPI?.owner_name || (ownerFilter === currentUserId ? currentUserName : 'All Owners')
 
     return (
-        <div className={embedded ? "p-4" : "p-6 max-w-[1400px] mx-auto"}>
+        <div className={embedded ? "p-4" : "p-6 w-full"}>
             {/* Page Header - only show when not embedded */}
             {!embedded && (
                 <div className="flex items-center justify-between mb-6">

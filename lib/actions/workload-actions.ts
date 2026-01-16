@@ -270,8 +270,8 @@ export async function getTeamWorkloadForDateRange(
             }
         })
 
-        // Sort by average workload (least busy first)
-        employeeWorkloads.sort((a, b) => a.average_workload_percent - b.average_workload_percent)
+        // Keep order from database (ORDER BY r.name, e.first_name) - don't re-sort
+        // employeeWorkloads.sort((a, b) => a.average_workload_percent - b.average_workload_percent)
 
         return { success: true, data: employeeWorkloads }
 
@@ -517,9 +517,15 @@ export async function reassignTask(
         const configConfig = await getWorkloadConfig()
         const config = configConfig.data
 
+        // Safe Date Construction (Noon to avoid timezone shifting)
+        const [y, m, d] = newDueDate.split('-').map(Number)
+        const safeDate = new Date(y, m - 1, d, 12, 0, 0)
+
+        console.log(`[reassignTask] Moving Task ${taskId} to Emp ${newAssigneeId} on ${newDueDate} (SafeDate: ${safeDate.toISOString()})`)
+
         const workloadResult = await pool.request()
             .input('assigneeId', sql.UniqueIdentifier, newAssigneeId)
-            .input('date', sql.Date, new Date(newDueDate))
+            .input('date', sql.Date, safeDate)
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`
                 SELECT SUM(estimated_hours) as current_hours
@@ -552,11 +558,12 @@ export async function reassignTask(
             await pool.request()
                 .input('taskId', sql.UniqueIdentifier, taskId)
                 .input('assigneeId', sql.UniqueIdentifier, newAssigneeId)
-                .input('dueDate', sql.Date, new Date(newDueDate))
+                .input('dueDate', sql.Date, safeDate)
                 .input('assignedBy', sql.UniqueIdentifier, userId)
                 .query(`
                     UPDATE pms.tasks
                     SET assignee_id = @assigneeId,
+                        start_date = @dueDate,
                         due_date = @dueDate,
                         assignment_status = 'assigned',
                         assigned_by = @assignedBy,
@@ -569,10 +576,11 @@ export async function reassignTask(
             await pool.request()
                 .input('taskId', sql.UniqueIdentifier, taskId)
                 .input('assigneeId', sql.UniqueIdentifier, newAssigneeId)
-                .input('dueDate', sql.Date, new Date(newDueDate))
+                .input('dueDate', sql.Date, safeDate)
                 .query(`
                     UPDATE pms.tasks
                     SET assignee_id = @assigneeId,
+                        start_date = @dueDate,
                         due_date = @dueDate,
                         updated_at = GETDATE()
                     WHERE id = @taskId

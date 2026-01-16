@@ -127,10 +127,10 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
                 <div>
                     <p className="font-medium text-slate-900">{row.original.project_code}</p>
-                    <p className="text-xs text-slate-500 truncate max-w-[200px]">{row.original.project_name}</p>
+                    <p className="text-xs text-slate-500 truncate max-w-[280px]">{row.original.project_name}</p>
                 </div>
             ),
-            size: 200,
+            size: 300,
         },
         {
             header: 'Owner',
@@ -138,7 +138,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
                 <span className="text-slate-700">{row.original.owner_name}</span>
             ),
-            size: 150,
+            size: 200,
         },
         {
             header: 'Go-Live',
@@ -155,8 +155,8 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
                 const status = row.original.project_status
                 return (
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${status === 'Closed'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-yellow-100 text-yellow-700'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-yellow-100 text-yellow-700'
                         }`}>
                         {status === 'Closed' ? 'Closed' : 'Post GL'}
                     </span>
@@ -187,8 +187,8 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
                 const { rework_ratio, is_pass } = row.original
                 return (
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${is_pass
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700'
                         }`}>
                         {is_pass ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                         {rework_ratio}%
@@ -200,7 +200,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
     ]
 
     return (
-        <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-6 max-w-7xl mx-auto"}>
+        <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-6 w-full"}>
             {/* Header - only show when not embedded */}
             {!embedded && (
                 <div className="flex items-center justify-between">

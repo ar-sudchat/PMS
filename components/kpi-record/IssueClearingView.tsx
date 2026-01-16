@@ -141,7 +141,7 @@ export default function IssueClearingView({ currentUserId = '', currentUserName 
         {
             accessorKey: "work_date",
             header: "Date",
-            size: 120,
+            size: 150,
             cell: ({ row }) => (
                 <div className="text-sm">
                     <div className="font-medium text-slate-800">
@@ -153,7 +153,7 @@ export default function IssueClearingView({ currentUserId = '', currentUserName 
         {
             accessorKey: "day_name",
             header: "Day",
-            size: 80,
+            size: 100,
             cell: ({ row }) => (
                 <span className="text-sm text-slate-600">{row.original.day_name.slice(0, 3)}</span>
             ),
@@ -161,7 +161,7 @@ export default function IssueClearingView({ currentUserId = '', currentUserName 
         {
             accessorKey: "tasks_worked",
             header: "Tasks Open",
-            size: 100,
+            size: 140,
             cell: ({ row }) => (
                 <div className="text-center">
                     <span className="text-lg font-bold text-blue-600">{row.original.tasks_worked}</span>
@@ -249,7 +249,7 @@ export default function IssueClearingView({ currentUserId = '', currentUserName 
         : 'All Employees'
 
     return (
-        <div className={embedded ? "p-4" : "p-6 max-w-[1400px] mx-auto"}>
+        <div className={embedded ? "p-4" : "p-6 w-full"}>
             {/* Page Header - only show when not embedded */}
             {!embedded && (
                 <div className="flex items-center justify-between mb-6">

@@ -178,14 +178,14 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
         {
             accessorKey: "backup_source_code",
             header: "Backup Source",
-            size: 220,
+            size: 350,
             cell: ({ row }) => (
                 <div>
                     <div className="flex items-center gap-2">
                         {getSourceTypeIcon(row.original.backup_source_type || '')}
                         <span className="font-mono text-sm font-medium text-slate-800">{row.original.backup_source_code}</span>
                     </div>
-                    <div className="text-xs text-slate-500 truncate max-w-[200px] ml-5">{row.original.backup_source_name}</div>
+                    <div className="text-xs text-slate-500 truncate max-w-[300px] ml-5">{row.original.backup_source_name}</div>
                 </div>
             ),
         },
@@ -279,7 +279,7 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
     return (
-        <div className={embedded ? "p-4" : "p-6 max-w-[1400px] mx-auto"}>
+        <div className={embedded ? "p-4" : "p-6 w-full"}>
             {/* Page Header */}
             <div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`}>
                 {!embedded && (

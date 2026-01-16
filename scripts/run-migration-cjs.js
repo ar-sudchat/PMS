@@ -1,12 +1,26 @@
 
-import { getConnection } from '../lib/db';
-import fs from 'fs';
-import path from 'path';
+// Use direct relative path without complex resolving
+const sql = require('mssql');
+
+// Hardcoded config to bypass import issues
+const config = {
+    user: 'sa',
+    password: 'YourStrong!Passw0rd',
+    server: 'localhost',
+    database: 'master',
+    options: {
+        encrypt: true,
+        trustServerCertificate: true
+    }
+};
+
+const fs = require('fs');
+const path = require('path');
 
 async function runMigration() {
     try {
         console.log('Connecting to database...');
-        const pool = await getConnection();
+        const pool = await sql.connect(config);
 
         const sqlPath = path.join(process.cwd(), 'scripts', '04_fix_gantt_missing_start_dates.sql');
         const sqlContent = fs.readFileSync(sqlPath, 'utf8');
@@ -19,9 +33,8 @@ async function runMigration() {
                 console.log('Executing batch...');
                 try {
                     await pool.request().query(batch);
-                } catch (e: any) {
+                } catch (e) {
                     console.error('Batch failed:', e.message);
-                    // Continue or throw? Let's throw to be safe
                     throw e;
                 }
             }
