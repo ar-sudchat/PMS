@@ -263,7 +263,7 @@ export async function isMilestoneLocked(milestoneId: string): Promise<boolean> {
         const result = await pool.request()
             .input('milestoneId', sql.UniqueIdentifier, milestoneId)
             .query(`
-        SELECT is_locked, is_verified
+        SELECT is_locked
         FROM pms.project_milestones
         WHERE id = @milestoneId
       `)
@@ -272,7 +272,8 @@ export async function isMilestoneLocked(milestoneId: string): Promise<boolean> {
             return false
         }
 
-        return !!result.recordset[0].is_locked || !!result.recordset[0].is_verified
+        // Only check is_locked (not is_verified)
+        return !!result.recordset[0].is_locked
     } catch (error) {
         console.error('Error checking milestone lock:', error)
         return false

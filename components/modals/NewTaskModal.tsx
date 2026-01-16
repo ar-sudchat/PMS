@@ -41,17 +41,20 @@ export function NewTaskModal({
     task,
     currentUserId
 }: NewTaskModalProps) {
-    const [formData, setFormData] = useState({
+    const getInitialFormData = () => ({
         title: '',
         description: '',
         task_type: '',
         assignee_id: '',
-        reviewer_id: '',
+        reviewer_id: mode === 'create' ? (currentUserId || '') : '',
         priority: 'medium',
         estimated_hours: '',
         due_date: '',
-        status: 'todo'
+        status: 'todo',
+        is_count_for_kpi: true
     })
+
+    const [formData, setFormData] = useState(getInitialFormData)
 
     const [taskTypes, setTaskTypes] = useState<any[]>([])
     const [employees, setEmployees] = useState<any[]>([])
@@ -136,7 +139,8 @@ export function NewTaskModal({
                 priority: task.priority || 'medium',
                 estimated_hours: task.estimated_hours ? String(task.estimated_hours) : '',
                 due_date: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
-                status: task.status || 'todo'
+                status: task.status || 'todo',
+                is_count_for_kpi: task.is_count_for_kpi !== false // default true if not set
             })
             // Load existing checklist items for edit mode
             try {
@@ -161,7 +165,8 @@ export function NewTaskModal({
     const resetFormFull = () => {
         setFormData({
             title: '', description: '', task_type: '', assignee_id: '',
-            reviewer_id: currentUserId || '', priority: 'medium', estimated_hours: '', due_date: '', status: 'todo'
+            reviewer_id: currentUserId || '', priority: 'medium', estimated_hours: '', due_date: '', status: 'todo',
+            is_count_for_kpi: true
         })
         setChecklistItems([])
     }
@@ -176,7 +181,8 @@ export function NewTaskModal({
             assignee_id: keepValues ? prev.assignee_id : '',
             reviewer_id: keepValues ? prev.reviewer_id : (currentUserId || ''),
             due_date: keepValues ? prev.due_date : '',
-            priority: 'medium'
+            priority: 'medium',
+            is_count_for_kpi: keepValues ? prev.is_count_for_kpi : true
         }))
         setChecklistItems([])
     }
@@ -244,6 +250,7 @@ export function NewTaskModal({
                     priority: formData.priority,
                     estimated_hours: formData.estimated_hours ? parseFloat(formData.estimated_hours) : undefined,
                     due_date: formData.due_date || undefined,
+                    is_count_for_kpi: formData.is_count_for_kpi,
                     checklist_items: checklistItems.map((item, index) => ({
                         title: item.title,
                         sort_order: index
@@ -260,7 +267,8 @@ export function NewTaskModal({
                     priority: formData.priority,
                     estimated_hours: formData.estimated_hours ? parseFloat(formData.estimated_hours) : 0,
                     due_date: formData.due_date,
-                    status: formData.status
+                    status: formData.status,
+                    is_count_for_kpi: formData.is_count_for_kpi
                 })
             }
 
@@ -288,6 +296,10 @@ export function NewTaskModal({
     }
 
     if (!isOpen) return null
+
+    // Check if task status is completed (done, cancelled, done_not_planned)
+    const completedStatuses = ['done', 'cancelled', 'done_not_planned']
+    const isTaskCompleted = mode === 'edit' && task?.status && completedStatuses.includes(task.status)
 
     const taskTypeOptions = taskTypes.map((t: any) => ({
         value: t.value || t.code,
@@ -359,6 +371,14 @@ export function NewTaskModal({
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5">
+                    {/* Completed Task Warning */}
+                    {isTaskCompleted && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-700 font-medium text-sm">
+                            <span className="text-lg">🔒</span>
+                            <span>Task นี้จบแล้ว ไม่สามารถแก้ไขได้</span>
+                        </div>
+                    )}
+
                     {/* Success Banner */}
                     {successMessage && (
                         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2 duration-300">
@@ -387,9 +407,10 @@ export function NewTaskModal({
                                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                                     onKeyDown={handleEnterKey}
                                     placeholder="Enter task title"
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
                                     required
                                     autoFocus={mode === 'create'}
+                                    disabled={isTaskCompleted}
                                 />
                             </div>
 
@@ -403,6 +424,7 @@ export function NewTaskModal({
                                         onChange={(val) => setFormData({ ...formData, task_type: val?.value?.toString() || '' })}
                                         placeholder="Select Type"
                                         required
+                                        disabled={isTaskCompleted}
                                     />
                                 </div>
 
@@ -414,6 +436,7 @@ export function NewTaskModal({
                                         onChange={(val) => setFormData({ ...formData, priority: val?.value?.toString() || 'medium' })}
                                         placeholder="Select Priority"
                                         required
+                                        disabled={isTaskCompleted}
                                     />
                                 </div>
                             </div>
@@ -432,13 +455,14 @@ export function NewTaskModal({
                                             placeholder="e.g. 8"
                                             min="0"
                                             step="0.5"
-                                            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+                                            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                            disabled={isTaskCompleted}
                                         />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Due Date <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
                                     <div className="relative">
                                         <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                                         <input
@@ -446,8 +470,8 @@ export function NewTaskModal({
                                             value={formData.due_date}
                                             onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                                             onKeyDown={handleEnterKey}
-                                            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                                            required
+                                            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                            disabled={isTaskCompleted}
                                         />
                                     </div>
                                 </div>
@@ -458,14 +482,14 @@ export function NewTaskModal({
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1 flex justify-between">
                                         Assignee
-                                        {!formData.due_date && <span className="text-[10px] text-amber-600 font-normal">Select Due Date first</span>}
+                                        {!formData.due_date && !isTaskCompleted && <span className="text-[10px] text-amber-600 font-normal">Select Due Date first</span>}
                                     </label>
                                     <SmartCombobox
                                         options={assigneeOptions}
                                         value={assigneeOptions.find((o: any) => o.value === formData.assignee_id) || null}
                                         onChange={(val) => setFormData({ ...formData, assignee_id: val?.value?.toString() || '' })}
                                         placeholder={!formData.due_date ? "Select Due Date first..." : "Select Assignee"}
-                                        disabled={!formData.due_date}
+                                        disabled={isTaskCompleted || !formData.due_date}
                                         isLoading={isLoadingAssignees}
                                     />
                                 </div>
@@ -477,6 +501,7 @@ export function NewTaskModal({
                                         value={reviewerOptions.find((o: any) => o.value === formData.reviewer_id) || null}
                                         onChange={(val) => setFormData({ ...formData, reviewer_id: val?.value?.toString() || '' })}
                                         placeholder="Select Reviewer"
+                                        disabled={isTaskCompleted}
                                     />
                                 </div>
                             </div>
@@ -490,9 +515,26 @@ export function NewTaskModal({
                                         value={statusOptions.find((o: any) => o.value === formData.status) || null}
                                         onChange={(val) => setFormData({ ...formData, status: val?.value?.toString() || 'todo' })}
                                         placeholder="Select Status"
+                                        disabled={isTaskCompleted}
                                     />
                                 </div>
                             )}
+
+                            {/* KPI Checkbox */}
+                            <div className={`flex items-center gap-3 p-3 rounded-lg border ${isTaskCompleted ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'}`}>
+                                <input
+                                    type="checkbox"
+                                    id="is_count_for_kpi"
+                                    checked={formData.is_count_for_kpi}
+                                    onChange={(e) => setFormData({ ...formData, is_count_for_kpi: e.target.checked })}
+                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                                    disabled={isTaskCompleted}
+                                />
+                                <label htmlFor="is_count_for_kpi" className={`flex-1 ${isTaskCompleted ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    <span className="text-sm font-medium text-slate-700">คิด KPI</span>
+                                    <p className="text-xs text-slate-500">ถ้าไม่ติ๊ก Task นี้จะไม่ถูกนำไปคำนวณ KPI</p>
+                                </label>
+                            </div>
 
                             {/* Description */}
                             <div>
@@ -502,7 +544,8 @@ export function NewTaskModal({
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                     rows={6}
                                     placeholder="Add task details..."
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm resize-none"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm resize-none disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                    disabled={isTaskCompleted}
                                 />
                             </div>
                         </div>
@@ -520,30 +563,32 @@ export function NewTaskModal({
                             </div>
 
                             {/* Add Item Input - Moved to Top */}
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    value={newChecklistItem}
-                                    onChange={(e) => setNewChecklistItem(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault()
-                                            handleAddChecklistItem()
-                                        }
-                                    }}
-                                    placeholder="Add item..."
-                                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleAddChecklistItem}
-                                    disabled={!newChecklistItem.trim()}
-                                    className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
-                                >
-                                    <Plus className="h-4 w-4" />
-                                    Add
-                                </button>
-                            </div>
+                            {!isTaskCompleted && (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={newChecklistItem}
+                                        onChange={(e) => setNewChecklistItem(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault()
+                                                handleAddChecklistItem()
+                                            }
+                                        }}
+                                        placeholder="Add item..."
+                                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleAddChecklistItem}
+                                        disabled={!newChecklistItem.trim()}
+                                        className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                        Add
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Checklist Items Container */}
                             <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
@@ -560,13 +605,15 @@ export function NewTaskModal({
                                             className="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors group"
                                         >
                                             <span className="flex-1 text-sm text-slate-700 font-medium">{item.title}</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveChecklistItem(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
+                                            {!isTaskCompleted && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveChecklistItem(item.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            )}
                                         </div>
                                     ))
                                 )}
@@ -597,26 +644,30 @@ export function NewTaskModal({
                                 onClick={onClose}
                                 className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-white hover:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all text-sm"
                             >
-                                Cancel
+                                {isTaskCompleted ? 'Close' : 'Cancel'}
                             </button>
 
-                            {mode === 'create' && (
-                                <button
-                                    onClick={() => handleSubmit(true)}
-                                    disabled={isSaving || !formData.title || !formData.task_type || !formData.due_date}
-                                    className="px-3 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-900 focus:ring-2 focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
-                                >
-                                    Create & Close
-                                </button>
+                            {!isTaskCompleted && (
+                                <>
+                                    {mode === 'create' && (
+                                        <button
+                                            onClick={() => handleSubmit(true)}
+                                            disabled={isSaving || !formData.title || !formData.task_type}
+                                            className="px-3 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-900 focus:ring-2 focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+                                        >
+                                            Create & Close
+                                        </button>
+                                    )}
+
+                                    <button
+                                        onClick={() => handleSubmit(false)}
+                                        disabled={isSaving || !formData.title || !formData.task_type || !formData.priority}
+                                        className="px-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 shadow-md shadow-blue-200 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all text-sm"
+                                    >
+                                        {isSaving ? 'Saving...' : (mode === 'create' ? 'Create Task' : 'Save Changes')}
+                                    </button>
+                                </>
                             )}
-
-                            <button
-                                onClick={() => handleSubmit(false)}
-                                disabled={isSaving || !formData.title || !formData.task_type || !formData.priority || (mode === 'create' && !formData.due_date)}
-                                className="px-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 shadow-md shadow-blue-200 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all text-sm"
-                            >
-                                {isSaving ? 'Saving...' : (mode === 'create' ? 'Create Task' : 'Save Changes')}
-                            </button>
                         </div>
                     </div>
                 </div>

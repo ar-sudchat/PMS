@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
+import { isMilestoneLocked } from './milestone-actions'
 
 // ============================================
 // TYPES
@@ -34,6 +35,7 @@ export interface Task {
     estimated_hours: number | null
     actual_hours: number
     due_date: string | null
+    is_count_for_kpi?: boolean
 }
 
 // Helper to check if task_type_configs has name_th column
@@ -56,6 +58,15 @@ export async function getTaskById(taskId: string) {
         const hasTaskTypeNameTh = await checkTaskTypeNameThColumn(pool)
         const taskTypeNameCol = hasTaskTypeNameTh ? 'ttc.name_th' : 'ttc.name'
 
+        // Check if is_count_for_kpi column exists
+        const kpiColumnCheck = await pool.request().query(`
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+            AND COLUMN_NAME = 'is_count_for_kpi'
+        `)
+        const hasKpiColumn = kpiColumnCheck.recordset.length > 0
+        const kpiSelect = hasKpiColumn ? ', t.is_count_for_kpi' : ', 1 AS is_count_for_kpi'
+
         const result = await pool.request()
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`
@@ -65,7 +76,7 @@ export async function getTaskById(taskId: string) {
           t.task_type, ${taskTypeNameCol} AS task_type_name, ttc.color AS task_type_color, ttc.icon AS task_type_icon,
           t.assignee_id, CONCAT(assignee.first_name_th, ' ', assignee.last_name_th) AS assignee_name, assignee.nickname AS assignee_nickname,
           t.reviewer_id, CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th) AS reviewer_name,
-          t.priority, t.[status], t.estimated_hours, t.actual_hours, t.due_date
+          t.priority, t.[status], t.estimated_hours, t.actual_hours, t.due_date${kpiSelect}
         FROM pms.tasks t
         INNER JOIN pms.stories s ON t.story_id = s.id
         INNER JOIN pms.projects p ON s.project_id = p.id
@@ -213,6 +224,7 @@ export async function createTask(data: {
     priority: string
     estimated_hours?: number
     due_date?: string
+    is_count_for_kpi?: boolean
     checklist_items?: { title: string; sort_order: number }[]
 }) {
     try {
@@ -220,6 +232,19 @@ export async function createTask(data: {
         if (!user) return { success: false, error: 'Unauthorized' }
 
         const pool = await getConnection()
+
+        // Check if story's milestone is locked
+        const storyResult = await pool.request()
+            .input('storyId', sql.UniqueIdentifier, data.story_id)
+            .query(`SELECT milestone_id FROM pms.stories WHERE id = @storyId`)
+
+        if (storyResult.recordset.length > 0 && storyResult.recordset[0].milestone_id) {
+            const milestoneId = storyResult.recordset[0].milestone_id
+            const isLocked = await isMilestoneLocked(milestoneId)
+            if (isLocked) {
+                return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถเพิ่ม Task ได้' }
+            }
+        }
 
         // Generate task code
         const codeResult = await pool.request()
@@ -232,7 +257,15 @@ export async function createTask(data: {
         const taskCode = codeResult.recordset[0].new_code
         const newId = require('crypto').randomUUID()
 
-        const result = await pool.request()
+        // Check if is_count_for_kpi column exists
+        const kpiColumnCheck = await pool.request().query(`
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+            AND COLUMN_NAME = 'is_count_for_kpi'
+        `)
+        const hasKpiColumn = kpiColumnCheck.recordset.length > 0
+
+        const request = pool.request()
             .input('id', sql.UniqueIdentifier, newId)
             .input('taskCode', sql.NVarChar, taskCode)
             .input('storyId', sql.UniqueIdentifier, data.story_id)
@@ -245,11 +278,24 @@ export async function createTask(data: {
             .input('estimatedHours', sql.Decimal(10, 2), data.estimated_hours || null)
             .input('dueDate', sql.Date, data.due_date ? new Date(data.due_date) : null)
             .input('createdBy', sql.UniqueIdentifier, user.id)
-            .query(`
-        INSERT INTO pms.tasks (id, task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, created_at, updated_at)
-        OUTPUT INSERTED.id, INSERTED.task_code
-        VALUES (@id, @taskCode, @storyId, @title, @description, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, 'todo', 1, GETDATE(), GETDATE())
-      `)
+
+        let insertQuery: string
+        if (hasKpiColumn) {
+            request.input('isCountForKpi', sql.Bit, data.is_count_for_kpi !== false ? 1 : 0)
+            insertQuery = `
+                INSERT INTO pms.tasks (id, task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, is_count_for_kpi, created_at, updated_at)
+                OUTPUT INSERTED.id, INSERTED.task_code
+                VALUES (@id, @taskCode, @storyId, @title, @description, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, 'todo', 1, @isCountForKpi, GETDATE(), GETDATE())
+            `
+        } else {
+            insertQuery = `
+                INSERT INTO pms.tasks (id, task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, created_at, updated_at)
+                OUTPUT INSERTED.id, INSERTED.task_code
+                VALUES (@id, @taskCode, @storyId, @title, @description, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, 'todo', 1, GETDATE(), GETDATE())
+            `
+        }
+
+        const result = await request.query(insertQuery)
 
         const taskId = result.recordset[0].id
 
@@ -268,12 +314,12 @@ export async function createTask(data: {
         }
 
         // Revalidate
-        const storyResult = await pool.request()
+        const storyProjectResult = await pool.request()
             .input('storyId', sql.UniqueIdentifier, data.story_id)
             .query(`SELECT project_id FROM pms.stories WHERE id = @storyId`)
 
-        if (storyResult.recordset[0]) {
-            revalidatePath(`/projects/${storyResult.recordset[0].project_id}`)
+        if (storyProjectResult.recordset[0]) {
+            revalidatePath(`/projects/${storyProjectResult.recordset[0].project_id}`)
         }
 
         return { success: true, data: result.recordset[0] }
@@ -299,12 +345,31 @@ export async function updateTask(taskId: string, data: Partial<{
     estimated_hours: number
     due_date: string
     not_as_planned_reason: string
+    is_count_for_kpi: boolean
 }>) {
     try {
         const user = await getCurrentUser()
         if (!user) return { success: false, error: 'Unauthorized' }
 
         const pool = await getConnection()
+
+        // Check if task's milestone is locked
+        const taskMilestoneResult = await pool.request()
+            .input('taskId', sql.UniqueIdentifier, taskId)
+            .query(`
+                SELECT s.milestone_id
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                WHERE t.id = @taskId
+            `)
+
+        if (taskMilestoneResult.recordset.length > 0 && taskMilestoneResult.recordset[0].milestone_id) {
+            const milestoneId = taskMilestoneResult.recordset[0].milestone_id
+            const isLocked = await isMilestoneLocked(milestoneId)
+            if (isLocked) {
+                return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถแก้ไข Task ได้' }
+            }
+        }
 
         const updates: string[] = []
         const request = pool.request()
@@ -353,6 +418,19 @@ export async function updateTask(taskId: string, data: Partial<{
         if (data.due_date !== undefined) {
             updates.push('due_date = @dueDate')
             request.input('dueDate', sql.Date, data.due_date ? new Date(data.due_date) : null)
+        }
+
+        // Handle is_count_for_kpi if provided and column exists
+        if (data.is_count_for_kpi !== undefined) {
+            const kpiColumnCheck = await pool.request().query(`
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+                AND COLUMN_NAME = 'is_count_for_kpi'
+            `)
+            if (kpiColumnCheck.recordset.length > 0) {
+                updates.push('is_count_for_kpi = @isCountForKpi')
+                request.input('isCountForKpi', sql.Bit, data.is_count_for_kpi ? 1 : 0)
+            }
         }
 
         updates.push('updated_at = GETDATE()')

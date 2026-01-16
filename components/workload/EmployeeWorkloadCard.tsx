@@ -11,9 +11,10 @@ interface EmployeeWorkloadCardProps {
     onSelect: () => void
     config: WorkloadConfig | null
     dates: Date[]
+    onUnassignTask?: (taskId: string) => void  // Callback when unassign button is clicked
 }
 
-export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, dates }: EmployeeWorkloadCardProps) {
+export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, dates, onUnassignTask }: EmployeeWorkloadCardProps) {
     // Helper to determine role colors
     const getRoleColor = (roleParams: string) => {
         const role = roleParams || ''
@@ -44,7 +45,7 @@ export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, d
     }
 
     return (
-        <div className="grid grid-cols-[300px_repeat(5,1fr)_120px] gap-4 bg-white border rounded-xl shadow-sm p-4 items-stretch min-h-[140px]">
+        <div className="grid grid-cols-[280px_repeat(5,1fr)_100px] gap-3 bg-white border rounded-xl shadow-sm p-3 items-stretch min-h-[120px]">
             {/* 1. Employee Info Column */}
             <div className="flex items-start gap-4">
                 <div className={cn("w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0", roleColor)}>
@@ -117,6 +118,8 @@ export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, d
                                             status={task.status}
                                             projectCode={task.project_code}
                                             isLocked={task.milestone_locked}
+                                            showUnassign={!!onUnassignTask}
+                                            onUnassign={onUnassignTask}
                                         />
                                     ))}
                                     {/* Placeholder for empty drop zone if needed, or handled by css */}
