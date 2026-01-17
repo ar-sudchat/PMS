@@ -180,6 +180,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'ตั้งค่า',
         children: [
           { id: 'backup-sources', label: 'Backup Sources', labelTh: 'แหล่ง Backup', path: '/kpi-record/backup-sources', icon: Database, roles: ['admin', 'manager'] },
+          { id: 'backup-types', label: 'Backup Types', labelTh: 'ประเภท Backup', path: '/kpi-record/backup-types', icon: Layers, roles: ['admin', 'manager'] },
         ]
       }
     ]

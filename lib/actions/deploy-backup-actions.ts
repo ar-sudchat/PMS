@@ -332,36 +332,42 @@ export async function getDeployBackupSummary(year?: number, backupSourceId?: str
 }
 
 // Get Backup KPI (Target: 100% Pass)
+// Only counts backup types where is_kpi_counted = 1
 export async function getBackupKPI(year: number): Promise<{ success: boolean, data?: BackupKPIResult, error?: string }> {
     try {
         const pool = await getConnection()
 
-        // Get summary stats
+        // Get summary stats - only for KPI-counted types
         const summaryResult = await pool.request()
             .input('year', year)
             .query(`
                 SELECT
                     COUNT(*) as total,
-                    SUM(CASE WHEN is_passed = 1 THEN 1 ELSE 0 END) as passed,
-                    SUM(CASE WHEN is_passed = 0 THEN 1 ELSE 0 END) as failed
-                FROM pms.deploy_backup_records
-                WHERE YEAR(backup_date) = @year
+                    SUM(CASE WHEN db.is_passed = 1 THEN 1 ELSE 0 END) as passed,
+                    SUM(CASE WHEN db.is_passed = 0 THEN 1 ELSE 0 END) as failed
+                FROM pms.deploy_backup_records db
+                LEFT JOIN pms.backup_types bt ON db.backup_type = bt.code
+                WHERE YEAR(db.backup_date) = @year
+                AND ISNULL(bt.is_kpi_counted, 1) = 1
             `)
 
         const stats = summaryResult.recordset[0]
 
-        // Get failed records
+        // Get failed records - only for KPI-counted types
         const failedResult = await pool.request()
             .input('year', year)
             .query(`
                 SELECT
                     db.backup_date,
                     bs.name as source_name,
-                    db.failed_reason
+                    db.failed_reason,
+                    db.backup_type
                 FROM pms.deploy_backup_records db
                 INNER JOIN pms.backup_sources bs ON db.backup_source_id = bs.id
+                LEFT JOIN pms.backup_types bt ON db.backup_type = bt.code
                 WHERE YEAR(db.backup_date) = @year
                 AND db.is_passed = 0
+                AND ISNULL(bt.is_kpi_counted, 1) = 1
                 ORDER BY db.backup_date DESC
             `)
 

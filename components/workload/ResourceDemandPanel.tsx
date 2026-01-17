@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { getUnassignedTasks, UnassignedTask, autoAssignSABATasks } from '@/lib/actions/workload-actions'
+import { getUnassignedTasks, UnassignedTask, autoAssignSABATasks, autoAssignAllReadyTasks } from '@/lib/actions/workload-actions'
 import { toast } from 'sonner'
 import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
@@ -113,6 +113,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
     const [tasks, setTasks] = useState<UnassignedTask[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isAutoAssigning, setIsAutoAssigning] = useState(false)
+    const [isAutoAssigningAll, setIsAutoAssigningAll] = useState(false)
     const [selectedProject, setSelectedProject] = useState<string>('all')
     const [selectedAssignmentStatus, setSelectedAssignmentStatus] = useState<string>('all')
     const [selectedPositionType, setSelectedPositionType] = useState<'all' | 'PG' | 'SA_BA'>('PG')
@@ -194,6 +195,15 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
         )
     }, [filteredTasks])
 
+    // Get ALL ready tasks (have both assignee and due_date, not yet assigned)
+    const readyToAssignTasks = useMemo(() => {
+        return filteredTasks.filter(t =>
+            t.assignee_id &&
+            t.due_date &&
+            t.assignment_status !== 'assigned'
+        )
+    }, [filteredTasks])
+
     // Handle auto assign SA/BA tasks
     const handleAutoAssignSABA = async () => {
         if (saBaTasks.length === 0) {
@@ -219,6 +229,37 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
             toast.error('เกิดข้อผิดพลาด', { id: toastId })
         } finally {
             setIsAutoAssigning(false)
+        }
+    }
+
+    // Handle auto assign ALL ready tasks
+    const handleAutoAssignAll = async () => {
+        if (readyToAssignTasks.length === 0) {
+            toast.info('ไม่มี Task ที่พร้อมจะ Assign')
+            return
+        }
+
+        setIsAutoAssigningAll(true)
+        const toastId = toast.loading(`กำลัง Auto Assign ${readyToAssignTasks.length} tasks...`)
+
+        try {
+            const taskIds = readyToAssignTasks.map(t => t.id)
+            const result = await autoAssignAllReadyTasks(taskIds)
+
+            if (result.success) {
+                const message = result.skippedCount > 0
+                    ? `Assign สำเร็จ ${result.assignedCount} tasks (ข้าม ${result.skippedCount})`
+                    : `Assign สำเร็จ ${result.assignedCount} tasks`
+                toast.success(message, { id: toastId })
+                loadTasks()
+                onRefresh?.()
+            } else {
+                toast.error(result.error || 'Auto Assign ล้มเหลว', { id: toastId })
+            }
+        } catch (error) {
+            toast.error('เกิดข้อผิดพลาด', { id: toastId })
+        } finally {
+            setIsAutoAssigningAll(false)
         }
     }
 
@@ -412,7 +453,19 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                         <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     </div>
 
-                    {/* Auto Assign Button for SA/BA */}
+                    {/* Auto Assign All Button - Always visible when there are ready tasks */}
+                    {readyToAssignTasks.length > 0 && (
+                        <button
+                            onClick={handleAutoAssignAll}
+                            disabled={isAutoAssigningAll}
+                            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                            <Zap className={cn("w-3 h-3", isAutoAssigningAll && "animate-pulse")} />
+                            {isAutoAssigningAll ? 'กำลัง Assign...' : `Auto Assign ทั้งหมด (${readyToAssignTasks.length})`}
+                        </button>
+                    )}
+
+                    {/* Auto Assign Button for SA/BA (only when SA_BA filter is selected) */}
                     {selectedPositionType === 'SA_BA' && saBaTasks.length > 0 && (
                         <button
                             onClick={handleAutoAssignSABA}

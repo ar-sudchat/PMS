@@ -109,10 +109,10 @@ export async function getTeamWorkloadForDateRange(
 
         // 1. Get Employees basic info first
         let employeeQuery = `
-            SELECT 
+            SELECT
                 e.id as employee_id,
                 e.employee_code,
-                ISNULL(e.first_name, '') + ' ' + ISNULL(e.last_name, '') as employee_name,
+                ISNULL(NULLIF(ISNULL(e.first_name_th, '') + ' ' + ISNULL(e.last_name_th, ''), ' '), ISNULL(e.first_name, '') + ' ' + ISNULL(e.last_name, '')) as employee_name,
                 e.nickname,
                 CASE 
                     WHEN r.name LIKE '%System Analyst%' THEN 'SA'
@@ -637,7 +637,7 @@ export async function unassignTask(
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`
                 SELECT t.id, t.title, t.assignee_id, pm.is_locked,
-                       CONCAT(e.first_name, ' ', e.last_name) as assignee_name
+                       ISNULL(NULLIF(CONCAT(e.first_name_th, ' ', e.last_name_th), ' '), CONCAT(e.first_name, ' ', e.last_name)) as assignee_name
                 FROM pms.tasks t
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
@@ -766,15 +766,15 @@ export async function getUnassignedTasks(
                 s.story_code,
                 s.title as story_title,
                 mc.code as milestone_code,
-                CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name,
+                ISNULL(NULLIF(CONCAT(creator.first_name_th, ' ', creator.last_name_th), ' '), CONCAT(creator.first_name, ' ', creator.last_name)) as created_by_name,
                 t.created_at,
                 CASE WHEN t.assignee_id IS NULL THEN 'requested' ELSE 'assigned' END as assignment_status,
                 t.due_date,
                 t.assignee_id,
-                CONCAT(assignee.first_name, ' ', assignee.last_name) as assignee_name,
+                ISNULL(NULLIF(CONCAT(assignee.first_name_th, ' ', assignee.last_name_th), ' '), CONCAT(assignee.first_name, ' ', assignee.last_name)) as assignee_name,
                 assignee_pos.code as assignee_position_code,
                 t.reviewer_id,
-                CONCAT(reviewer.first_name, ' ', reviewer.last_name) as reviewer_name
+                ISNULL(NULLIF(CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th), ' '), CONCAT(reviewer.first_name, ' ', reviewer.last_name)) as reviewer_name
             FROM pms.tasks t
             INNER JOIN pms.stories s ON t.story_id = s.id
             INNER JOIN pms.projects p ON s.project_id = p.id
@@ -879,7 +879,7 @@ export async function autoAssignSABATasks(
                 .query(`
                     SELECT t.id, t.assignee_id, t.due_date, t.title,
                            p.code as assignee_position,
-                           CONCAT(e.first_name, ' ', e.last_name) as assignee_name
+                           ISNULL(NULLIF(CONCAT(e.first_name_th, ' ', e.last_name_th), ' '), CONCAT(e.first_name, ' ', e.last_name)) as assignee_name
                     FROM pms.tasks t
                     LEFT JOIN pms.employees e ON t.assignee_id = e.id
                     LEFT JOIN pms.positions p ON e.position_id = p.id
@@ -922,6 +922,125 @@ export async function autoAssignSABATasks(
     } catch (error: any) {
         console.error('autoAssignSABATasks error:', error)
         return { success: false, assignedCount: 0, error: error.message }
+    }
+}
+
+/**
+ * Auto assign ALL tasks that have both assignee_id and due_date
+ * This confirms the planned assignment for any position (PG, SA, BA, etc.)
+ */
+export async function autoAssignAllReadyTasks(
+    taskIds: string[]
+): Promise<{ success: boolean; assignedCount: number; skippedCount: number; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, assignedCount: 0, skippedCount: 0, error: 'Unauthorized' }
+        }
+
+        if (taskIds.length === 0) {
+            return { success: true, assignedCount: 0, skippedCount: 0 }
+        }
+
+        const pool = await getConnection()
+        let assignedCount = 0
+        let skippedCount = 0
+
+        // Check if assignment_status column exists
+        const columnCheck = await pool.request().query(`
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+            AND COLUMN_NAME = 'assignment_status'
+        `)
+        const hasAssignmentStatus = columnCheck.recordset.length > 0
+
+        for (const taskId of taskIds) {
+            // Get task details
+            const taskResult = await pool.request()
+                .input('taskId', sql.UniqueIdentifier, taskId)
+                .query(`
+                    SELECT t.id, t.assignee_id, t.due_date, t.title, t.assignment_status,
+                           p.code as assignee_position,
+                           ISNULL(NULLIF(CONCAT(e.first_name_th, ' ', e.last_name_th), ' '), CONCAT(e.first_name, ' ', e.last_name)) as assignee_name,
+                           pm.is_locked
+                    FROM pms.tasks t
+                    LEFT JOIN pms.employees e ON t.assignee_id = e.id
+                    LEFT JOIN pms.positions p ON e.position_id = p.id
+                    LEFT JOIN pms.stories s ON t.story_id = s.id
+                    LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+                    WHERE t.id = @taskId
+                `)
+
+            if (taskResult.recordset.length === 0) {
+                skippedCount++
+                continue
+            }
+
+            const task = taskResult.recordset[0]
+
+            // Skip if milestone is locked
+            if (task.is_locked) {
+                skippedCount++
+                console.log(`[AutoAssignAll] Skipped '${task.title}' - Milestone locked`)
+                continue
+            }
+
+            // Skip if no assignee
+            if (!task.assignee_id) {
+                skippedCount++
+                console.log(`[AutoAssignAll] Skipped '${task.title}' - No assignee`)
+                continue
+            }
+
+            // Skip if no due_date
+            if (!task.due_date) {
+                skippedCount++
+                console.log(`[AutoAssignAll] Skipped '${task.title}' - No due date`)
+                continue
+            }
+
+            // Skip if already assigned
+            if (task.assignment_status === 'assigned') {
+                skippedCount++
+                console.log(`[AutoAssignAll] Skipped '${task.title}' - Already assigned`)
+                continue
+            }
+
+            // Update to assigned status
+            if (hasAssignmentStatus) {
+                await pool.request()
+                    .input('taskId', sql.UniqueIdentifier, taskId)
+                    .input('assignedBy', sql.UniqueIdentifier, user.id)
+                    .query(`
+                        UPDATE pms.tasks
+                        SET assignment_status = 'assigned',
+                            assigned_by = @assignedBy,
+                            assigned_at = GETDATE(),
+                            updated_at = GETDATE(),
+                            updated_by = @assignedBy
+                        WHERE id = @taskId
+                    `)
+            } else {
+                await pool.request()
+                    .input('taskId', sql.UniqueIdentifier, taskId)
+                    .input('updatedBy', sql.UniqueIdentifier, user.id)
+                    .query(`
+                        UPDATE pms.tasks
+                        SET updated_at = GETDATE(),
+                            updated_by = @updatedBy
+                        WHERE id = @taskId
+                    `)
+            }
+
+            assignedCount++
+            console.log(`[AutoAssignAll] Assigned '${task.title}' to ${task.assignee_name} (${task.assignee_position})`)
+        }
+
+        return { success: true, assignedCount, skippedCount }
+
+    } catch (error: any) {
+        console.error('autoAssignAllReadyTasks error:', error)
+        return { success: false, assignedCount: 0, skippedCount: 0, error: error.message }
     }
 }
 

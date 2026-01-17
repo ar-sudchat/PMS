@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, Save, Database, Server, Code, Settings, FileText, FolderOpen, CheckCircle2, XCircle } from 'lucide-react'
 import { DeployBackupRecord, createDeployBackupRecord, updateDeployBackupRecord } from '@/lib/actions/deploy-backup-actions'
 import { getActiveBackupSources } from '@/lib/actions/backup-source-actions'
-import { BACKUP_TYPES } from '@/lib/constants/kpi-record'
+import { getActiveBackupTypes } from '@/lib/actions/backup-type-actions'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
@@ -35,15 +35,16 @@ export function DeployBackupModal({ open, onClose, record, currentUserId }: Depl
     const [isLoading, setIsLoading] = useState(false)
     const [errors, setErrors] = useState<{ [key: string]: string }>({})
     const [backupSources, setBackupSources] = useState<{ value: string, label: string, type: string }[]>([])
+    const [backupTypes, setBackupTypes] = useState<{ code: string, name: string, is_kpi_counted: boolean }[]>([])
     const [employees, setEmployees] = useState<{ value: string, label: string }[]>([])
 
     useEffect(() => {
         if (record) {
             setFormData({
                 backup_source_id: record.backup_source_id,
-                backup_date: record.backup_date instanceof Date
-                    ? record.backup_date.toISOString().split('T')[0]
-                    : (typeof record.backup_date === 'string' ? record.backup_date.split('T')[0] : ''),
+                backup_date: record.backup_date
+                    ? (typeof record.backup_date === 'string' ? record.backup_date.split('T')[0] : new Date(record.backup_date).toISOString().split('T')[0])
+                    : '',
                 deploy_record_id: record.deploy_record_id || '',
                 backup_type: record.backup_type,
                 backup_location: record.backup_location || '',
@@ -76,8 +77,9 @@ export function DeployBackupModal({ open, onClose, record, currentUserId }: Depl
 
     useEffect(() => {
         const loadData = async () => {
-            const [sourcesRes, employeesRes] = await Promise.all([
+            const [sourcesRes, typesRes, employeesRes] = await Promise.all([
                 getActiveBackupSources(),
+                getActiveBackupTypes(),
                 getActiveEmployees()
             ])
             if (sourcesRes.success && sourcesRes.data) {
@@ -86,6 +88,17 @@ export function DeployBackupModal({ open, onClose, record, currentUserId }: Depl
                     label: `${s.code}: ${s.name}`,
                     type: s.source_type
                 })))
+            }
+            if (typesRes.success && typesRes.data) {
+                setBackupTypes(typesRes.data.map((t: any) => ({
+                    code: t.code,
+                    name: t.name,
+                    is_kpi_counted: t.is_kpi_counted
+                })))
+                // Set default backup_type to first type if not set
+                if (!formData.backup_type && typesRes.data.length > 0) {
+                    setFormData(prev => ({ ...prev, backup_type: typesRes.data[0].code }))
+                }
             }
             if (employeesRes.success && employeesRes.data) {
                 setEmployees(employeesRes.data.map((e: any) => ({
@@ -235,10 +248,26 @@ export function DeployBackupModal({ open, onClose, record, currentUserId }: Depl
                                 onChange={(e) => setFormData({ ...formData, backup_type: e.target.value })}
                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
                             >
-                                {BACKUP_TYPES.map(type => (
-                                    <option key={type} value={type}>{type}</option>
+                                {backupTypes.map(type => (
+                                    <option key={type.code} value={type.code}>
+                                        {type.name} {type.is_kpi_counted ? '(KPI)' : ''}
+                                    </option>
                                 ))}
                             </select>
+                            {/* Show KPI status hint */}
+                            {formData.backup_type && (
+                                <div className="mt-1 text-xs">
+                                    {backupTypes.find(t => t.code === formData.backup_type)?.is_kpi_counted ? (
+                                        <span className="text-emerald-600 flex items-center gap-1">
+                                            <CheckCircle2 size={12} /> นับ KPI
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-400 flex items-center gap-1">
+                                            <XCircle size={12} /> ไม่นับ KPI
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
