@@ -87,7 +87,7 @@ export async function getEmployeesForReport(): Promise<EmployeeForReport[]> {
     }
 }
 
-// Get employee work summary
+// Get employee work summary - นับจาก assignee_id (คนที่ถูกจ่ายงาน)
 export async function getEmployeeWorkSummary(
     employeeId: string,
     year: number,
@@ -103,32 +103,57 @@ export async function getEmployeeWorkSummary(
             .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
             .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
             .query(`
-        SELECT 
+        SELECT
           e.id AS employee_id,
           e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
-          
-          -- Tasks counts (created or assigned in period)
-          (SELECT COUNT(*) FROM pms.tasks WHERE assignee_id = @employeeId AND is_active = 1
-           AND (created_at BETWEEN @periodStart AND @periodEnd OR updated_at BETWEEN @periodStart AND @periodEnd)
+
+          -- Total Tasks = tasks ที่ assignee_id = employee และมี due_date หรือ created_at ใน period
+          (SELECT COUNT(*)
+           FROM pms.tasks t
+           WHERE t.assignee_id = @employeeId
+             AND t.is_active = 1
+             AND (
+               (t.due_date BETWEEN @periodStart AND @periodEnd)
+               OR (t.created_at BETWEEN @periodStart AND @periodEnd)
+               OR (t.status IN ('in_progress', 'review') AND t.due_date IS NULL)
+             )
           ) AS total_tasks,
-          
-          (SELECT COUNT(*) FROM pms.tasks WHERE assignee_id = @employeeId AND status = 'done' AND is_active = 1
-           AND updated_at BETWEEN @periodStart AND @periodEnd
+
+          -- Completed = tasks ที่ assignee และ status = done/done_not_planned และ completed ใน period
+          (SELECT COUNT(*)
+           FROM pms.tasks t
+           WHERE t.assignee_id = @employeeId
+             AND t.is_active = 1
+             AND t.status IN ('done', 'done_not_planned')
+             AND (
+               t.completed_date BETWEEN @periodStart AND @periodEnd
+               OR (t.completed_date IS NULL AND t.updated_at BETWEEN @periodStart AND @periodEnd)
+             )
           ) AS completed_tasks,
-          
-          (SELECT COUNT(*) FROM pms.tasks WHERE assignee_id = @employeeId AND status = 'in_progress' AND is_active = 1
+
+          -- In Progress = tasks ที่ assignee และ status = in_progress
+          (SELECT COUNT(*)
+           FROM pms.tasks t
+           WHERE t.assignee_id = @employeeId
+             AND t.is_active = 1
+             AND t.status = 'in_progress'
           ) AS in_progress_tasks,
-          
-          (SELECT COUNT(*) FROM pms.tasks WHERE assignee_id = @employeeId AND status IN ('todo', 'backlog') AND is_active = 1
+
+          -- To Do = tasks ที่ assignee และ status = todo, backlog, review
+          (SELECT COUNT(*)
+           FROM pms.tasks t
+           WHERE t.assignee_id = @employeeId
+             AND t.is_active = 1
+             AND t.status IN ('todo', 'backlog', 'review')
           ) AS todo_tasks,
-          
-          -- Hours logged in period
+
+          -- Hours logged in period (ยังคงนับจาก timesheet ของ employee)
           ISNULL((
-            SELECT SUM(hours) FROM pms.timesheet_entries 
+            SELECT SUM(hours) FROM pms.timesheet_entries
             WHERE employee_id = @employeeId AND is_active = 1
             AND entry_date BETWEEN @periodStart AND @periodEnd
           ), 0) AS total_hours_logged
-          
+
         FROM pms.employees e
         WHERE e.id = @employeeId
       `)
@@ -236,7 +261,7 @@ export async function getEmployeeWeeklyHours(
     }
 }
 
-// Get employee tasks
+// Get employee tasks - tasks ที่ถูก assign ให้ employee (assignee_id)
 export async function getEmployeeTasks(
     employeeId: string,
     year: number,
@@ -249,27 +274,32 @@ export async function getEmployeeTasks(
         const periodEnd = endOfMonth(new Date(year, month - 1))
 
         let query = `
-      SELECT 
+      SELECT
         t.id AS task_id,
         p.project_code,
         p.name AS project_name,
         t.task_code,
         t.title AS task_title,
-        t.task_type,
+        ISNULL(t.task_type, 'other') AS task_type,
         t.status,
         ISNULL(t.estimated_hours, 0) AS estimated_hours,
+        -- actual_hours รวมทั้งหมดของ task นี้
         ISNULL((
-          SELECT SUM(hours) FROM pms.timesheet_entries 
+          SELECT SUM(hours) FROM pms.timesheet_entries
           WHERE task_id = t.id AND is_active = 1
-          AND entry_date BETWEEN @periodStart AND @periodEnd
         ), 0) AS actual_hours,
         t.due_date,
-        CASE WHEN t.due_date < GETDATE() AND t.status NOT IN ('done', 'cancelled') THEN 1 ELSE 0 END AS is_overdue
+        CASE WHEN t.due_date < GETDATE() AND t.status NOT IN ('done', 'done_not_planned', 'cancelled') THEN 1 ELSE 0 END AS is_overdue
       FROM pms.tasks t
       INNER JOIN pms.stories s ON t.story_id = s.id
       INNER JOIN pms.projects p ON s.project_id = p.id
-      WHERE t.assignee_id = @employeeId 
+      WHERE t.assignee_id = @employeeId
         AND t.is_active = 1
+        AND (
+          (t.due_date BETWEEN @periodStart AND @periodEnd)
+          OR (t.created_at BETWEEN @periodStart AND @periodEnd)
+          OR (t.status IN ('in_progress', 'review', 'todo'))
+        )
     `
 
         const request = pool.request()
@@ -292,7 +322,17 @@ export async function getEmployeeTasks(
             request.input('taskType', sql.NVarChar, filters.taskType)
         }
 
-        query += ` ORDER BY p.project_code, t.task_code`
+        query += ` ORDER BY
+          CASE t.status
+            WHEN 'in_progress' THEN 1
+            WHEN 'review' THEN 2
+            WHEN 'todo' THEN 3
+            WHEN 'done' THEN 4
+            ELSE 5
+          END,
+          t.due_date,
+          p.project_code,
+          t.task_code`
 
         const result = await request.query(query)
 
@@ -307,7 +347,7 @@ export async function getEmployeeTasks(
     }
 }
 
-// Get hours breakdown by task type
+// Get hours breakdown by task type - จาก tasks ที่ถูก assign ให้ employee
 export async function getHoursByTaskType(
     employeeId: string,
     year: number,
@@ -323,28 +363,32 @@ export async function getHoursByTaskType(
             .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
             .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
             .query(`
-        SELECT 
-          t.task_type,
-          ISNULL(ttc.name, t.task_type) AS task_type_name,
+        SELECT
+          ISNULL(t.task_type, 'other') AS task_type,
+          ISNULL(ttc.name, ISNULL(t.task_type, 'Other')) AS task_type_name,
           ISNULL(ttc.is_defect, 0) AS is_defect,
-          SUM(te.hours) AS hours
-        FROM pms.timesheet_entries te
-        INNER JOIN pms.tasks t ON te.task_id = t.id
+          COUNT(*) AS task_count,
+          SUM(ISNULL(t.estimated_hours, 0)) AS hours
+        FROM pms.tasks t
         LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
-        WHERE te.employee_id = @employeeId 
-          AND te.is_active = 1
-          AND te.entry_date BETWEEN @periodStart AND @periodEnd
+        WHERE t.assignee_id = @employeeId
+          AND t.is_active = 1
+          AND (
+            (t.due_date BETWEEN @periodStart AND @periodEnd)
+            OR (t.created_at BETWEEN @periodStart AND @periodEnd)
+            OR (t.status IN ('in_progress', 'review', 'todo'))
+          )
         GROUP BY t.task_type, ttc.name, ttc.is_defect
-        ORDER BY SUM(te.hours) DESC
+        ORDER BY COUNT(*) DESC
       `)
 
-        const total = result.recordset.reduce((sum: number, row: any) => sum + row.hours, 0)
+        const total = result.recordset.reduce((sum: number, row: any) => sum + row.task_count, 0)
 
         return result.recordset.map((row: any) => ({
             task_type: row.task_type,
             task_type_name: row.task_type_name,
-            hours: row.hours,
-            percentage: total > 0 ? Math.round((row.hours / total) * 100) : 0,
+            hours: row.task_count, // ใช้จำนวน tasks แทน hours
+            percentage: total > 0 ? Math.round((row.task_count / total) * 100) : 0,
             is_defect: !!row.is_defect
         }))
     } catch (error) {
@@ -353,7 +397,7 @@ export async function getHoursByTaskType(
     }
 }
 
-// Get hours breakdown by project
+// Get hours breakdown by project - จาก tasks ที่ถูก assign ให้ employee
 export async function getHoursByProject(
     employeeId: string,
     year: number,
@@ -369,30 +413,34 @@ export async function getHoursByProject(
             .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
             .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
             .query(`
-        SELECT 
+        SELECT
           p.id AS project_id,
           p.project_code,
           p.name AS project_name,
-          SUM(te.hours) AS hours
-        FROM pms.timesheet_entries te
-        INNER JOIN pms.tasks t ON te.task_id = t.id
+          COUNT(*) AS task_count,
+          SUM(ISNULL(t.estimated_hours, 0)) AS hours
+        FROM pms.tasks t
         INNER JOIN pms.stories s ON t.story_id = s.id
         INNER JOIN pms.projects p ON s.project_id = p.id
-        WHERE te.employee_id = @employeeId 
-          AND te.is_active = 1
-          AND te.entry_date BETWEEN @periodStart AND @periodEnd
+        WHERE t.assignee_id = @employeeId
+          AND t.is_active = 1
+          AND (
+            (t.due_date BETWEEN @periodStart AND @periodEnd)
+            OR (t.created_at BETWEEN @periodStart AND @periodEnd)
+            OR (t.status IN ('in_progress', 'review', 'todo'))
+          )
         GROUP BY p.id, p.project_code, p.name
-        ORDER BY SUM(te.hours) DESC
+        ORDER BY COUNT(*) DESC
       `)
 
-        const total = result.recordset.reduce((sum: number, row: any) => sum + row.hours, 0)
+        const total = result.recordset.reduce((sum: number, row: any) => sum + row.task_count, 0)
 
         return result.recordset.map((row: any) => ({
             project_id: row.project_id,
             project_code: row.project_code,
             project_name: row.project_name,
-            hours: row.hours,
-            percentage: total > 0 ? Math.round((row.hours / total) * 100) : 0
+            hours: row.task_count, // ใช้จำนวน tasks แทน hours
+            percentage: total > 0 ? Math.round((row.task_count / total) * 100) : 0
         }))
     } catch (error) {
         console.error('Error fetching hours by project:', error)

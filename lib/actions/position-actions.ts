@@ -33,6 +33,23 @@ export async function getPositions() {
     return result.recordset
 }
 
+export async function getActivePositions() {
+    try {
+        const pool = await getConnection()
+        const result = await pool.request()
+            .query(`
+                SELECT id, code, name, level
+                FROM pms.positions
+                WHERE is_active = 1
+                ORDER BY level DESC, name ASC
+            `)
+        return { success: true, data: result.recordset }
+    } catch (error: any) {
+        console.error('getActivePositions Error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
 export async function createPosition(data: PositionFormData) {
     try {
         const pool = await getConnection()

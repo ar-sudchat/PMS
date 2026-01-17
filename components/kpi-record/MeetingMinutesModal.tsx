@@ -1,14 +1,25 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Save } from 'lucide-react'
-import { MeetingMinutesRecord, createMeetingMinutesRecord, updateMeetingMinutesRecord } from '@/lib/actions/meeting-minutes-actions'
+import { X, Save, Send, Check, XCircle } from 'lucide-react'
+import { MeetingMinutesRecord, createMeetingMinutesRecord, updateMeetingMinutesRecord, submitMeetingMinutesForApproval, updateMeetingMinutesApprovalStatus } from '@/lib/actions/meeting-minutes-actions'
 import { MEETING_TYPES } from '@/lib/constants/kpi-record'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { getActiveProjects } from '@/lib/actions/project-actions'
 import { getActiveEmployees } from '@/lib/actions/employee-actions'
+import { getApprovalInstanceByDocumentId, approveRequest, rejectRequest } from '@/lib/actions/approval-actions'
+import { ApprovalStatusBadge } from '@/components/approval/ApprovalStatusBadge'
+import FileUpload from '@/components/ui/FileUpload'
+
+interface UploadedFile {
+    id: string
+    name: string
+    path: string
+    size: number
+    mimeType: string
+}
 
 interface MeetingMinutesModalProps {
     open: boolean
@@ -29,16 +40,30 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
         mom_sent_at: '',
         sent_by: '',
         mom_file_path: '',
-        notes: ''
+        notes: '',
+        attachments: [] as UploadedFile[]
     })
     const [isLoading, setIsLoading] = useState(false)
     const [errors, setErrors] = useState<{ [key: string]: string }>({})
     const [projects, setProjects] = useState<{ value: string, label: string }[]>([])
     const [employees, setEmployees] = useState<{ value: string, label: string }[]>([])
 
+    // Approval state
+    const [approvalInfo, setApprovalInfo] = useState<{ instanceId?: string; status?: string; canApprove?: boolean }>({})
+    const [approvalComment, setApprovalComment] = useState('')
+    const [isApprovalLoading, setIsApprovalLoading] = useState(false)
+
     useEffect(() => {
         console.log('useEffect triggered: open=', open, 'currentUserId=', currentUserId, 'record=', record?.id)
         if (record) {
+            // Parse attachments from record
+            let attachments: UploadedFile[] = []
+            try {
+                if ((record as any).attachments) {
+                    attachments = JSON.parse((record as any).attachments)
+                }
+            } catch (e) { }
+
             setFormData({
                 project_id: record.project_id || '',
                 meeting_date: record.meeting_date ? formatDateTimeLocal(record.meeting_date) : '',
@@ -50,8 +75,11 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
                 mom_sent_at: record.mom_sent_at ? formatDateTimeLocal(record.mom_sent_at) : '',
                 sent_by: record.sent_by || '',
                 mom_file_path: record.mom_file_path || '',
-                notes: record.notes || ''
+                notes: record.notes || '',
+                attachments
             })
+            // Check if user can approve this record
+            checkApprovalStatus(record.id)
         } else {
             const now = new Date()
             const nowStr = now.toISOString().slice(0, 16)
@@ -66,11 +94,23 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
                 mom_sent_at: '',
                 sent_by: currentUserId || '',
                 mom_file_path: '',
-                notes: ''
+                notes: '',
+                attachments: []
             })
+            setApprovalInfo({})
         }
         setErrors({})
+        setApprovalComment('')
     }, [record, open, currentUserId])
+
+    const checkApprovalStatus = async (recordId: string) => {
+        try {
+            const result = await getApprovalInstanceByDocumentId(recordId, 'KPI')
+            setApprovalInfo(result)
+        } catch (error) {
+            console.error('Error checking approval status:', error)
+        }
+    }
 
     useEffect(() => {
         const loadData = async () => {
@@ -124,7 +164,7 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
         return Object.keys(newErrors).length === 0
     }
 
-    const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    const handleSubmit = async (e?: React.FormEvent | React.MouseEvent, submitForApproval: boolean = false) => {
         e?.preventDefault()
         console.log('handleSubmit called', formData)
         console.log('organized_by value:', formData.organized_by, 'length:', formData.organized_by?.length)
@@ -135,6 +175,11 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
 
         setIsLoading(true)
         try {
+            // Serialize attachments
+            const attachmentsJson = formData.attachments.length > 0
+                ? JSON.stringify(formData.attachments)
+                : undefined
+
             let result
             const submitData = {
                 project_id: formData.project_id || undefined,
@@ -147,7 +192,8 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
                 mom_sent_at: formData.mom_sent_at || undefined,
                 sent_by: formData.sent_by || undefined,
                 mom_file_path: formData.mom_file_path || undefined,
-                notes: formData.notes || undefined
+                notes: formData.notes || undefined,
+                attachments: attachmentsJson
             }
 
             if (record) {
@@ -160,7 +206,23 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
             }
 
             if (result.success) {
-                toast.success(record ? 'Record updated successfully' : 'Record created successfully')
+                // Get the record ID - for new records it's in result.id, for updates use record.id
+                const recordId = (result as any).id || record?.id
+
+                // If submitForApproval is true, submit the record for approval
+                if (submitForApproval && recordId) {
+                    const approvalResult = await submitMeetingMinutesForApproval(
+                        recordId,
+                        `MoM - ${formData.meeting_title}`
+                    )
+                    if (approvalResult.success) {
+                        toast.success('Record created and submitted for approval')
+                    } else {
+                        toast.warning(`Record saved but approval submission failed: ${approvalResult.error}`)
+                    }
+                } else {
+                    toast.success(record ? 'Record updated successfully' : 'Record created successfully')
+                }
                 onClose()
             } else {
                 toast.error(result.error || 'Operation failed')
@@ -171,6 +233,60 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
             setIsLoading(false)
         }
     }
+
+    const handleApprove = async () => {
+        if (!approvalInfo.instanceId) return
+
+        setIsApprovalLoading(true)
+        try {
+            const result = await approveRequest(approvalInfo.instanceId, approvalComment)
+            if (result.success) {
+                // Update record status
+                if (record) {
+                    await updateMeetingMinutesApprovalStatus(record.id, 'APPROVED')
+                }
+                toast.success('Approved successfully')
+                onClose()
+            } else {
+                toast.error(result.error || 'Failed to approve')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setIsApprovalLoading(false)
+        }
+    }
+
+    const handleReject = async () => {
+        if (!approvalInfo.instanceId) return
+
+        if (!approvalComment.trim()) {
+            toast.error('Please provide a reason for rejection')
+            return
+        }
+
+        setIsApprovalLoading(true)
+        try {
+            const result = await rejectRequest(approvalInfo.instanceId, approvalComment)
+            if (result.success) {
+                // Update record status
+                if (record) {
+                    await updateMeetingMinutesApprovalStatus(record.id, 'REJECTED')
+                }
+                toast.success('Rejected successfully')
+                onClose()
+            } else {
+                toast.error(result.error || 'Failed to reject')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setIsApprovalLoading(false)
+        }
+    }
+
+    const approvalStatus = (record as any)?.approval_status || 'DRAFT'
+    const isPending = approvalStatus === 'PENDING' || approvalInfo.status === 'IN_PROGRESS'
 
     if (!open) return null
 
@@ -184,9 +300,12 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
             >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                    <h2 className="text-lg font-semibold text-slate-800">
-                        {record ? 'Edit Meeting Minutes' : 'New Meeting Minutes'}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-semibold text-slate-800">
+                            {record ? 'Edit Meeting Minutes' : 'New Meeting Minutes'}
+                        </h2>
+                        {record && <ApprovalStatusBadge status={approvalStatus} size="sm" />}
+                    </div>
                     <button
                         onClick={onClose}
                         className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
@@ -354,30 +473,117 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
                             placeholder="Additional notes..."
                         />
                     </div>
+
+                    {/* Attachments */}
+                    <FileUpload
+                        value={formData.attachments}
+                        onChange={(files) => setFormData({ ...formData, attachments: files })}
+                        maxFiles={5}
+                        maxSizeMB={10}
+                        subFolder="meeting-minutes"
+                        label="Attachments"
+                        helperText="Upload MoM documents or screenshots (max 5 files, 10MB each)"
+                    />
+
+                    {/* Approval Comment - Show only when user can approve */}
+                    {approvalInfo.canApprove && isPending && (
+                        <div className="border-t pt-4 mt-4">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Approval Comment
+                            </label>
+                            <textarea
+                                value={approvalComment}
+                                onChange={(e) => setApprovalComment(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none"
+                                rows={2}
+                                placeholder="Comment (required for rejection)..."
+                            />
+                        </div>
+                    )}
                 </form>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors"
-                        disabled={isLoading}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={isLoading}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                        {isLoading ? (
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                            <Save size={16} />
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between gap-3">
+                    <div>
+                        {/* Cancel button */}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors"
+                            disabled={isLoading || isApprovalLoading}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+
+                    <div className="flex gap-3">
+                        {/* Approval buttons - Show when user can approve and status is PENDING */}
+                        {approvalInfo.canApprove && isPending && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleReject}
+                                    disabled={isApprovalLoading}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isApprovalLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <XCircle size={16} />
+                                    )}
+                                    Reject
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleApprove}
+                                    disabled={isApprovalLoading}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isApprovalLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Check size={16} />
+                                    )}
+                                    Approve
+                                </button>
+                            </>
                         )}
-                        {record ? 'Update' : 'Create'}
-                    </button>
+
+                        {/* Save/Submit buttons - Show when not pending approval OR user is not approver */}
+                        {(!isPending || !approvalInfo.canApprove) && (
+                            <>
+                                <button
+                                    onClick={(e) => handleSubmit(e, false)}
+                                    disabled={isLoading}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Save size={16} />
+                                    )}
+                                    {record ? 'Update' : 'Save Draft'}
+                                </button>
+                                {/* Show Submit button for new records OR existing DRAFT records */}
+                                {/* Only enable when MoM Sent At and Sent By are filled */}
+                                {(!record || approvalStatus === 'DRAFT') && (
+                                    <button
+                                        onClick={(e) => handleSubmit(e, true)}
+                                        disabled={isLoading || !formData.mom_sent_at || !formData.sent_by}
+                                        title={!formData.mom_sent_at || !formData.sent_by ? 'กรุณากรอก MoM Sent At และ Sent By ก่อนส่งอนุมัติ' : ''}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm shadow-green-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                    >
+                                        {isLoading ? (
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        ) : (
+                                            <Send size={16} />
+                                        )}
+                                        {record ? 'Submit for Approval' : 'Save & Submit'}
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             </motion.div>
         </div>

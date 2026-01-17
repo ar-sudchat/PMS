@@ -3,16 +3,18 @@
 import { useState, useMemo } from 'react'
 import { MyTask, getMyTasks, getMyTaskCounts, updateTaskStatus } from '@/lib/actions/my-tasks-actions'
 import { TaskCard } from './TaskCard'
+import { TaskTable } from './TaskTable'
 import { StatusFilter } from './StatusFilter'
 import { TaskDetailModal } from './TaskDetailModal'
 import { QuickLogTimeModal } from './QuickLogTimeModal'
-import { Search, Loader2, ChevronLeft, ChevronRight, Calendar, User } from 'lucide-react'
+import { Search, Loader2, ChevronLeft, ChevronRight, Calendar, User, LayoutGrid, Table2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { getCurrentWeek, type WeekOption } from '@/lib/utils/week-helper'
 import { format, addWeeks, startOfWeek, endOfWeek, getWeek, getYear } from 'date-fns'
 import { th } from 'date-fns/locale'
+import { cn } from '@/lib/utils'
 
 interface Employee {
     id: string
@@ -50,6 +52,8 @@ function getWeekInfo(date: Date): WeekOption {
     }
 }
 
+type ViewMode = 'card' | 'table'
+
 export function MyTasksView({
     initialTasks,
     initialCounts,
@@ -60,9 +64,10 @@ export function MyTasksView({
 }: MyTasksViewProps) {
     const [tasks, setTasks] = useState<MyTask[]>(initialTasks)
     const [counts, setCounts] = useState<Record<string, number>>(initialCounts)
-    const [statusFilter, setStatusFilter] = useState('all')
+    const [statusFilter, setStatusFilter] = useState('todo')
     const [search, setSearch] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [viewMode, setViewMode] = useState<ViewMode>('table') // Default to table view
 
     // New filters
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(currentUserId)
@@ -163,6 +168,16 @@ export function MyTasksView({
         }
     }
 
+    const handleViewDetail = (task: MyTask) => {
+        setDetailTask(task)
+        setIsDetailOpen(true)
+    }
+
+    const handleLogTime = (task: MyTask) => {
+        setLogTimeTask(task)
+        setIsLogTimeOpen(true)
+    }
+
     const filteredTasks = tasks.filter(t =>
     (search === '' ||
         t.task_title.toLowerCase().includes(search.toLowerCase()) ||
@@ -191,6 +206,34 @@ export function MyTasksView({
                         </h1>
                     </div>
                     <div className="flex items-center gap-3">
+                        {/* View Toggle */}
+                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                            <button
+                                onClick={() => setViewMode('table')}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                    viewMode === 'table'
+                                        ? "bg-white text-indigo-600 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                <Table2 className="w-4 h-4" />
+                                Table
+                            </button>
+                            <button
+                                onClick={() => setViewMode('card')}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                    viewMode === 'card'
+                                        ? "bg-white text-indigo-600 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                                Cards
+                            </button>
+                        </div>
+
                         {/* Employee Selector (for managers) */}
                         {canViewOthers && (
                             <div className="flex items-center gap-2">
@@ -272,6 +315,14 @@ export function MyTasksView({
                     <div className="flex justify-center py-20">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
                     </div>
+                ) : viewMode === 'table' ? (
+                    <TaskTable
+                        tasks={filteredTasks}
+                        onViewDetail={handleViewDetail}
+                        onLogTime={handleLogTime}
+                        onStatusChange={handleTaskStatusUpdate}
+                        canLogTime={isViewingOwnTasks}
+                    />
                 ) : filteredTasks.length === 0 ? (
                     <div className="text-center py-20 text-slate-500 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
                         <p className="text-lg font-medium">No tasks found</p>
@@ -283,15 +334,10 @@ export function MyTasksView({
                             <TaskCard
                                 key={task.task_id}
                                 task={task}
-                                onViewDetail={(t) => {
-                                    setDetailTask(t)
-                                    setIsDetailOpen(true)
-                                }}
-                                onLogTime={(t) => {
-                                    setLogTimeTask(t)
-                                    setIsLogTimeOpen(true)
-                                }}
+                                onViewDetail={handleViewDetail}
+                                onLogTime={handleLogTime}
                                 onStatusChange={handleTaskStatusUpdate}
+                                canLogTime={isViewingOwnTasks}
                             />
                         ))}
                     </div>

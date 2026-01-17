@@ -604,7 +604,7 @@ export async function getFileDataUrl(filePath: string): Promise<{
 /**
  * Format file size to human readable
  */
-export function formatFileSize(bytes: number): string {
+export async function formatFileSize(bytes: number): Promise<string> {
     if (bytes === 0) return '0 Bytes'
     const k = 1024
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
@@ -615,7 +615,7 @@ export function formatFileSize(bytes: number): string {
 /**
  * Validate file extension
  */
-export function isAllowedExtension(filename: string, allowedExtensions: string[]): boolean {
+export async function isAllowedExtension(filename: string, allowedExtensions: string[]): Promise<boolean> {
     const ext = path.extname(filename).toLowerCase()
     return allowedExtensions.includes(ext)
 }
@@ -623,7 +623,7 @@ export function isAllowedExtension(filename: string, allowedExtensions: string[]
 /**
  * Validate file size
  */
-export function isAllowedSize(size: number, maxSizeInMB: number): boolean {
+export async function isAllowedSize(size: number, maxSizeInMB: number): Promise<boolean> {
     const maxSizeInBytes = maxSizeInMB * 1024 * 1024
     return size <= maxSizeInBytes
 }

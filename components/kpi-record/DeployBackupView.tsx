@@ -3,14 +3,15 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle } from "lucide-react"
-import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult } from "@/lib/actions/deploy-backup-actions"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle, Send } from "lucide-react"
+import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult, submitDeployBackupForApproval } from "@/lib/actions/deploy-backup-actions"
 import { getActiveBackupSources } from "@/lib/actions/backup-source-actions"
 import { DeployBackupModal } from "@/components/kpi-record/DeployBackupModal"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { th } from "date-fns/locale"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
+import { ApprovalStatusBadge } from "@/components/approval/ApprovalStatusBadge"
 
 interface DeployBackupViewProps {
     currentUserId: string
@@ -119,6 +120,23 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
     const handleModalClose = () => {
         setIsModalOpen(false)
         fetchData()
+    }
+
+    const handleSubmitForApproval = async (record: DeployBackupRecord) => {
+        try {
+            const result = await submitDeployBackupForApproval(
+                record.id,
+                `Backup - ${record.backup_source_code} - ${format(new Date(record.backup_date), 'd MMM yyyy', { locale: th })}`
+            )
+            if (result.success) {
+                toast.success('Submitted for approval')
+                fetchData()
+            } else {
+                toast.error(result.error || 'Failed to submit')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        }
     }
 
     const clearFilters = () => {
@@ -249,13 +267,34 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
             },
         },
         {
+            accessorKey: "approval_status",
+            header: "Approval",
+            size: 100,
+            cell: ({ row }) => {
+                const record = row.original as any
+                const status = record.approval_status || 'DRAFT'
+                return <ApprovalStatusBadge status={status} size="sm" />
+            },
+        },
+        {
             id: "actions",
             header: "",
-            size: 80,
+            size: 100,
             cell: ({ row }) => {
-                const record = row.original
+                const record = row.original as any
+                const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
+                        {/* Submit for approval button - only for DRAFT status */}
+                        {status === 'DRAFT' && (
+                            <button
+                                onClick={() => handleSubmitForApproval(record)}
+                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                                title="Submit for Approval"
+                            >
+                                <Send size={16} />
+                            </button>
+                        )}
                         <button
                             onClick={() => handleEdit(record)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"

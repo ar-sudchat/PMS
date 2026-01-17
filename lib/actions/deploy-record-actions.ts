@@ -2,6 +2,8 @@
 
 import { getConnection } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { submitForApproval } from '@/lib/actions/approval-actions'
+import { getCurrentUser } from '@/lib/auth'
 
 // Types
 export interface DeployRecord {
@@ -74,7 +76,9 @@ export async function getDeployRecords(filters: DeployRecordFilters) {
                     dr.notes,
                     dr.created_at,
                     dr.created_by,
-                    CONCAT(e.first_name, ' ', e.last_name) as created_by_name
+                    CONCAT(e.first_name, ' ', e.last_name) as created_by_name,
+                    dr.approval_status,
+                    dr.approval_instance_id
                 FROM pms.deploy_success_records dr
                 LEFT JOIN pms.customers c ON dr.customer_id = c.id
                 LEFT JOIN pms.employees e ON dr.created_by = e.id
@@ -142,6 +146,7 @@ export async function createDeployRecord(data: {
     deploy_count: number
     rollback_count: number
     notes?: string
+    attachments?: string
     created_by: string
 }) {
     try {
@@ -169,12 +174,13 @@ export async function createDeployRecord(data: {
             .input('deploy_count', data.deploy_count)
             .input('rollback_count', data.rollback_count)
             .input('notes', data.notes || null)
+            .input('attachments', data.attachments || null)
             .input('created_by', data.created_by)
             .query(`
                 INSERT INTO pms.deploy_success_records
-                (customer_id, week_start_date, year, week_number, deploy_count, rollback_count, notes, created_by)
+                (id, customer_id, week_start_date, year, week_number, deploy_count, rollback_count, notes, attachments, created_by, created_at)
                 OUTPUT INSERTED.id
-                VALUES (@customer_id, @week_start_date, @year, @week_number, @deploy_count, @rollback_count, @notes, @created_by)
+                VALUES (NEWID(), @customer_id, @week_start_date, @year, @week_number, @deploy_count, @rollback_count, @notes, @attachments, @created_by, GETDATE())
             `)
 
         revalidatePath('/kpi-record/deploy-success')
@@ -190,6 +196,7 @@ export async function updateDeployRecord(id: string, data: {
     deploy_count: number
     rollback_count: number
     notes?: string
+    attachments?: string
 }) {
     try {
         const pool = await getConnection()
@@ -198,11 +205,13 @@ export async function updateDeployRecord(id: string, data: {
             .input('deploy_count', data.deploy_count)
             .input('rollback_count', data.rollback_count)
             .input('notes', data.notes || null)
+            .input('attachments', data.attachments || null)
             .query(`
                 UPDATE pms.deploy_success_records
                 SET deploy_count = @deploy_count,
                     rollback_count = @rollback_count,
                     notes = @notes,
+                    attachments = @attachments,
                     updated_at = GETDATE()
                 WHERE id = @id
             `)
@@ -291,5 +300,95 @@ export async function getActiveCustomers() {
     } catch (error) {
         console.error('Error fetching customers:', error)
         return { success: false, error: 'Failed to fetch customers', data: [] }
+    }
+}
+
+// Submit deploy record for approval
+export async function submitDeployRecordForApproval(recordId: string, documentTitle: string) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // Get record details for approval data
+        const recordResult = await pool.request()
+            .input('id', recordId)
+            .query(`
+                SELECT dr.*, c.name as customer_name
+                FROM pms.deploy_success_records dr
+                LEFT JOIN pms.customers c ON dr.customer_id = c.id
+                WHERE dr.id = @id
+            `)
+
+        if (recordResult.recordset.length === 0) {
+            return { success: false, error: 'Record not found' }
+        }
+
+        const record = recordResult.recordset[0]
+
+        // Submit for approval
+        const result = await submitForApproval({
+            flow_code: 'DEPLOY_SUCCESS',
+            module_code: 'KPI',
+            document_id: recordId,
+            document_type: 'DEPLOY_SUCCESS',
+            document_title: documentTitle,
+            document_data: {
+                customer_id: record.customer_id,
+                customer_name: record.customer_name,
+                week_number: record.week_number,
+                year: record.year,
+                deploy_count: record.deploy_count,
+                rollback_count: record.rollback_count
+            }
+        })
+
+        if (result.success && result.instance_id) {
+            // Update record with approval status and instance_id
+            await pool.request()
+                .input('id', recordId)
+                .input('instanceId', result.instance_id)
+                .query(`
+                    UPDATE pms.deploy_success_records
+                    SET approval_status = 'PENDING',
+                        approval_instance_id = @instanceId
+                    WHERE id = @id
+                `)
+        }
+
+        revalidatePath('/kpi-record/deploy-success')
+        return result
+
+    } catch (error: any) {
+        console.error('Error submitting for approval:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Update approval status (called by approval service callbacks)
+export async function updateDeployRecordApprovalStatus(
+    recordId: string,
+    status: 'APPROVED' | 'REJECTED' | 'CANCELLED'
+) {
+    try {
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', recordId)
+            .input('status', status)
+            .query(`
+                UPDATE pms.deploy_success_records
+                SET approval_status = @status
+                WHERE id = @id
+            `)
+
+        revalidatePath('/kpi-record/deploy-success')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('Error updating approval status:', error)
+        return { success: false, error: error.message }
     }
 }

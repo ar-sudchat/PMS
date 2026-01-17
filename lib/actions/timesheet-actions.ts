@@ -183,11 +183,27 @@ export async function logTimeEntry(data: {
     const pool = await getConnection()
     const employeeId = (user as any).employeeId || user.id
 
+    // Check if user is assignee of the task
+    const assigneeCheck = await pool.request()
+      .input('taskId', sql.UniqueIdentifier, data.taskId)
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .query(`
+        SELECT assignee_id FROM pms.tasks WHERE id = @taskId
+      `)
+
+    if (assigneeCheck.recordset.length === 0) {
+      return { success: false, error: 'Task not found' }
+    }
+
+    if (assigneeCheck.recordset[0].assignee_id !== employeeId) {
+      return { success: false, error: 'คุณไม่สามารถลงเวลาใน Task ที่ไม่ได้ถูก Assign ให้คุณ' }
+    }
+
     // Check if milestone is locked
     const lockCheck = await pool.request()
       .input('taskId', sql.UniqueIdentifier, data.taskId)
       .query(`
-        SELECT ISNULL(pm.is_locked, 0) AS is_locked 
+        SELECT ISNULL(pm.is_locked, 0) AS is_locked
         FROM pms.tasks t
         INNER JOIN pms.stories s ON t.story_id = s.id
         INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id

@@ -1,12 +1,23 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { X, Save } from 'lucide-react'
-import { DeployRecord, createDeployRecord, updateDeployRecord, getActiveCustomers } from '@/lib/actions/deploy-record-actions'
+import { X, Save, Send, Check, XCircle } from 'lucide-react'
+import { DeployRecord, createDeployRecord, updateDeployRecord, getActiveCustomers, submitDeployRecordForApproval, updateDeployRecordApprovalStatus } from '@/lib/actions/deploy-record-actions'
 import { getWeeksOfYear, getCurrentWeek } from '@/lib/utils/week-helper'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { getApprovalInstanceByDocumentId, approveRequest, rejectRequest } from '@/lib/actions/approval-actions'
+import { ApprovalStatusBadge } from '@/components/approval/ApprovalStatusBadge'
+import FileUpload from '@/components/ui/FileUpload'
+
+interface UploadedFile {
+    id: string
+    name: string
+    path: string
+    size: number
+    mimeType: string
+}
 
 interface DeployRecordModalProps {
     open: boolean
@@ -24,35 +35,64 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
         week_value: currentWeek.value,
         deploy_count: 0,
         rollback_count: 0,
-        notes: ''
+        notes: '',
+        attachments: [] as UploadedFile[]
     })
     const [isLoading, setIsLoading] = useState(false)
     const [errors, setErrors] = useState<{ [key: string]: string }>({})
     const [customers, setCustomers] = useState<{ value: string, label: string }[]>([])
+
+    // Approval state
+    const [approvalInfo, setApprovalInfo] = useState<{ instanceId?: string; status?: string; canApprove?: boolean }>({})
+    const [approvalComment, setApprovalComment] = useState('')
+    const [isApprovalLoading, setIsApprovalLoading] = useState(false)
 
     // Generate weeks for current year
     const weeks = useMemo(() => getWeeksOfYear(currentYear), [currentYear])
 
     useEffect(() => {
         if (record) {
+            // Parse attachments from record
+            let attachments: UploadedFile[] = []
+            try {
+                if ((record as any).attachments) {
+                    attachments = JSON.parse((record as any).attachments)
+                }
+            } catch (e) { }
+
             setFormData({
                 customer_id: record.customer_id,
                 week_value: `${record.year}-W${record.week_number.toString().padStart(2, '0')}`,
                 deploy_count: record.deploy_count,
                 rollback_count: record.rollback_count,
-                notes: record.notes || ''
+                notes: record.notes || '',
+                attachments
             })
+            // Check if user can approve this record
+            checkApprovalStatus(record.id)
         } else {
             setFormData({
                 customer_id: '',
                 week_value: currentWeek.value,
                 deploy_count: 0,
                 rollback_count: 0,
-                notes: ''
+                notes: '',
+                attachments: []
             })
+            setApprovalInfo({})
         }
         setErrors({})
+        setApprovalComment('')
     }, [record, open, currentWeek.value])
+
+    const checkApprovalStatus = async (recordId: string) => {
+        try {
+            const result = await getApprovalInstanceByDocumentId(recordId, 'KPI')
+            setApprovalInfo(result)
+        } catch (error) {
+            console.error('Error checking approval status:', error)
+        }
+    }
 
     useEffect(() => {
         const loadCustomers = async () => {
@@ -81,7 +121,7 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
         return Object.keys(newErrors).length === 0
     }
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent, submitForApproval: boolean = false) => {
         e.preventDefault()
         if (!validate()) return
 
@@ -94,13 +134,19 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
                 return
             }
 
+            // Serialize attachments
+            const attachmentsJson = formData.attachments.length > 0
+                ? JSON.stringify(formData.attachments)
+                : undefined
+
             let result
             if (record) {
-                // Update - only allow changing counts and notes
+                // Update - only allow changing counts, notes and attachments
                 result = await updateDeployRecord(record.id, {
                     deploy_count: formData.deploy_count,
                     rollback_count: formData.rollback_count,
-                    notes: formData.notes || undefined
+                    notes: formData.notes || undefined,
+                    attachments: attachmentsJson
                 })
             } else {
                 // Create
@@ -112,12 +158,30 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
                     deploy_count: formData.deploy_count,
                     rollback_count: formData.rollback_count,
                     notes: formData.notes || undefined,
+                    attachments: attachmentsJson,
                     created_by: currentUserId || ''
                 })
             }
 
             if (result.success) {
-                toast.success(record ? 'Record updated' : 'Record created')
+                // Get the record ID - for new records it's in result.id, for updates use record.id
+                const recordId = (result as any).id || record?.id
+
+                // If submitForApproval is true, submit the record for approval
+                if (submitForApproval && recordId) {
+                    const customerName = customers.find(c => c.value === formData.customer_id)?.label || 'Unknown'
+                    const approvalResult = await submitDeployRecordForApproval(
+                        recordId,
+                        `Deploy Success - ${customerName} - W${selectedWeek.week_number}`
+                    )
+                    if (approvalResult.success) {
+                        toast.success('Record created and submitted for approval')
+                    } else {
+                        toast.warning(`Record saved but approval submission failed: ${approvalResult.error}`)
+                    }
+                } else {
+                    toast.success(record ? 'Record updated' : 'Record created')
+                }
                 onClose()
             } else {
                 toast.error(result.error || 'Operation failed')
@@ -129,10 +193,64 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
         }
     }
 
+    const handleApprove = async () => {
+        if (!approvalInfo.instanceId) return
+
+        setIsApprovalLoading(true)
+        try {
+            const result = await approveRequest(approvalInfo.instanceId, approvalComment)
+            if (result.success) {
+                // Update record status
+                if (record) {
+                    await updateDeployRecordApprovalStatus(record.id, 'APPROVED')
+                }
+                toast.success('Approved successfully')
+                onClose()
+            } else {
+                toast.error(result.error || 'Failed to approve')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setIsApprovalLoading(false)
+        }
+    }
+
+    const handleReject = async () => {
+        if (!approvalInfo.instanceId) return
+
+        if (!approvalComment.trim()) {
+            toast.error('Please provide a reason for rejection')
+            return
+        }
+
+        setIsApprovalLoading(true)
+        try {
+            const result = await rejectRequest(approvalInfo.instanceId, approvalComment)
+            if (result.success) {
+                // Update record status
+                if (record) {
+                    await updateDeployRecordApprovalStatus(record.id, 'REJECTED')
+                }
+                toast.success('Rejected successfully')
+                onClose()
+            } else {
+                toast.error(result.error || 'Failed to reject')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setIsApprovalLoading(false)
+        }
+    }
+
     // Calculate success rate preview
     const successRate = formData.deploy_count > 0
         ? Math.round(((formData.deploy_count - formData.rollback_count) / formData.deploy_count) * 100)
         : 100
+
+    const approvalStatus = (record as any)?.approval_status || 'DRAFT'
+    const isPending = approvalStatus === 'PENDING' || approvalInfo.status === 'IN_PROGRESS'
 
     if (!open) return null
 
@@ -146,9 +264,12 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
             >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                    <h2 className="text-lg font-semibold text-slate-800">
-                        {record ? 'Edit Deploy Record' : 'Add Deploy Record'}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-semibold text-slate-800">
+                            {record ? 'Edit Deploy Record' : 'Add Deploy Record'}
+                        </h2>
+                        {record && <ApprovalStatusBadge status={approvalStatus} size="sm" />}
+                    </div>
                     <button
                         onClick={onClose}
                         className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
@@ -246,30 +367,115 @@ export function DeployRecordModal({ open, onClose, record, currentUserId }: Depl
                             placeholder="Additional notes..."
                         />
                     </div>
+
+                    {/* Attachments */}
+                    <FileUpload
+                        value={formData.attachments}
+                        onChange={(files) => setFormData({ ...formData, attachments: files })}
+                        maxFiles={5}
+                        maxSizeMB={10}
+                        subFolder="deploy-success"
+                        label="Attachments"
+                        helperText="Upload screenshots or documents (max 5 files, 10MB each)"
+                    />
+
+                    {/* Approval Comment - Show only when user can approve */}
+                    {approvalInfo.canApprove && isPending && (
+                        <div className="border-t pt-4 mt-4">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Approval Comment
+                            </label>
+                            <textarea
+                                value={approvalComment}
+                                onChange={(e) => setApprovalComment(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none"
+                                rows={2}
+                                placeholder="Comment (required for rejection)..."
+                            />
+                        </div>
+                    )}
                 </form>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors"
-                        disabled={isLoading}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={isLoading}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                        {isLoading ? (
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                            <Save size={16} />
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between gap-3">
+                    <div>
+                        {/* Cancel button */}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors"
+                            disabled={isLoading || isApprovalLoading}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+
+                    <div className="flex gap-3">
+                        {/* Approval buttons - Show when user can approve and status is PENDING */}
+                        {approvalInfo.canApprove && isPending && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleReject}
+                                    disabled={isApprovalLoading}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isApprovalLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <XCircle size={16} />
+                                    )}
+                                    Reject
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleApprove}
+                                    disabled={isApprovalLoading}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isApprovalLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Check size={16} />
+                                    )}
+                                    Approve
+                                </button>
+                            </>
                         )}
-                        {record ? 'Update' : 'Save'}
-                    </button>
+
+                        {/* Save/Submit buttons - Show when not pending approval OR user is not approver */}
+                        {(!isPending || !approvalInfo.canApprove) && (
+                            <>
+                                <button
+                                    onClick={(e) => handleSubmit(e, false)}
+                                    disabled={isLoading}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isLoading ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <Save size={16} />
+                                    )}
+                                    {record ? 'Update' : 'Save Draft'}
+                                </button>
+                                {/* Show Submit button for new records OR existing DRAFT records */}
+                                {(!record || approvalStatus === 'DRAFT') && (
+                                    <button
+                                        onClick={(e) => handleSubmit(e, true)}
+                                        disabled={isLoading}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm shadow-green-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                    >
+                                        {isLoading ? (
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        ) : (
+                                            <Send size={16} />
+                                        )}
+                                        {record ? 'Submit for Approval' : 'Save & Submit'}
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             </motion.div>
         </div>

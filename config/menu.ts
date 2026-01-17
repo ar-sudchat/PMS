@@ -33,6 +33,8 @@ import {
   ClipboardList,
   Wrench,
   Bell,
+  ClipboardCheck,
+  GitBranch,
   type LucideIcon
 } from 'lucide-react'
 
@@ -131,8 +133,8 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Analytics',
         titleTh: 'วิเคราะห์',
         children: [
+          { id: 'timesheet-dashboard', label: 'Timesheet Dashboard', labelTh: 'แดชบอร์ด Timesheet', path: '/timesheet-dashboard', icon: PieChart, roles: ['admin', 'manager'] },
           { id: 'employee-work-report', label: 'Employee Work Report', labelTh: 'รายงานการทำงาน', path: '/analytics/employee-work', icon: BarChart3 },
-          { id: 'all-resources', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
         ]
       },
     ]
@@ -186,6 +188,23 @@ export const MENU_CONFIG: MenuModule[] = [
     ]
   },
 
+  {
+    id: 'approvals',
+    title: 'Approvals',
+    titleTh: 'อนุมัติ',
+    icon: ClipboardCheck,
+    children: [
+      {
+        id: 'approval-management',
+        title: 'Management',
+        titleTh: 'จัดการ',
+        children: [
+          { id: 'pending-approvals', label: 'Pending Approvals', labelTh: 'รออนุมัติ', path: '/approvals', icon: ClipboardCheck },
+          { id: 'approval-flows', label: 'Flow Templates', labelTh: 'จัดการ Flow', path: '/settings/approvals', icon: GitBranch },
+        ]
+      }
+    ]
+  },
   {
     id: 'config',
     title: 'Configuration',

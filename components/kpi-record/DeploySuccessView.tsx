@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, XCircle, X, RefreshCw, TrendingUp } from "lucide-react"
-import { getDeployRecords, deleteDeployRecord, getDeploySuccessKPI, getActiveCustomers, DeployRecord } from "@/lib/actions/deploy-record-actions"
+import { Plus, Edit, Trash2, CheckCircle2, XCircle, X, RefreshCw, TrendingUp, Send } from "lucide-react"
+import { getDeployRecords, deleteDeployRecord, getDeploySuccessKPI, getActiveCustomers, DeployRecord, submitDeployRecordForApproval } from "@/lib/actions/deploy-record-actions"
 import { DeployRecordModal } from "@/components/kpi-record/DeployRecordModal"
 import { toast } from "sonner"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
+import { ApprovalStatusBadge } from "@/components/approval/ApprovalStatusBadge"
 
 interface DeploySuccessViewProps {
     currentUserId: string
@@ -20,6 +21,7 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedRecord, setSelectedRecord] = useState<DeployRecord | undefined>(undefined)
     const [pagination, setPagination] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 0 })
+
     const [summary, setSummary] = useState({
         total_deploy: 0,
         total_rollback: 0,
@@ -110,6 +112,23 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
     const handleModalClose = () => {
         setIsModalOpen(false)
         fetchData()
+    }
+
+    const handleSubmitForApproval = async (record: DeployRecord) => {
+        try {
+            const result = await submitDeployRecordForApproval(
+                record.id,
+                `Deploy Success - ${record.customer_name} - W${record.week_number}`
+            )
+            if (result.success) {
+                toast.success('Submitted for approval')
+                fetchData()
+            } else {
+                toast.error(result.error || 'Failed to submit')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        }
     }
 
     const clearFilters = () => {
@@ -209,11 +228,21 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
             },
         },
         {
+            accessorKey: "approval_status",
+            header: "Approval",
+            size: 120,
+            cell: ({ row }) => {
+                const record = row.original as any
+                const status = record.approval_status || 'DRAFT'
+                return <ApprovalStatusBadge status={status} size="sm" />
+            },
+        },
+        {
             accessorKey: "notes",
             header: "Notes",
-            size: 180,
+            size: 150,
             cell: ({ row }) => (
-                <span className="text-sm text-slate-500 truncate block max-w-[160px]" title={row.original.notes || ''}>
+                <span className="text-sm text-slate-500 truncate block max-w-[130px]" title={row.original.notes || ''}>
                     {row.original.notes || '-'}
                 </span>
             ),
@@ -221,11 +250,22 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
         {
             id: "actions",
             header: "",
-            size: 80,
+            size: 100,
             cell: ({ row }) => {
-                const record = row.original
+                const record = row.original as any
+                const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
+                        {/* Submit for approval button - only for DRAFT status */}
+                        {status === 'DRAFT' && (
+                            <button
+                                onClick={() => handleSubmitForApproval(record)}
+                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                                title="Submit for Approval"
+                            >
+                                <Send size={16} />
+                            </button>
+                        )}
                         <button
                             onClick={() => handleEdit(record)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"

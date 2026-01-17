@@ -10,9 +10,10 @@ interface TaskCardProps {
     onViewDetail: (task: MyTask) => void
     onLogTime: (task: MyTask) => void
     onStatusChange: (task: MyTask, newStatus: string, reason?: string) => void
+    canLogTime?: boolean
 }
 
-export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange }: TaskCardProps) {
+export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange, canLogTime = true }: TaskCardProps) {
 
     const getPriorityColor = (p: string) => {
         switch (p?.toLowerCase()) {
@@ -120,12 +121,14 @@ export function TaskCard({ task, onViewDetail, onLogTime, onStatusChange }: Task
                     >
                         View Detail
                     </button>
-                    <button
-                        onClick={() => onLogTime(task)}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded hover:bg-indigo-100 transition-colors"
-                    >
-                        Log Time
-                    </button>
+                    {canLogTime && (
+                        <button
+                            onClick={() => onLogTime(task)}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded hover:bg-indigo-100 transition-colors"
+                        >
+                            Log Time
+                        </button>
+                    )}
                 </div>
 
                 <TaskStatusSelect

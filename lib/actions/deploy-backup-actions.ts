@@ -2,6 +2,9 @@
 
 import { getConnection } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { submitForApproval } from '@/lib/actions/approval-actions'
+import { getCurrentUser } from '@/lib/auth'
+import { v4 as uuidv4 } from 'uuid'
 
 // Types
 export interface DeployBackupRecord {
@@ -123,7 +126,9 @@ export async function getDeployBackupRecords(filters: DeployBackupFilters = {}) 
                     db.notes,
                     db.created_at,
                     db.created_by,
-                    COALESCE(NULLIF(ec.first_name, '') + ' ' + NULLIF(ec.last_name, ''), ec.nickname, ec.employee_code) as created_by_name
+                    COALESCE(NULLIF(ec.first_name, '') + ' ' + NULLIF(ec.last_name, ''), ec.nickname, ec.employee_code) as created_by_name,
+                    db.approval_status,
+                    db.approval_instance_id
                 FROM pms.deploy_backup_records db
                 LEFT JOIN pms.backup_sources bs ON db.backup_source_id = bs.id
                 LEFT JOIN pms.employees ev ON db.verified_by = ev.id
@@ -191,11 +196,15 @@ export async function createDeployBackupRecord(data: {
     is_passed: boolean
     failed_reason?: string
     notes?: string
+    attachments?: string
     created_by: string
 }) {
     try {
         const pool = await getConnection()
-        const result = await pool.request()
+        const id = uuidv4()
+
+        await pool.request()
+            .input('id', id)
             .input('backup_source_id', data.backup_source_id)
             .input('backup_date', data.backup_date)
             .input('deploy_record_id', data.deploy_record_id || null)
@@ -209,16 +218,17 @@ export async function createDeployBackupRecord(data: {
             .input('is_passed', data.is_passed)
             .input('failed_reason', data.is_passed ? null : (data.failed_reason || null))
             .input('notes', data.notes || null)
+            .input('attachments', data.attachments || null)
             .input('created_by', data.created_by)
+            .input('created_at', new Date())
             .query(`
                 INSERT INTO pms.deploy_backup_records
-                (backup_source_id, backup_date, deploy_record_id, backup_type, backup_location, backup_size, version_number, is_verified, verified_by, verified_at, is_passed, failed_reason, notes, created_by)
-                OUTPUT INSERTED.id
-                VALUES (@backup_source_id, @backup_date, @deploy_record_id, @backup_type, @backup_location, @backup_size, @version_number, @is_verified, @verified_by, @verified_at, @is_passed, @failed_reason, @notes, @created_by)
+                (id, backup_source_id, backup_date, deploy_record_id, backup_type, backup_location, backup_size, version_number, is_verified, verified_by, verified_at, is_passed, failed_reason, notes, attachments, created_by, created_at)
+                VALUES (@id, @backup_source_id, @backup_date, @deploy_record_id, @backup_type, @backup_location, @backup_size, @version_number, @is_verified, @verified_by, @verified_at, @is_passed, @failed_reason, @notes, @attachments, @created_by, @created_at)
             `)
 
         revalidatePath('/kpi-record/deploy-backup')
-        return { success: true, id: result.recordset[0].id }
+        return { success: true, id }
     } catch (error) {
         console.error('Error creating backup record:', error)
         return { success: false, error: 'Failed to create backup record' }
@@ -226,7 +236,7 @@ export async function createDeployBackupRecord(data: {
 }
 
 // Update backup record
-export async function updateDeployBackupRecord(id: string, data: Partial<DeployBackupRecord>) {
+export async function updateDeployBackupRecord(id: string, data: Partial<DeployBackupRecord> & { attachments?: string }) {
     try {
         const pool = await getConnection()
         await pool.request()
@@ -244,6 +254,7 @@ export async function updateDeployBackupRecord(id: string, data: Partial<DeployB
             .input('is_passed', data.is_passed)
             .input('failed_reason', data.is_passed ? null : (data.failed_reason || null))
             .input('notes', data.notes || null)
+            .input('attachments', data.attachments || null)
             .query(`
                 UPDATE pms.deploy_backup_records
                 SET backup_source_id = @backup_source_id,
@@ -259,6 +270,7 @@ export async function updateDeployBackupRecord(id: string, data: Partial<DeployB
                     is_passed = @is_passed,
                     failed_reason = @failed_reason,
                     notes = @notes,
+                    attachments = @attachments,
                     updated_at = GETDATE()
                 WHERE id = @id
             `)
@@ -328,6 +340,95 @@ export async function getDeployBackupSummary(year?: number, backupSourceId?: str
     } catch (error) {
         console.error('Error fetching backup summary:', error)
         return { success: false, error: 'Failed to fetch stats' }
+    }
+}
+
+// Submit deploy backup record for approval
+export async function submitDeployBackupForApproval(recordId: string, documentTitle: string) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // Get record details for approval data
+        const recordResult = await pool.request()
+            .input('id', recordId)
+            .query(`
+                SELECT db.*, bs.name as backup_source_name, bs.code as backup_source_code
+                FROM pms.deploy_backup_records db
+                LEFT JOIN pms.backup_sources bs ON db.backup_source_id = bs.id
+                WHERE db.id = @id
+            `)
+
+        if (recordResult.recordset.length === 0) {
+            return { success: false, error: 'Record not found' }
+        }
+
+        const record = recordResult.recordset[0]
+
+        // Submit for approval
+        const result = await submitForApproval({
+            flow_code: 'DEPLOY_BACKUP',
+            module_code: 'KPI',
+            document_id: recordId,
+            document_type: 'DEPLOY_BACKUP',
+            document_title: documentTitle,
+            document_data: {
+                backup_source_id: record.backup_source_id,
+                backup_source_name: record.backup_source_name,
+                backup_date: record.backup_date,
+                backup_type: record.backup_type,
+                is_passed: record.is_passed
+            }
+        })
+
+        if (result.success && result.instance_id) {
+            // Update record with approval status and instance_id
+            await pool.request()
+                .input('id', recordId)
+                .input('instanceId', result.instance_id)
+                .query(`
+                    UPDATE pms.deploy_backup_records
+                    SET approval_status = 'PENDING',
+                        approval_instance_id = @instanceId
+                    WHERE id = @id
+                `)
+        }
+
+        revalidatePath('/kpi-record/deploy-backup')
+        return result
+
+    } catch (error: any) {
+        console.error('Error submitting for approval:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Update approval status (called by approval service callbacks)
+export async function updateDeployBackupApprovalStatus(
+    recordId: string,
+    status: 'APPROVED' | 'REJECTED' | 'CANCELLED'
+) {
+    try {
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', recordId)
+            .input('status', status)
+            .query(`
+                UPDATE pms.deploy_backup_records
+                SET approval_status = @status
+                WHERE id = @id
+            `)
+
+        revalidatePath('/kpi-record/deploy-backup')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('Error updating approval status:', error)
+        return { success: false, error: error.message }
     }
 }
 

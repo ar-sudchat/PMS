@@ -17,8 +17,8 @@ export default async function MyTasksPage() {
     const currentUserName = (user as any).nameTh || user.name || (user as any).nickname || 'User'
     const userRole = (user as any).role || 'member'
 
-    // Default fetch: all status for current user
-    const tasks = await getMyTasks({ status: 'all' })
+    // Default fetch: todo status for current user
+    const tasks = await getMyTasks({ status: 'todo' })
     const counts = await getMyTaskCounts()
 
     // Get employee list for managers to view others' tasks

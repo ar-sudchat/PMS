@@ -2,6 +2,8 @@
 
 import { getConnection } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { submitForApproval } from '@/lib/actions/approval-actions'
+import { getCurrentUser } from '@/lib/auth'
 
 // Types
 export interface MeetingMinutesRecord {
@@ -117,7 +119,9 @@ export async function getMeetingMinutesRecords(filters: MeetingMinutesFilters = 
                     mm.mom_file_path,
                     mm.notes,
                     mm.created_at,
-                    mm.created_by
+                    mm.created_by,
+                    mm.approval_status,
+                    mm.approval_instance_id
                 FROM pms.meeting_minutes_records mm
                 LEFT JOIN pms.projects p ON mm.project_id = p.id
                 LEFT JOIN pms.employees eo ON mm.organized_by = eo.id
@@ -193,6 +197,7 @@ export async function createMeetingMinutesRecord(data: {
     sent_by?: string
     mom_file_path?: string
     notes?: string
+    attachments?: string
     created_by: string
 }) {
     try {
@@ -232,12 +237,14 @@ export async function createMeetingMinutesRecord(data: {
             .input('sent_by', data.sent_by || null)
             .input('mom_file_path', data.mom_file_path || null)
             .input('notes', data.notes || null)
+            .input('attachments', data.attachments || null)
             .input('created_by', data.created_by)
+            .input('created_at', new Date())
             .query(`
                 INSERT INTO pms.meeting_minutes_records
-                (project_id, meeting_date, meeting_end_time, meeting_type, meeting_title, organized_by, attendees, mom_sent_at, is_on_time, hours_to_send, sent_by, mom_file_path, notes, created_by)
+                (id, project_id, meeting_date, meeting_end_time, meeting_type, meeting_title, organized_by, attendees, mom_sent_at, is_on_time, hours_to_send, sent_by, mom_file_path, notes, attachments, created_by, created_at)
                 OUTPUT INSERTED.id
-                VALUES (@project_id, @meeting_date, @meeting_end_time, @meeting_type, @meeting_title, @organized_by, @attendees, @mom_sent_at, @is_on_time, @hours_to_send, @sent_by, @mom_file_path, @notes, @created_by)
+                VALUES (NEWID(), @project_id, @meeting_date, @meeting_end_time, @meeting_type, @meeting_title, @organized_by, @attendees, @mom_sent_at, @is_on_time, @hours_to_send, @sent_by, @mom_file_path, @notes, @attachments, @created_by, @created_at)
             `)
 
         revalidatePath('/kpi-record/meeting-minutes')
@@ -249,7 +256,7 @@ export async function createMeetingMinutesRecord(data: {
 }
 
 // Update meeting minutes record
-export async function updateMeetingMinutesRecord(id: string, data: Partial<MeetingMinutesRecord>) {
+export async function updateMeetingMinutesRecord(id: string, data: Partial<MeetingMinutesRecord> & { attachments?: string }) {
     try {
         // Convert datetime strings to Date objects for SQL Server
         const meetingDate = formatDateTimeForSQL(data.meeting_date)
@@ -284,6 +291,7 @@ export async function updateMeetingMinutesRecord(id: string, data: Partial<Meeti
             .input('sent_by', data.sent_by || null)
             .input('mom_file_path', data.mom_file_path || null)
             .input('notes', data.notes || null)
+            .input('attachments', data.attachments || null)
             .query(`
                 UPDATE pms.meeting_minutes_records
                 SET project_id = @project_id,
@@ -299,6 +307,7 @@ export async function updateMeetingMinutesRecord(id: string, data: Partial<Meeti
                     sent_by = @sent_by,
                     mom_file_path = @mom_file_path,
                     notes = @notes,
+                    attachments = @attachments,
                     updated_at = GETDATE()
                 WHERE id = @id
             `)
@@ -431,3 +440,92 @@ export async function getMeetingMinutesKPIByOrganizer(year: number, organizerId?
     }
 }
 
+// Submit meeting minutes record for approval
+export async function submitMeetingMinutesForApproval(recordId: string, documentTitle: string) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // Get record details for approval data
+        const recordResult = await pool.request()
+            .input('id', recordId)
+            .query(`
+                SELECT mm.*, p.name as project_name, p.project_code
+                FROM pms.meeting_minutes_records mm
+                LEFT JOIN pms.projects p ON mm.project_id = p.id
+                WHERE mm.id = @id
+            `)
+
+        if (recordResult.recordset.length === 0) {
+            return { success: false, error: 'Record not found' }
+        }
+
+        const record = recordResult.recordset[0]
+
+        // Submit for approval
+        const result = await submitForApproval({
+            flow_code: 'MEETING_MINUTES',
+            module_code: 'KPI',
+            document_id: recordId,
+            document_type: 'MEETING_MINUTES',
+            document_title: documentTitle,
+            document_data: {
+                project_id: record.project_id,
+                project_name: record.project_name,
+                meeting_date: record.meeting_date,
+                meeting_type: record.meeting_type,
+                meeting_title: record.meeting_title,
+                organized_by: record.organized_by
+            }
+        })
+
+        if (result.success && result.instance_id) {
+            // Update record with approval status and instance_id
+            await pool.request()
+                .input('id', recordId)
+                .input('instanceId', result.instance_id)
+                .query(`
+                    UPDATE pms.meeting_minutes_records
+                    SET approval_status = 'PENDING',
+                        approval_instance_id = @instanceId
+                    WHERE id = @id
+                `)
+        }
+
+        revalidatePath('/kpi-record/meeting-minutes')
+        return result
+
+    } catch (error: any) {
+        console.error('Error submitting for approval:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Update approval status (called by approval service callbacks)
+export async function updateMeetingMinutesApprovalStatus(
+    recordId: string,
+    status: 'APPROVED' | 'REJECTED' | 'CANCELLED'
+) {
+    try {
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', recordId)
+            .input('status', status)
+            .query(`
+                UPDATE pms.meeting_minutes_records
+                SET approval_status = @status
+                WHERE id = @id
+            `)
+
+        revalidatePath('/kpi-record/meeting-minutes')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('Error updating approval status:', error)
+        return { success: false, error: error.message }
+    }
+}
