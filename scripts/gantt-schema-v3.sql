@@ -14,36 +14,67 @@ CREATE PROCEDURE pms.sp_get_gantt_data
     @owner_id UNIQUEIDENTIFIER = NULL,
     @status_id UNIQUEIDENTIFIER = NULL,
     @search NVARCHAR(255) = NULL,
-    @milestone_ids NVARCHAR(MAX) = NULL -- Comma separated IDs
+    @milestone_ids NVARCHAR(MAX) = NULL, -- Comma separated IDs
+    @assignee_id UNIQUEIDENTIFIER = NULL -- Filter by task assignee
 AS
 BEGIN
     SET NOCOUNT ON;
-    
+
     -- ============================================
     -- 1. Temp: Projects matching filters
     -- ============================================
     DECLARE @MyProjects TABLE (project_id UNIQUEIDENTIFIER);
-    
-    INSERT INTO @MyProjects (project_id)
-    SELECT DISTINCT p.id
-    FROM pms.projects p
-    WHERE p.is_active = 1
-      AND (@year IS NULL OR p.project_year = @year)
-      AND (@customer_id IS NULL OR p.customer_id = @customer_id)
-      AND (@manager_id IS NULL OR p.project_manager_id = @manager_id)
-      AND (@owner_id IS NULL OR p.project_owner_id = @owner_id)
-      AND (@status_id IS NULL OR p.status_id = @status_id)
-      AND (@search IS NULL OR (p.name LIKE '%' + @search + '%' OR p.project_code LIKE '%' + @search + '%'))
-      AND (
-          @milestone_ids IS NULL 
-          OR @milestone_ids = ''
-          OR EXISTS (
-              SELECT 1 
-              FROM pms.project_milestones pm 
-              WHERE pm.id = p.current_milestone_id 
-                AND pm.milestone_config_id IN (SELECT value FROM STRING_SPLIT(@milestone_ids, ','))
-          )
-      );
+
+    -- If filtering by assignee, find projects that have tasks assigned to that person
+    IF @assignee_id IS NOT NULL
+    BEGIN
+        INSERT INTO @MyProjects (project_id)
+        SELECT DISTINCT s.project_id
+        FROM pms.tasks t
+        INNER JOIN pms.stories s ON t.story_id = s.id
+        INNER JOIN pms.projects p ON s.project_id = p.id
+        WHERE t.is_active = 1 AND s.is_active = 1 AND p.is_active = 1
+          AND t.assignee_id = @assignee_id
+          AND (@year IS NULL OR p.project_year = @year)
+          AND (@customer_id IS NULL OR p.customer_id = @customer_id)
+          AND (@manager_id IS NULL OR p.project_manager_id = @manager_id)
+          AND (@owner_id IS NULL OR p.project_owner_id = @owner_id)
+          AND (@status_id IS NULL OR p.status_id = @status_id)
+          AND (@search IS NULL OR (p.name LIKE '%' + @search + '%' OR p.project_code LIKE '%' + @search + '%'))
+          AND (
+              @milestone_ids IS NULL
+              OR @milestone_ids = ''
+              OR EXISTS (
+                  SELECT 1
+                  FROM pms.project_milestones pm
+                  WHERE pm.id = p.current_milestone_id
+                    AND pm.milestone_config_id IN (SELECT value FROM STRING_SPLIT(@milestone_ids, ','))
+              )
+          );
+    END
+    ELSE
+    BEGIN
+        INSERT INTO @MyProjects (project_id)
+        SELECT DISTINCT p.id
+        FROM pms.projects p
+        WHERE p.is_active = 1
+          AND (@year IS NULL OR p.project_year = @year)
+          AND (@customer_id IS NULL OR p.customer_id = @customer_id)
+          AND (@manager_id IS NULL OR p.project_manager_id = @manager_id)
+          AND (@owner_id IS NULL OR p.project_owner_id = @owner_id)
+          AND (@status_id IS NULL OR p.status_id = @status_id)
+          AND (@search IS NULL OR (p.name LIKE '%' + @search + '%' OR p.project_code LIKE '%' + @search + '%'))
+          AND (
+              @milestone_ids IS NULL
+              OR @milestone_ids = ''
+              OR EXISTS (
+                  SELECT 1
+                  FROM pms.project_milestones pm
+                  WHERE pm.id = p.current_milestone_id
+                    AND pm.milestone_config_id IN (SELECT value FROM STRING_SPLIT(@milestone_ids, ','))
+              )
+          );
+    END
 
     -- ============================================
     -- 2. CALCULATION: Bottom-Up Date Logic (Using Temp Tables)
@@ -81,12 +112,19 @@ BEGIN
         max_end DATE
     );
 
+    -- Table สำหรับเก็บ due_date ของ milestone สุดท้ายของแต่ละ project
+    CREATE TABLE #LastMilestoneDue (
+        project_id UNIQUEIDENTIFIER PRIMARY KEY,
+        last_milestone_due DATE
+    );
+
     -- 2.1 Calculate Task Stats
+    -- ส่ง NULL ถ้าไม่มีวันที่ (ไม่ใช้ COALESCE fallback)
     INSERT INTO #TaskCalculations
-    SELECT 
+    SELECT
         t.story_id,
         MIN(t.start_date),
-        MAX(COALESCE(t.due_date, t.start_date)),
+        MAX(t.due_date),  -- ไม่ใช้ COALESCE เพื่อให้ NULL ถูกส่งต่อไป
         COUNT(*),
         SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END)
     FROM pms.tasks t
@@ -94,15 +132,16 @@ BEGIN
     GROUP BY t.story_id;
 
     -- 2.2 Calculate Story Dates
+    -- ส่ง NULL ถ้าไม่มี task ที่มีวันที่ (ไม่ใช้วันที่ปัจจุบันแทน)
     INSERT INTO #StoryCalculations
-    SELECT 
+    SELECT
         s.id,
         s.project_id,
         s.milestone_id,
-        -- Start: Use tasks min, else today
-        COALESCE(tc.min_start, CAST(GETDATE() AS DATE)),
-        -- End: Use tasks max, else start + 1 day
-        COALESCE(tc.max_end, DATEADD(DAY, 1, COALESCE(tc.min_start, CAST(GETDATE() AS DATE)))),
+        -- Start: Use tasks min, NULL if no tasks with dates
+        tc.min_start,
+        -- End: Use tasks max, NULL if no tasks with dates
+        tc.max_end,
         -- Progress
         COALESCE(CASE WHEN tc.task_count > 0 THEN (tc.done_count * 100 / tc.task_count) ELSE 0 END, 0)
     FROM pms.stories s
@@ -122,15 +161,30 @@ BEGIN
     GROUP BY pm.id, pm.project_id;
 
     -- 2.4 Calculate Project Dates
+    -- คำนวณจาก Stories โดยตรง (ไม่ใช่จาก Milestones) เพื่อรวม Stories ที่ไม่มี milestone_id
     INSERT INTO #ProjectCalculations
-    SELECT 
+    SELECT
         p.id,
-        COALESCE(MIN(mc.min_start), CAST(p.created_at AS DATE)),
-        COALESCE(MAX(mc.max_end), DATEADD(MONTH, 3, CAST(p.created_at AS DATE)))
+        -- ถ้ามี Stories ที่มีวันที่ ใช้ min/max จาก Stories, ไม่งั้นใช้ created_at
+        COALESCE(MIN(sc.start_date), CAST(p.created_at AS DATE)),
+        COALESCE(MAX(sc.end_date), CAST(p.created_at AS DATE))
     FROM pms.projects p
-    LEFT JOIN #MilestoneCalculations mc ON p.id = mc.project_id
+    LEFT JOIN #StoryCalculations sc ON p.id = sc.project_id
     WHERE p.is_active = 1
     GROUP BY p.id, p.created_at;
+
+    -- 2.5 หา due_date ของ milestone สุดท้าย (sort_order สูงสุด) ของแต่ละ project
+    -- ใช้ ROW_NUMBER เพื่อให้ได้แค่ 1 row ต่อ project (กรณี sort_order ซ้ำกัน)
+    INSERT INTO #LastMilestoneDue
+    SELECT project_id, due_date
+    FROM (
+        SELECT
+            pm.project_id,
+            pm.due_date,
+            ROW_NUMBER() OVER (PARTITION BY pm.project_id ORDER BY pm.sort_order DESC, pm.id DESC) AS rn
+        FROM pms.project_milestones pm
+    ) ranked
+    WHERE rn = 1;
 
     -- ============================================
     -- RESULT SET 1: PROJECTS
@@ -139,16 +193,17 @@ BEGIN
         'project_' + CAST(p.id AS NVARCHAR(50)) AS id,
         p.project_code + ': ' + p.name AS text,
 
-        -- ใช้ COALESCE เพื่อไม่ให้โครงการหายเมื่อไม่มีวันที่
-        FORMAT(COALESCE(pc.min_start, CAST(p.created_at AS DATE)), 'yyyy-MM-dd') AS start_date,
-        FORMAT(COALESCE(pc.max_end, DATEADD(MONTH, 3, CAST(p.created_at AS DATE))), 'yyyy-MM-dd') AS end_date,
+        -- start_date: ใช้วันที่จาก tasks (pc.min_start)
+        FORMAT(pc.min_start, 'yyyy-MM-dd') AS start_date,
+        -- end_date (Due): ใช้ due_date ของ milestone สุดท้าย, ถ้าไม่มีก็ไม่แสดง (NULL)
+        FORMAT(lmd.last_milestone_due, 'yyyy-MM-dd') AS end_date,
 
-        -- Duration
-        DATEDIFF(DAY, COALESCE(pc.min_start, CAST(p.created_at AS DATE)), COALESCE(pc.max_end, DATEADD(MONTH, 3, CAST(p.created_at AS DATE)))) AS duration,
-        
+        -- Duration = Sold Mandays จาก Project (ไม่ใช่คำนวณจาก tasks)
+        COALESCE(p.sold_mandays, 0) AS duration,
+
         -- Progress (Simplified)
         (SELECT AVG(progress) FROM #StoryCalculations sc WHERE sc.project_id = p.id) AS progress,
-        
+
         '0' AS parent,
         'project' AS [type],
         'project' AS entity_type,
@@ -156,52 +211,54 @@ BEGIN
         CAST(p.id AS NVARCHAR(50)) AS project_id,
         NULL AS milestone_id,
         NULL AS story_id,
-        
-        -- Color override if warranty exceeded
-        CASE 
-            WHEN p.warranty_end_date IS NOT NULL AND pc.max_end > p.warranty_end_date THEN '#ef4444' -- Red if over warranty
-            ELSE COALESCE(psc.color, '#4f46e5') 
+
+        -- Color override if warranty exceeded (ใช้ due ของ milestone สุดท้าย)
+        CASE
+            WHEN p.warranty_end_date IS NOT NULL AND lmd.last_milestone_due > p.warranty_end_date THEN '#ef4444' -- Red if over warranty
+            ELSE COALESCE(psc.color, '#4f46e5')
         END AS color,
-        
+
         NULL AS assignee_id,
         NULL AS assignee_name,
         1 AS [open],
         COALESCE(psc.code, 'active') AS status,
-        
+
         -- Counts
         (SELECT COUNT(*) FROM pms.project_milestones pm WHERE pm.project_id = p.id) AS milestone_count,
         (SELECT COUNT(*) FROM pms.stories s WHERE s.project_id = p.id AND s.is_active = 1) AS story_count,
         (SELECT COUNT(*) FROM pms.tasks t INNER JOIN pms.stories s ON t.story_id = s.id WHERE s.project_id = p.id AND t.is_active = 1) AS task_count,
 
-        -- Warranty warning flag
-        CASE WHEN p.warranty_end_date IS NOT NULL AND pc.max_end > p.warranty_end_date THEN 1 ELSE 0 END as is_over_warranty
-        
+        -- Warranty warning flag (ใช้ due ของ milestone สุดท้าย)
+        CASE WHEN p.warranty_end_date IS NOT NULL AND lmd.last_milestone_due > p.warranty_end_date THEN 1 ELSE 0 END as is_over_warranty
+
     FROM pms.projects p
     INNER JOIN @MyProjects mp ON p.id = mp.project_id
     LEFT JOIN #ProjectCalculations pc ON p.id = pc.project_id
+    LEFT JOIN #LastMilestoneDue lmd ON p.id = lmd.project_id
     LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
     ORDER BY p.project_code;
 
     -- ============================================
     -- RESULT SET 2: MILESTONES
     -- ============================================
-    SELECT 
+    SELECT
         'milestone_' + CAST(pm.id AS NVARCHAR(50)) AS id,
         mc.code + ': ' + mc.name AS text,
-        
-        -- Use calculated dates or fallback to Today
-        FORMAT(COALESCE(mc_calc.min_start, GETDATE()), 'yyyy-MM-dd') AS start_date,
-        FORMAT(COALESCE(mc_calc.max_end, DATEADD(DAY, 1, GETDATE())), 'yyyy-MM-dd') AS end_date,
-        
-        DATEDIFF(DAY, COALESCE(mc_calc.min_start, GETDATE()), COALESCE(mc_calc.max_end, DATEADD(DAY, 1, GETDATE()))) AS duration,
-        
+
+        -- ใช้ due_date จาก project_milestones ถ้ามี ไม่งั้นใช้ค่าคำนวณจาก tasks
+        FORMAT(COALESCE(pm.due_date, mc_calc.min_start), 'yyyy-MM-dd') AS start_date,
+        FORMAT(COALESCE(pm.due_date, mc_calc.max_end), 'yyyy-MM-dd') AS end_date,
+
+        -- Duration = Planned Mandays จาก Milestone
+        COALESCE(pm.planned_mandays, 0) AS duration,
+
         -- Progress
-        CASE pm.status 
-            WHEN 'completed' THEN 100 
-            WHEN 'in_progress' THEN 50 
-            ELSE 0 
+        CASE pm.status
+            WHEN 'completed' THEN 100
+            WHEN 'in_progress' THEN 50
+            ELSE 0
         END AS progress,
-        
+
         'project_' + CAST(pm.project_id AS NVARCHAR(50)) AS parent,
         'milestone' AS [type],
         'milestone' AS entity_type,
@@ -218,7 +275,7 @@ BEGIN
         0 AS milestone_count,
         (SELECT COUNT(*) FROM pms.stories s WHERE s.milestone_id = pm.id AND s.is_active = 1) AS story_count,
         0 AS task_count
-        
+
     FROM pms.project_milestones pm
     INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
     INNER JOIN @MyProjects mp ON pm.project_id = mp.project_id
@@ -232,13 +289,14 @@ BEGIN
         'story_' + CAST(s.id AS NVARCHAR(50)) AS id,
         s.story_code + ': ' + s.title AS text,
 
-        -- ใช้ COALESCE เพื่อไม่ให้ Story หายเมื่อไม่มีวันที่
-        FORMAT(COALESCE(sc.start_date, CAST(GETDATE() AS DATE)), 'yyyy-MM-dd') AS start_date,
-        FORMAT(COALESCE(sc.end_date, DATEADD(DAY, 1, CAST(GETDATE() AS DATE))), 'yyyy-MM-dd') AS end_date,
+        -- ส่ง NULL ถ้าไม่มีวันที่ (ไม่ใช้วันที่ปัจจุบันแทน)
+        -- Frontend จะจัดการให้ story แสดงอยู่เสมอแม้ไม่มีวันที่
+        FORMAT(sc.start_date, 'yyyy-MM-dd') AS start_date,
+        FORMAT(sc.end_date, 'yyyy-MM-dd') AS end_date,
         CASE
             WHEN sc.start_date IS NOT NULL AND sc.end_date IS NOT NULL
             THEN DATEDIFF(DAY, sc.start_date, sc.end_date)
-            ELSE 0  -- duration = 0 เพื่อไม่วาดแท่ง
+            ELSE 0  -- duration = 0 สำหรับ story ที่ไม่มีวันที่
         END AS duration,
 
         COALESCE(sc.progress, 0) AS progress,
@@ -333,6 +391,7 @@ BEGIN
     INNER JOIN @MyProjects mp ON s.project_id = mp.project_id
     LEFT JOIN pms.employees e ON t.assignee_id = e.id
     WHERE t.is_active = 1 AND s.is_active = 1
+      AND (@assignee_id IS NULL OR t.assignee_id = @assignee_id)
     ORDER BY s.project_id, t.story_id, t.task_code;
 
     -- Cleanup
@@ -340,6 +399,7 @@ BEGIN
     DROP TABLE #StoryCalculations;
     DROP TABLE #MilestoneCalculations;
     DROP TABLE #ProjectCalculations;
+    DROP TABLE #LastMilestoneDue;
 
 END
 GO

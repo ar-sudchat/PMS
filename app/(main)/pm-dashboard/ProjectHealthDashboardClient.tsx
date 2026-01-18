@@ -189,40 +189,40 @@ export function ProjectHealthDashboardClient({
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans text-slate-600">
             {/* 1. COMPACT HEADER & ADVANCED FILTER (Sticky) */}
-            <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-slate-200 shadow-sm transition-all">
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shadow-lg transition-all">
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     {/* Top Row: Title & Org Health */}
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-slate-900 rounded-lg shadow-md shadow-slate-200">
+                            <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg shadow-lg shadow-indigo-500/30">
                                 <LayoutDashboard className="w-5 h-5 text-white" />
                             </div>
                             <div>
-                                <h1 className="text-lg font-bold text-slate-800 tracking-tight">PM Dashboard</h1>
+                                <h1 className="text-lg font-bold text-white tracking-tight">PM Dashboard</h1>
                                 <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Enterprise Portfolio</p>
                             </div>
                         </div>
 
                         {/* Org Health Micro-Rings */}
-                        <div className="flex items-center gap-6 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
-                            <div className="flex items-center gap-3 text-xs font-semibold text-slate-500 mr-2">
+                        <div className="flex items-center gap-6 bg-white/10 backdrop-blur px-4 py-2 rounded-full border border-white/10">
+                            <div className="flex items-center gap-3 text-xs font-semibold text-slate-300 mr-2">
                                 <span className="uppercase tracking-wider text-[10px]">Org Health</span>
                             </div>
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                    <span className="text-xs font-bold text-slate-700">{oee.overall}%</span>
+                                    <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-blue-400 to-blue-500 shadow-sm shadow-blue-400/50" />
+                                    <span className="text-xs font-bold text-white">{oee.overall}%</span>
                                     <span className="text-[10px] text-slate-400">Overall</span>
                                 </div>
-                                <div className="h-4 w-[1px] bg-slate-200" />
+                                <div className="h-4 w-[1px] bg-white/20" />
                                 <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                    <span className="text-xs font-bold text-slate-700">{oee.time}%</span>
+                                    <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-sm shadow-emerald-400/50" />
+                                    <span className="text-xs font-bold text-white">{oee.time}%</span>
                                     <span className="text-[10px] text-slate-400">Time</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                                    <span className="text-xs font-bold text-slate-700">{oee.resource}%</span>
+                                    <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 shadow-sm shadow-amber-400/50" />
+                                    <span className="text-xs font-bold text-white">{oee.resource}%</span>
                                     <span className="text-[10px] text-slate-400">Res</span>
                                 </div>
                             </div>
@@ -230,14 +230,14 @@ export function ProjectHealthDashboardClient({
                     </div>
 
                     {/* View Tabs */}
-                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg mb-4">
+                    <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg mb-4 border border-white/10">
                         <button
                             onClick={() => setCurrentView('list')}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
                                 currentView === 'list'
                                     ? "bg-white text-slate-800 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-700"
+                                    : "text-slate-300 hover:text-white hover:bg-white/10"
                             )}
                         >
                             <List className="w-4 h-4" />
@@ -249,7 +249,7 @@ export function ProjectHealthDashboardClient({
                                 "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
                                 currentView === 'timeline'
                                     ? "bg-white text-slate-800 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-700"
+                                    : "text-slate-300 hover:text-white hover:bg-white/10"
                             )}
                         >
                             <LayoutDashboard className="w-4 h-4" />
@@ -261,7 +261,7 @@ export function ProjectHealthDashboardClient({
                                 "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
                                 currentView === 'board'
                                     ? "bg-white text-slate-800 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-700"
+                                    : "text-slate-300 hover:text-white hover:bg-white/10"
                             )}
                         >
                             <LayoutGrid className="w-4 h-4" />
@@ -273,7 +273,7 @@ export function ProjectHealthDashboardClient({
                                 "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
                                 currentView === 'calendar'
                                     ? "bg-white text-slate-800 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-700"
+                                    : "text-slate-300 hover:text-white hover:bg-white/10"
                             )}
                         >
                             <CalendarIcon className="w-4 h-4" />
@@ -288,7 +288,7 @@ export function ProjectHealthDashboardClient({
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <Input
                                 placeholder="Search..."
-                                className="pl-9 h-9 bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-slate-100 transition-all rounded-lg text-sm"
+                                className="pl-9 h-9 bg-white/10 border-white/20 text-white placeholder:text-slate-400 focus:bg-white/20 focus:ring-2 focus:ring-white/20 transition-all rounded-lg text-sm"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -297,42 +297,32 @@ export function ProjectHealthDashboardClient({
                         {/* Dropdown Filters Group */}
                         <div className="flex items-center gap-2 w-full overflow-x-auto no-scrollbar">
                             <select
-                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[100px]"
+                                className="h-9 px-3 py-1 rounded-lg border border-white/20 bg-white/10 text-xs font-medium text-white focus:outline-none focus:border-white/40 hover:bg-white/20 transition-colors cursor-pointer min-w-[100px]"
                                 value={selectedCustomer}
                                 onChange={(e) => setSelectedCustomer(e.target.value)}
                             >
-                                <option value="All">Customer: All</option>
-                                {customers.map(c => <option key={c} value={c}>{c}</option>)}
+                                <option value="All" className="text-slate-800">Customer: All</option>
+                                {customers.map(c => <option key={c} value={c} className="text-slate-800">{c}</option>)}
                             </select>
 
-                            {/* Type Filter Disabled - No Backend Data Yet */}
-                            {/* <select
-                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[100px]"
-                                value={selectedType}
-                                onChange={(e) => setSelectedType(e.target.value)}
-                            >
-                                <option value="All">Type: All</option>
-                                {types.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select> */}
-
                             <select
-                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[100px]"
+                                className="h-9 px-3 py-1 rounded-lg border border-white/20 bg-white/10 text-xs font-medium text-white focus:outline-none focus:border-white/40 hover:bg-white/20 transition-colors cursor-pointer min-w-[100px]"
                                 value={selectedStatus}
                                 onChange={(e) => setSelectedStatus(e.target.value)}
                             >
-                                <option value="All">Status: All</option>
-                                <option value="On Track">Healthy</option>
-                                <option value="At Risk">At Risk</option>
-                                <option value="Critical">Critical</option>
+                                <option value="All" className="text-slate-800">Status: All</option>
+                                <option value="On Track" className="text-slate-800">Healthy</option>
+                                <option value="At Risk" className="text-slate-800">At Risk</option>
+                                <option value="Critical" className="text-slate-800">Critical</option>
                             </select>
 
                             <select
-                                className="h-9 px-3 py-1 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 focus:outline-none focus:border-indigo-400 hover:border-indigo-200 transition-colors cursor-pointer min-w-[80px]"
+                                className="h-9 px-3 py-1 rounded-lg border border-white/20 bg-white/10 text-xs font-medium text-white focus:outline-none focus:border-white/40 hover:bg-white/20 transition-colors cursor-pointer min-w-[80px]"
                                 value={year}
                                 onChange={(e) => setYear(Number(e.target.value))}
                             >
-                                <option value={currentYear}>FY {currentYear}</option>
-                                <option value={currentYear - 1}>FY {currentYear - 1}</option>
+                                <option value={currentYear} className="text-slate-800">FY {currentYear}</option>
+                                <option value={currentYear - 1} className="text-slate-800">FY {currentYear - 1}</option>
                             </select>
                         </div>
 
@@ -341,7 +331,7 @@ export function ProjectHealthDashboardClient({
                                 onClick={handleExport}
                                 size="sm"
                                 variant="outline"
-                                className="h-9 gap-2 rounded-lg border-slate-200 text-slate-600 hover:text-indigo-600"
+                                className="h-9 gap-2 rounded-lg border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                             >
                                 <Download className="w-4 h-4" />
                                 <span className="hidden sm:inline">Export</span>
@@ -351,7 +341,7 @@ export function ProjectHealthDashboardClient({
                                 disabled={isLoading}
                                 size="sm"
                                 variant="outline"
-                                className="h-9 w-9 p-0 rounded-lg border-slate-200 text-slate-500 hover:text-indigo-600"
+                                className="h-9 w-9 p-0 rounded-lg border-white/20 bg-white/10 text-white hover:bg-white/20"
                             >
                                 <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
                             </Button>
@@ -362,23 +352,23 @@ export function ProjectHealthDashboardClient({
                     <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
                         {[
                             { label: 'All Projects', id: null },
-                            { label: 'Critical Only', id: 'Critical', count: summary.critical, color: 'text-rose-600 bg-rose-50 border-rose-100' },
-                            { label: 'My Projects', id: 'My Projects', count: 3, color: 'text-indigo-600 bg-indigo-50 border-indigo-100' }, // mock count
-                            { label: 'Ending Warranty', id: 'Warranty', count: 0, color: 'text-amber-600 bg-amber-50 border-amber-100' }
+                            { label: 'Critical Only', id: 'Critical', count: summary.critical, color: 'text-rose-300 bg-rose-500/20 border-rose-500/30' },
+                            { label: 'My Projects', id: 'My Projects', count: 3, color: 'text-indigo-300 bg-indigo-500/20 border-indigo-500/30' },
+                            { label: 'Ending Warranty', id: 'Warranty', count: 0, color: 'text-amber-300 bg-amber-500/20 border-amber-500/30' }
                         ].map(tag => (
                             <button
                                 key={tag.label}
                                 onClick={() => setActiveTag(tag.id)}
                                 className={cn(
-                                    "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide transition-all whitespac-nowrap flex items-center gap-2",
+                                    "px-3 py-1.5 rounded-md border text-[10px] font-bold uppercase tracking-wide transition-all whitespace-nowrap flex items-center gap-2",
                                     activeTag === tag.id
-                                        ? "bg-slate-800 text-white border-slate-800 shadow-md"
-                                        : (tag.color || "bg-white text-slate-500 border-slate-200 hover:border-slate-300")
+                                        ? "bg-white text-slate-800 border-white shadow-md"
+                                        : (tag.color || "bg-white/10 text-slate-300 border-white/20 hover:bg-white/20")
                                 )}
                             >
                                 {tag.label}
                                 {tag.count !== undefined && (
-                                    <span className={cn("px-1.5 py-0.5 rounded-full text-[9px]", activeTag === tag.id ? "bg-slate-600 text-white" : "bg-white/50")}>
+                                    <span className={cn("px-1.5 py-0.5 rounded-full text-[9px]", activeTag === tag.id ? "bg-slate-200 text-slate-800" : "bg-white/20")}>
                                         {tag.count}
                                     </span>
                                 )}

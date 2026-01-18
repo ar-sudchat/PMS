@@ -55,11 +55,19 @@ export function GanttChart({
     const columns = [
       { name: 'text', label: 'Task', tree: true, width: 280, resize: true },
       {
-        name: 'start_date', label: 'Start', width: 85, align: 'center',
+        name: 'assignee_name', label: 'Assignee', width: 100, align: 'center',
         template: (task: any) => {
-          // ใช้ original_start_date เพื่อตรวจสอบว่ามีวันที่จริงหรือไม่
-          if (!task.original_start_date || task.unscheduled) return '-'
-          const d = new Date(task.original_start_date)
+          // แสดง Assignee เฉพาะ Task เท่านั้น
+          if (task.entity_type !== 'task') return ''
+          return task.assignee_name || '-'
+        }
+      },
+      {
+        name: 'end_date', label: 'Due', width: 85, align: 'center',
+        template: (task: any) => {
+          // ใช้ original_end_date (due date) เพื่อแสดง deadline
+          if (!task.original_end_date || task.unscheduled) return '-'
+          const d = new Date(task.original_end_date)
           return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })
         }
       },

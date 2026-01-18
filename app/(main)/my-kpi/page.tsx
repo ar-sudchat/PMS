@@ -31,7 +31,7 @@ export default async function MyKPIPage({
 
   const [dashboardData, aiAnalysis] = await Promise.all([
     getMyKPIDashboardData(user.id, position, year, period, periodValue),
-    analyzeMyKPI(user.id, user.name || user.first_name || 'User', position, year, period, periodValue)
+    analyzeMyKPI(user.id, user.nameTh || user.name || 'User', position, year, period, periodValue)
   ])
 
   return (
@@ -42,7 +42,7 @@ export default async function MyKPIPage({
           aiAnalysis={aiAnalysis}
           user={{
             id: user.id,
-            name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User',
+            name: user.nameTh || user.name || 'User',
             position: position
           }}
           year={year}

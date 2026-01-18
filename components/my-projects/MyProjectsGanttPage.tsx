@@ -10,7 +10,7 @@ import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryM
 import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
 import { AssignTaskModal } from '@/components/gantt/AssignTaskModal'
 import { WorkItemsModal } from '@/components/gantt/WorkItemsModal'
-import { TeamWorkloadView } from '@/components/workload/TeamWorkloadView'
+import { DailyTaskWorkloadView } from '@/components/workload/DailyTaskWorkloadView'
 import { getProjectFilterOptions } from '@/lib/actions/project-actions'
 import {
     GanttData,
@@ -28,7 +28,7 @@ interface MyProjectsGanttPageProps {
     currentUser: any
 }
 
-type ViewMode = 'gantt' | 'workload' | 'work-items'
+type ViewMode = 'gantt' | 'work-items' | 'daily-workload'
 
 interface Filters {
     year: number | ''
@@ -38,6 +38,7 @@ interface Filters {
     statusId: string
     milestoneIds: string[]
     search: string
+    assigneeId: string
 }
 
 interface FilterOptions {
@@ -50,6 +51,7 @@ interface FilterOptions {
 }
 
 export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGanttPageProps) {
+    console.log('DEBUG - currentUser full:', JSON.stringify(currentUser, null, 2))
     const [viewMode, setViewMode] = useState<ViewMode>('gantt')
     const [zoom, setZoom] = useState<ZoomLevel>('day') // Default to 'day'
     const [ganttData, setGanttData] = useState<GanttData | null>(initialData)
@@ -74,7 +76,8 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         ownerId: currentUser?.employeeId || currentUser?.id || '', // Default to login user
         statusId: '',
         milestoneIds: [],
-        search: ''
+        search: '',
+        assigneeId: ''
     })
 
     const [isMilestoneDropdownOpen, setIsMilestoneDropdownOpen] = useState(false)
@@ -101,6 +104,12 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         storyId: string
     }>({ open: false, storyId: '' })
 
+    // Edit Task Modal state
+    const [editTaskModal, setEditTaskModal] = useState<{
+        open: boolean
+        task: GanttTask | null
+    }>({ open: false, task: null })
+
     const [assignModal, setAssignModal] = useState<{
         open: boolean
         task: GanttTask | null
@@ -120,6 +129,16 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         const result = await getProjectFilterOptions()
         if (result.success && result.data) {
             setFilterOptions(result.data)
+
+            // Set default status to "Active" if available and not already set
+            if (!filters.statusId && result.data.statuses?.length > 0) {
+                const activeStatus = result.data.statuses.find(
+                    (s: any) => s.code?.toLowerCase() === 'active' || s.name?.toLowerCase() === 'active'
+                )
+                if (activeStatus) {
+                    setFilters(prev => ({ ...prev, statusId: activeStatus.id }))
+                }
+            }
         }
     }
 
@@ -135,7 +154,8 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                 ownerId: filters.ownerId || undefined,
                 statusId: filters.statusId || undefined,
                 milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
-                search: filters.search || undefined
+                search: filters.search || undefined,
+                assigneeId: filters.assigneeId || undefined
             })
             if (result.success && result.data) {
                 setGanttData(result.data)
@@ -215,12 +235,17 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         setAssignModal({ open: true, task })
     }, [])
 
+    // Open Edit Task Modal
+    const handleEditTask = useCallback((task: GanttTask) => {
+        setEditTaskModal({ open: true, task })
+    }, [])
+
     const handleEdit = useCallback((task: GanttTask) => {
-        // For now, just open assign modal for tasks or log
+        // Open edit task modal for tasks
         if (task.entity_type === 'task') {
-            handleAssign(task)
+            handleEditTask(task)
         }
-    }, [handleAssign])
+    }, [handleEditTask])
 
     const handleDelete = useCallback(async (task: GanttTask) => {
         if (task.entity_type === 'project' || task.entity_type === 'milestone') {
@@ -245,10 +270,10 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         handleRefresh()
     }, [handleRefresh])
 
-    // Double-click handler
+    // Double-click handler - เปิด Edit Task Modal แทน Assign Modal
     const handleTaskDblClick = useCallback((task: GanttTask) => {
         if (task.entity_type === 'task') {
-            handleAssign(task)
+            handleEditTask(task)
         } else if (task.entity_type === 'story') {
             const storyId = task.story_id || task.entity_id.replace('story_', '')
             handleAddTask(storyId)
@@ -256,7 +281,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
             const projectId = task.entity_type === 'project' ? task.entity_id : task.project_id
             handleAddStory(projectId, task.milestone_id || undefined)
         }
-    }, [handleAddStory, handleAddTask, handleAssign])
+    }, [handleAddStory, handleAddTask, handleEditTask])
 
     // Count projects
     const projectCount = ganttData?.data.filter(t => t.entity_type === 'project').length || 0
@@ -353,7 +378,23 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                             </select>
                         </div>
 
-                        {/* Milestone Multi-Select in Gantt Page? Optional but user might want it */}
+                        {/* Assignee - Filter tasks by assigned person */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Assignee</label>
+                            <select
+                                value={filters.assigneeId}
+                                onChange={(e) => handleFilterChange('assigneeId', e.target.value)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[150px] bg-white"
+                            >
+                                <option value="">All Assignees</option>
+                                {filterOptions.owners.map(o => (
+                                    <option key={o.id} value={o.id}>
+                                        {o.name_th || o.name} {o.position_code && `(${o.position_code})`}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
                         {/* Search */}
                         <div className="flex-1 min-w-[200px]">
                             <label className="block text-xs text-slate-500 mb-1">Search</label>
@@ -384,10 +425,10 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                                 Project Detail
                             </button>
                             <button
-                                onClick={() => setViewMode('workload')}
-                                className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center", viewMode === 'workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700')}
+                                onClick={() => setViewMode('daily-workload')}
+                                className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center", viewMode === 'daily-workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700')}
                             >
-                                Team Workload
+                                Daily Workload
                             </button>
                         </div>
                     </div>
@@ -480,7 +521,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                     />
                 ) : (
                     <div className="h-full overflow-y-auto">
-                        <TeamWorkloadView />
+                        <DailyTaskWorkloadView />
                     </div>
                 )}
             </div>
@@ -518,6 +559,26 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                 mode="create"
                 currentUserId={currentUser?.id}
             />
+
+            {/* Edit Task Modal - เปิดเมื่อ double-click ที่ Task */}
+            {editTaskModal.task && (
+                <TaskModal
+                    isOpen={editTaskModal.open}
+                    onClose={() => setEditTaskModal({ open: false, task: null })}
+                    storyId={editTaskModal.task.story_id || ''}
+                    onSuccess={handleRefresh}
+                    mode="edit"
+                    task={{
+                        id: editTaskModal.task.entity_id,
+                        task_code: editTaskModal.task.text?.split(':')[0]?.trim(),
+                        title: editTaskModal.task.text?.split(':').slice(1).join(':').trim() || editTaskModal.task.text,
+                        status: editTaskModal.task.status,
+                        assignee_id: editTaskModal.task.assignee_id,
+                        assignee_name: editTaskModal.task.assignee_name
+                    }}
+                    currentUserId={currentUser?.id}
+                />
+            )}
 
             {assignModal.task && (
                 <AssignTaskModal

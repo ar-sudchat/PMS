@@ -119,14 +119,14 @@ export async function getDeployBackupRecords(filters: DeployBackupFilters = {}) 
                     db.version_number,
                     db.is_verified,
                     db.verified_by,
-                    COALESCE(NULLIF(ev.first_name, '') + ' ' + NULLIF(ev.last_name, ''), ev.nickname, ev.employee_code) as verified_by_name,
+                    COALESCE(NULLIF(ev.first_name_th, '') + ' ' + NULLIF(ev.last_name_th, ''), NULLIF(ev.first_name, '') + ' ' + NULLIF(ev.last_name, ''), ev.nickname, ev.employee_code) as verified_by_name,
                     db.verified_at,
                     db.is_passed,
                     db.failed_reason,
                     db.notes,
                     db.created_at,
                     db.created_by,
-                    COALESCE(NULLIF(ec.first_name, '') + ' ' + NULLIF(ec.last_name, ''), ec.nickname, ec.employee_code) as created_by_name,
+                    COALESCE(NULLIF(ec.first_name_th, '') + ' ' + NULLIF(ec.last_name_th, ''), NULLIF(ec.first_name, '') + ' ' + NULLIF(ec.last_name, ''), ec.nickname, ec.employee_code) as created_by_name,
                     db.approval_status,
                     db.approval_instance_id
                 FROM pms.deploy_backup_records db
@@ -164,7 +164,7 @@ export async function getDeployBackupRecord(id: string) {
                     bs.code as backup_source_code,
                     bs.name as backup_source_name,
                     bs.source_type as backup_source_type,
-                    COALESCE(NULLIF(ev.first_name, '') + ' ' + NULLIF(ev.last_name, ''), ev.nickname) as verified_by_name
+                    COALESCE(NULLIF(ev.first_name_th, '') + ' ' + NULLIF(ev.last_name_th, ''), NULLIF(ev.first_name, '') + ' ' + NULLIF(ev.last_name, ''), ev.nickname) as verified_by_name
                 FROM pms.deploy_backup_records db
                 LEFT JOIN pms.backup_sources bs ON db.backup_source_id = bs.id
                 LEFT JOIN pms.employees ev ON db.verified_by = ev.id

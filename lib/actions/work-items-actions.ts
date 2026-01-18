@@ -191,7 +191,7 @@ export async function getGlobalWorkItems(filters?: {
                 ) AND s.is_active = 1;
 
                 -- 4. Get Tasks
-                 SELECT t.*, e.first_name_th + ' ' + e.last_name_th as assignee_name, e.employee_code FROM pms.tasks t
+                 SELECT t.*, COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) as assignee_name, e.employee_code FROM pms.tasks t
                  JOIN pms.stories s ON t.story_id = s.id
                  LEFT JOIN pms.employees e ON t.assignee_id = e.id
                  WHERE s.project_id IN (
@@ -307,9 +307,9 @@ export async function getProjectWorkItems(projectId: string, filters?: WorkItemF
 
         // 3. Get Tasks
         let taskQuery = `
-            SELECT 
+            SELECT
                 t.*,
-                e.first_name + ' ' + e.last_name as assignee_name,
+                COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) as assignee_name,
                 e.employee_code
             FROM pms.tasks t
             JOIN pms.stories s ON t.story_id = s.id
@@ -523,22 +523,25 @@ export async function updateStory(id: string, data: any) {
 }
 
 // ============================================
-// DELETE STORY
+// DELETE STORY (Soft Delete)
 // ============================================
 export async function deleteStory(id: string) {
     try {
         const pool = await getConnection()
-        // Check for tasks
-        const hasTasks = await pool.request().input('id', id)
-            .query('SELECT TOP 1 1 FROM pms.tasks WHERE story_id = @id')
 
-        if (hasTasks.recordset.length > 0) {
-            // Option: Prevent delete or cascade. Assuming cascade for now or error.
-            // Let's delete tasks first (Soft delete or Hard delete?)
-            await pool.request().input('id', id).query('DELETE FROM pms.tasks WHERE story_id = @id')
-        }
+        // Soft delete all tasks in this story first (to avoid FK constraint with timesheets)
+        await pool.request().input('id', id).query(`
+            UPDATE pms.tasks
+            SET is_active = 0, updated_at = GETDATE()
+            WHERE story_id = @id
+        `)
 
-        await pool.request().input('id', id).query('DELETE FROM pms.stories WHERE id = @id')
+        // Soft delete the story
+        await pool.request().input('id', id).query(`
+            UPDATE pms.stories
+            SET is_active = 0, updated_at = GETDATE()
+            WHERE id = @id
+        `)
 
         return { success: true }
     } catch (error) {
@@ -636,12 +639,17 @@ export async function updateTask(id: string, data: any) {
 }
 
 // ============================================
-// DELETE TASK
+// DELETE TASK (Soft Delete)
 // ============================================
 export async function deleteTask(id: string) {
     try {
         const pool = await getConnection()
-        await pool.request().input('id', id).query('DELETE FROM pms.tasks WHERE id = @id')
+        // Use soft delete (is_active = 0) to avoid FK constraint issues with timesheets
+        await pool.request().input('id', id).query(`
+            UPDATE pms.tasks
+            SET is_active = 0, updated_at = GETDATE()
+            WHERE id = @id
+        `)
         return { success: true }
     } catch (error) {
         console.error('deleteTask error:', error)

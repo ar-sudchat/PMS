@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect, useRef, KeyboardEvent } from 'react'
-import { X, CheckCircle, Calendar, Clock, Plus, Trash2, ListChecks } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, KeyboardEvent } from 'react'
+import { X, CheckCircle, Calendar, Clock, Plus, Trash2, ListChecks, Paperclip } from 'lucide-react'
 import { createTask, updateTask, getTaskTypes } from '@/lib/actions/task-actions'
 import { getAssignableEmployees, getEmployees } from '@/lib/actions/employee-actions'
 import { getChecklistItems, createChecklistItem, deleteChecklistItem, ChecklistItem } from '@/lib/actions/checklist-actions'
+import { getTaskAttachments, updateTaskAttachments, Attachment } from '@/lib/actions/attachment-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { WorkloadBadge } from '@/components/ui/WorkloadBadge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import FileUpload from '@/components/ui/FileUpload'
 
 interface ChecklistItemLocal {
     id: string
@@ -69,6 +71,10 @@ export function NewTaskModal({
     const [checklistItems, setChecklistItems] = useState<ChecklistItemLocal[]>([])
     const [newChecklistItem, setNewChecklistItem] = useState('')
 
+    // Attachments state
+    const [attachments, setAttachments] = useState<Attachment[]>([])
+    const [activeTab, setActiveTab] = useState<'details' | 'attachments'>('details')
+
     const titleInputRef = useRef<HTMLInputElement>(null)
     const formRef = useRef<HTMLFormElement>(null)
 
@@ -94,6 +100,25 @@ export function NewTaskModal({
             setSuccessMessage(null)
         }
     }, [isOpen, mode, task])
+
+    // Set reviewer_id to currentUserId when employees loaded in create mode
+    const employeesLoaded = employees.length > 0
+    useEffect(() => {
+        if (isOpen && mode === 'create' && currentUserId && employeesLoaded) {
+            // ตั้งค่า reviewer_id เป็น currentUserId เสมอเมื่อ employees โหลดเสร็จ
+            setFormData(prev => ({ ...prev, reviewer_id: currentUserId }))
+        }
+    }, [isOpen, mode, currentUserId, employeesLoaded])
+
+    // สร้าง reviewerOptions ก่อน early return (React hooks rules)
+    const reviewerOptions = useMemo(() => {
+        return employees.map((emp: any) => {
+            const thaiName = emp.first_name_th && emp.last_name_th
+                ? `${emp.first_name_th} ${emp.last_name_th}`
+                : `${emp.first_name} ${emp.last_name}`
+            return { value: emp.id, label: thaiName }
+        })
+    }, [employees])
 
     useEffect(() => {
         if (isOpen && formData.due_date) {
@@ -155,9 +180,25 @@ export function NewTaskModal({
                 console.error('Failed to load checklist items:', error)
                 setChecklistItems([])
             }
+            // Load existing attachments for edit mode
+            try {
+                const attachmentsResult = await getTaskAttachments(task.id)
+                if (attachmentsResult.success) {
+                    setAttachments(attachmentsResult.data)
+                }
+            } catch (error) {
+                console.error('Failed to load attachments:', error)
+                setAttachments([])
+            }
         } else if (mode === 'create') {
             if (!keepValues) {
                 resetFormFull()
+            } else {
+                // Even with keepValues, ensure reviewer_id is set to current user if empty
+                setFormData(prev => ({
+                    ...prev,
+                    reviewer_id: prev.reviewer_id || currentUserId || ''
+                }))
             }
         }
     }
@@ -169,6 +210,8 @@ export function NewTaskModal({
             is_count_for_kpi: true
         })
         setChecklistItems([])
+        setAttachments([])
+        setActiveTab('details')
     }
 
     const resetFormAfterCreate = () => {
@@ -185,6 +228,8 @@ export function NewTaskModal({
             is_count_for_kpi: keepValues ? prev.is_count_for_kpi : true
         }))
         setChecklistItems([])
+        setAttachments([])
+        setActiveTab('details')
     }
 
     // Checklist handlers
@@ -254,7 +299,8 @@ export function NewTaskModal({
                     checklist_items: checklistItems.map((item, index) => ({
                         title: item.title,
                         sort_order: index
-                    }))
+                    })),
+                    attachments: attachments.length > 0 ? attachments : undefined
                 })
             } else {
                 if (!task?.id) return
@@ -313,37 +359,28 @@ export function NewTaskModal({
         { value: 'low', label: '⚪ Low' },
     ]
 
-    const assigneeOptions = assignableEmployees.map((emp: any) => ({
-        value: emp.id,
-        label: emp.nickname ? `${emp.first_name} ${emp.last_name} (${emp.nickname})` : `${emp.first_name} ${emp.last_name}`,
-        render: (
-            <div className="flex items-center justify-between w-full gap-2">
-                <div className="flex items-center gap-2 overflow-hidden">
-                    <Avatar className="h-6 w-6">
-                        <AvatarFallback>{emp.first_name?.[0]}</AvatarFallback>
-                    </Avatar>
+    const assigneeOptions = assignableEmployees.map((emp: any) => {
+        // ใช้ชื่อภาษาไทยถ้ามี, ไม่งั้นใช้ชื่อภาษาอังกฤษ
+        const thaiName = emp.first_name_th && emp.last_name_th
+            ? `${emp.first_name_th} ${emp.last_name_th}`
+            : `${emp.first_name} ${emp.last_name}`
+        const displayName = emp.nickname ? `${thaiName} (${emp.nickname})` : thaiName
+
+        return {
+            value: emp.id,
+            label: displayName,
+            render: (
+                <div className="flex items-center justify-between w-full gap-2">
                     <div className="flex flex-col truncate">
-                        <span className="text-sm font-medium truncate">{emp.first_name} {emp.last_name}</span>
+                        <span className="text-sm font-medium truncate">{displayName}</span>
                         <span className="text-[10px] text-muted-foreground">{emp.role_code}</span>
                     </div>
+                    <WorkloadBadge assigned={emp.assigned_hours} max={emp.max_hours_per_day} />
                 </div>
-                <WorkloadBadge assigned={emp.assigned_hours} max={emp.max_hours_per_day} />
-            </div>
-        )
-    }))
+            )
+        }
+    })
 
-    const reviewerOptions = employees.map((emp: any) => ({
-        value: emp.id,
-        label: `${emp.first_name} ${emp.last_name}`,
-        render: (
-            <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
-                    <AvatarFallback>{emp.first_name?.[0]}</AvatarFallback>
-                </Avatar>
-                <span>{emp.first_name} {emp.last_name}</span>
-            </div>
-        )
-    }))
 
     const statusOptions = [
         { value: 'todo', label: 'To Do' },
@@ -370,7 +407,37 @@ export function NewTaskModal({
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5">
+                {/* Tabs */}
+                <div className="flex border-b px-5 shrink-0 bg-white">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('details')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-slate-600 hover:text-slate-900'
+                            }`}
+                    >
+                        Details
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('attachments')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${activeTab === 'attachments'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-slate-600 hover:text-slate-900'
+                            }`}
+                    >
+                        <Paperclip className="w-4 h-4" />
+                        Attachments
+                        {attachments.length > 0 && (
+                            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                {attachments.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-[500px]">
                     {/* Completed Task Warning */}
                     {isTaskCompleted && (
                         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-700 font-medium text-sm">
@@ -392,6 +459,8 @@ export function NewTaskModal({
                         </div>
                     )}
 
+                    {/* Details Tab Content */}
+                    <div className={activeTab === 'details' ? 'block' : 'hidden'}>
                     <form ref={formRef} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Left Column - Form Fields */}
                         <div className="space-y-4">
@@ -421,7 +490,16 @@ export function NewTaskModal({
                                     <SmartCombobox
                                         options={taskTypeOptions}
                                         value={taskTypeOptions.find((o: any) => o.value === formData.task_type) || null}
-                                        onChange={(val) => setFormData({ ...formData, task_type: val?.value?.toString() || '' })}
+                                        onChange={(val) => {
+                                            console.log('DEBUG - currentUserId:', currentUserId)
+                                            console.log('DEBUG - reviewerOptions[0]:', reviewerOptions[0])
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                task_type: val?.value?.toString() || '',
+                                                // Set reviewer_id ถ้ายังไม่มี
+                                                reviewer_id: prev.reviewer_id || currentUserId || ''
+                                            }))
+                                        }}
                                         placeholder="Select Type"
                                         required
                                         disabled={isTaskCompleted}
@@ -477,7 +555,7 @@ export function NewTaskModal({
                                 </div>
                             </div>
 
-                            {/* Row 3: Assignee & Reviewer */}
+                            {/* Row 3: Assignee & Created By */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1 flex justify-between">
@@ -495,12 +573,12 @@ export function NewTaskModal({
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Reviewer</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Created By</label>
                                     <SmartCombobox
                                         options={reviewerOptions}
-                                        value={reviewerOptions.find((o: any) => o.value === formData.reviewer_id) || null}
+                                        value={reviewerOptions.find((o: any) => String(o.value) === String(formData.reviewer_id || currentUserId)) || null}
                                         onChange={(val) => setFormData({ ...formData, reviewer_id: val?.value?.toString() || '' })}
-                                        placeholder="Select Reviewer"
+                                        placeholder="Select Creator"
                                         disabled={isTaskCompleted}
                                     />
                                 </div>
@@ -620,6 +698,36 @@ export function NewTaskModal({
                             </div>
                         </div>
                     </form>
+                    </div>
+
+                    {/* Attachments Tab Content */}
+                    <div className={activeTab === 'attachments' ? 'block' : 'hidden'}>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-blue-700">
+                                อัปโหลดไฟล์แนบสำหรับ Task นี้ รองรับไฟล์ภาพ, PDF, Word, Excel (สูงสุด 10 ไฟล์, ไม่เกิน 10MB ต่อไฟล์)
+                                {mode === 'create' && (
+                                    <span className="block mt-1 text-blue-600 font-medium">
+                                        * ไฟล์จะถูกบันทึกเมื่อกด Create Task
+                                    </span>
+                                )}
+                            </p>
+                        </div>
+                        <FileUpload
+                            value={attachments}
+                            onChange={async (files) => {
+                                setAttachments(files)
+                                // Auto-save attachments immediately in edit mode
+                                if (mode === 'edit' && task?.id) {
+                                    await updateTaskAttachments(task.id, files)
+                                }
+                            }}
+                            maxFiles={10}
+                            maxSizeMB={10}
+                            subFolder={mode === 'edit' ? `tasks/${task?.task_code || 'unknown'}` : `tasks/temp-${Date.now()}`}
+                            label=""
+                            disabled={isTaskCompleted}
+                        />
+                    </div>
                 </div>
 
                 {/* Footer */}

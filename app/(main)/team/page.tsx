@@ -159,7 +159,7 @@ export default function TeamPage() {
                 setIsDeleteModalOpen(false);
                 setItemToDelete(null);
             } else {
-                alert(result.message);
+                alert(result.error || result.message || 'ไม่สามารถลบพนักงานได้');
             }
         } catch (error) {
             console.error("Failed to delete", error);
@@ -208,10 +208,10 @@ export default function TeamPage() {
         },
         {
             header: 'Employee',
-            accessorKey: 'full_name',
-            accessorFn: (row) => `${row.first_name} ${row.last_name}`,
+            accessorKey: 'full_name_th',
+            accessorFn: (row) => row.full_name_th || `${row.first_name} ${row.last_name}`,
             cell: ({ row }) => {
-                const fullName = `${row.original.first_name} ${row.original.last_name}`;
+                const fullName = row.original.full_name_th || `${row.original.first_name} ${row.original.last_name}`;
                 return (
                     <div className="flex items-center gap-3">
                         <UserAvatar name={fullName} size="md" />
@@ -269,7 +269,7 @@ export default function TeamPage() {
                 <div className="flex justify-end gap-2">
                     <button
                         onClick={async () => {
-                            if (confirm(`รีเซ็ตรหัสผ่านของ ${row.original.first_name} เป็น 1234 ?`)) {
+                            if (confirm(`รีเซ็ตรหัสผ่านของ ${row.original.first_name_th || row.original.first_name} เป็น 1234 ?`)) {
                                 const { resetPassword } = await import('@/lib/actions/auth-actions');
                                 const result = await resetPassword(row.original.id);
                                 if (result.success) {
@@ -348,7 +348,7 @@ export default function TeamPage() {
                 onClose={() => setIsDeleteModalOpen(false)}
                 onConfirm={handleConfirmDelete}
                 title="ลบพนักงาน"
-                message={`ต้องการลบ ${itemToDelete?.first_name} ${itemToDelete?.last_name} หรือไม่?`}
+                message={`ต้องการลบ ${itemToDelete?.first_name_th || itemToDelete?.first_name} ${itemToDelete?.last_name_th || itemToDelete?.last_name} หรือไม่?`}
             />
         </div>
     );

@@ -758,7 +758,7 @@ export async function getMyPendingApprovals(moduleCode?: string): Promise<Pendin
                 COALESCE(afs.step_name, afs2.step_name, 'Pending Approval') AS step_name,
                 COALESCE(afs.timeout_hours, afs2.timeout_hours) AS timeout_hours,
                 aft.flow_name,
-                CONCAT(e.first_name, ' ', e.last_name) AS requester_name,
+                COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS requester_name,
                 DATEDIFF(HOUR, ai.request_date, GETDATE()) AS waiting_hours
             FROM pms.approval_instances ai
             JOIN pms.approval_instance_approvers aia ON ai.id = aia.instance_id AND ai.current_step_order = aia.step_order
@@ -812,7 +812,7 @@ export async function getApprovalInstance(instanceId: string): Promise<any> {
                     aft.flow_code,
                     aft.flow_name,
                     afs.step_name AS current_step_name,
-                    CONCAT(e.first_name, ' ', e.last_name) AS requester_name,
+                    COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS requester_name,
                     e.email AS requester_email
                 FROM pms.approval_instances ai
                 JOIN pms.approval_flow_templates aft ON ai.flow_template_id = aft.id
@@ -831,7 +831,7 @@ export async function getApprovalInstance(instanceId: string): Promise<any> {
             .query(`
                 SELECT
                     aa.*,
-                    CONCAT(e.first_name, ' ', e.last_name) AS approver_name,
+                    COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS approver_name,
                     afs.step_name
                 FROM pms.approval_actions aa
                 LEFT JOIN pms.employees e ON aa.approver_id = e.id
@@ -847,7 +847,7 @@ export async function getApprovalInstance(instanceId: string): Promise<any> {
             .query(`
                 SELECT
                     aia.*,
-                    CONCAT(e.first_name, ' ', e.last_name) AS approver_name,
+                    COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS approver_name,
                     e.email AS approver_email
                 FROM pms.approval_instance_approvers aia
                 LEFT JOIN pms.employees e ON aia.approver_id = e.id
@@ -938,7 +938,7 @@ async function resolveApprovers(
                 const roleResult = await pool.request()
                     .input('positionCode', sql.VarChar(50), approverConfig.approver_value)
                     .query(`
-                        SELECT e.id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+                        SELECT e.id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
                         FROM pms.employees e
                         JOIN pms.positions p ON e.position_id = p.id
                         WHERE p.code = @positionCode AND e.is_active = 1
@@ -1044,7 +1044,7 @@ async function resolveDynamicApprover(
                 if (!managerResult || managerResult.recordset.length === 0) {
                     managerResult = await pool.request()
                         .query(`
-                            SELECT TOP 1 e.id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+                            SELECT TOP 1 e.id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
                             FROM pms.employees e
                             WHERE e.role = 'admin' AND e.is_active = 1
                         `)
@@ -1056,7 +1056,7 @@ async function resolveDynamicApprover(
                     managerResult = await pool.request()
                         .input('userId', sql.UniqueIdentifier, requesterId)
                         .query(`
-                            SELECT e.id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+                            SELECT e.id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
                             FROM pms.employees e
                             WHERE e.id = @userId AND e.is_active = 1
                         `)
@@ -1148,7 +1148,7 @@ async function resolveDynamicApprover(
                     const pmFromProjectResult = await pool.request()
                         .input('projectId', sql.UniqueIdentifier, documentData.project_id)
                         .query(`
-                            SELECT TOP 1 e.id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+                            SELECT TOP 1 e.id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
                             FROM pms.projects p
                             JOIN pms.employees e ON p.project_manager_id = e.id
                             WHERE p.id = @projectId AND e.is_active = 1
@@ -1214,7 +1214,7 @@ async function resolveByDOA(
     const approverResult = await pool.request()
         .input('positionCode', sql.VarChar(50), matchingLevel.position)
         .query(`
-            SELECT TOP 1 e.id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+            SELECT TOP 1 e.id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
             FROM pms.employees e
             JOIN pms.positions p ON e.position_id = p.id
             WHERE p.code = @positionCode AND e.is_active = 1

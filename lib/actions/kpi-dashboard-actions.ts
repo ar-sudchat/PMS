@@ -5,6 +5,27 @@ import { getConnection } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 
 // ============================================
+// Department KPI Definitions
+// ============================================
+
+// All 6 Department KPIs with their definitions
+const ALL_DEPARTMENT_KPIS = [
+  { kpi_name: 'Time to Delivery', category: 'Performance', target: '>= 80%', target_value: 80, affected_positions: 'PM,PG,SA', higherIsBetter: true },
+  { kpi_name: 'Man-day Control', category: 'Performance', target: '>= 85%', target_value: 85, affected_positions: 'PM,PG,SA', higherIsBetter: true },
+  { kpi_name: 'Defect Ratio', category: 'Quality', target: '<= 15%', target_value: 15, affected_positions: 'PG,SA', higherIsBetter: false },
+  { kpi_name: 'Post Go-live Rework', category: 'Quality', target: '<= 8%', target_value: 8, affected_positions: 'PG,SA', higherIsBetter: false },
+  { kpi_name: 'Deploy Success Rate', category: 'Quality', target: '>= 95%', target_value: 95, affected_positions: 'PG,SA', higherIsBetter: true },
+  { kpi_name: 'Pre-deploy Backup', category: 'Availability', target: '100%', target_value: 100, affected_positions: 'PG', higherIsBetter: true }
+]
+
+// All 3 Personal KPIs with their definitions
+const ALL_PERSONAL_KPIS = [
+  { kpi_name: 'Issue Clearing', target: '>= 85%', target_value: 85, affected_positions: 'PG,SA', higherIsBetter: true },
+  { kpi_name: 'On-time Meeting Minutes', target: '<= 3 ครั้ง', target_value: 3, affected_positions: 'PM,SA', higherIsBetter: false },
+  { kpi_name: 'Required Docs On-time', target: '>= 95%', target_value: 95, affected_positions: 'SA', higherIsBetter: true }
+]
+
+// ============================================
 // Department KPI Actions
 // ============================================
 
@@ -49,7 +70,26 @@ export async function getDepartmentKPISummary(
           END
       `)
 
-    return result.recordset
+    // Ensure all 6 KPIs are returned (fill missing with "no data" state)
+    const existingKPIs = new Map(result.recordset.map((k: any) => [k.kpi_name, k]))
+
+    return ALL_DEPARTMENT_KPIS.map(kpiDef => {
+      const existing = existingKPIs.get(kpiDef.kpi_name)
+      if (existing) {
+        return existing
+      }
+      // Return KPI with "no data" state - show as pass (no data = not failing)
+      return {
+        kpi_name: kpiDef.kpi_name,
+        category: kpiDef.category,
+        target: kpiDef.target,
+        actual_value: null,
+        target_value: kpiDef.target_value,
+        is_pass: 1, // No data = pass (not penalized)
+        affected_positions: kpiDef.affected_positions,
+        no_data: true
+      }
+    })
   } catch (error) {
     console.error('getDepartmentKPISummary error:', error)
     return []
@@ -333,7 +373,7 @@ export async function getKPIDashboardData(
   const deptTotalCount = deptKPIs.length
 
   // Group personal KPIs by KPI name (include affected_positions from first record)
-  const personalKPIGroups = personalKPIs.reduce((acc: any, k: any) => {
+  const personalKPIGroupsFromData = personalKPIs.reduce((acc: any, k: any) => {
     if (!acc[k.kpi_name]) {
       acc[k.kpi_name] = { pass: 0, fail: 0, total: 0, affected_positions: k.affected_positions || '' }
     }
@@ -345,6 +385,23 @@ export async function getKPIDashboardData(
     }
     return acc
   }, {} as Record<string, { pass: number; fail: number; total: number; affected_positions: string }>)
+
+  // Ensure all 3 Personal KPIs are shown (fill missing with "no data" state)
+  const personalKPIGroups: Record<string, any> = {}
+  for (const kpiDef of ALL_PERSONAL_KPIS) {
+    if (personalKPIGroupsFromData[kpiDef.kpi_name]) {
+      personalKPIGroups[kpiDef.kpi_name] = personalKPIGroupsFromData[kpiDef.kpi_name]
+    } else {
+      // No data for this KPI
+      personalKPIGroups[kpiDef.kpi_name] = {
+        pass: 0,
+        fail: 0,
+        total: 0,
+        affected_positions: kpiDef.affected_positions,
+        no_data: true
+      }
+    }
+  }
 
   return {
     summary: {
@@ -409,5 +466,412 @@ export async function getMyKPIDashboardData(
     personalKPIs: myPersonalKPIs,
     failedKPIs,
     kpiTrend
+  }
+}
+
+// ============================================
+// KPI Detail Actions (for popup/modal)
+// ============================================
+
+export interface KPIDetailData {
+  kpiName: string
+  category: string
+  target: string
+  targetValue: number
+  actualValue: number
+  isPass: boolean
+  description: string
+  formula: string
+  details: any[]
+}
+
+export async function getKPIDetail(
+  kpiName: string,
+  year: number,
+  period: 'month' | 'quarter' | 'year',
+  periodValue?: number,
+  employeeId?: string
+): Promise<KPIDetailData | null> {
+  try {
+    const pool = await getConnection()
+
+    let whereClause = 'WHERE year = @year'
+    if (period === 'month' && periodValue) {
+      whereClause += ' AND month = @periodValue'
+    } else if (period === 'quarter' && periodValue) {
+      whereClause += ' AND quarter = @periodValue'
+    }
+
+    // KPI descriptions and formulas
+    const kpiInfo: Record<string, { category: string; target: string; description: string; formula: string }> = {
+      'Time to Delivery': {
+        category: 'Delivery',
+        target: '≥80%',
+        description: 'วัดความสามารถในการส่งมอบงานตาม Milestone ที่กำหนด (Mapping Data, System Test, UAT, Go-Live)',
+        formula: 'Σ(Achievement% × Weight × Planned Mandays) / Σ(Planned Mandays × Weight)'
+      },
+      'Man-day Control': {
+        category: 'Delivery',
+        target: '≥85%',
+        description: 'วัดการควบคุมการใช้ทรัพยากร (Man-days) ให้เป็นไปตามแผน',
+        formula: 'Σ(Control% × Weight × Planned Mandays) / Σ(Planned Mandays × Weight)'
+      },
+      'Defect Ratio': {
+        category: 'Quality',
+        target: '≤15%',
+        description: 'สัดส่วนของ Tasks ที่ทำเสร็จแต่ไม่ตรงตามแผน (Done Not Planned)',
+        formula: '(Done Not Planned Tasks / Total Done Tasks) × 100'
+      },
+      'Post Go-live Rework': {
+        category: 'Quality',
+        target: '≤8%',
+        description: 'สัดส่วนของ Tasks ที่ต้องแก้ไขหลัง Go-Live',
+        formula: '(Post Go-live Tasks / Total Tasks) × 100'
+      },
+      'Deploy Success Rate': {
+        category: 'Availability',
+        target: '≥95%',
+        description: 'อัตราความสำเร็จในการ Deploy ระบบ',
+        formula: '(Success Deploys / Total Deploys) × 100'
+      },
+      'Pre-deploy Backup': {
+        category: 'Availability',
+        target: '100%',
+        description: 'อัตราการทำ Backup ก่อน Deploy',
+        formula: '(Deploys with Backup / Total Deploys) × 100'
+      },
+      'On-time Meeting Minutes': {
+        category: 'Personal',
+        target: '≤3 ครั้ง',
+        description: 'จำนวนครั้งที่ส่ง Meeting Minutes ล่าช้า (เกิน 3 วันหลังประชุม)',
+        formula: 'นับจำนวน Meeting Minutes ที่ส่งหลัง 3 วัน'
+      },
+      'Required Docs On-time': {
+        category: 'Personal',
+        target: '≥85%',
+        description: 'สัดส่วนของเอกสาร Deliverables ที่ส่งตรงเวลา',
+        formula: '(On-time Docs / Total Required Docs) × 100'
+      },
+      'Issue Clearing': {
+        category: 'Personal',
+        target: '≥85%',
+        description: 'สัดส่วนของ Issues/Tasks ที่ Clear ได้ตามเวลา',
+        formula: '(Cleared Tasks / Total Assigned Tasks) × 100'
+      }
+    }
+
+    const info = kpiInfo[kpiName]
+    if (!info) return null
+
+    let details: any[] = []
+    let actualValue = 0
+
+    // Query specific data based on KPI type
+    switch (kpiName) {
+      case 'Time to Delivery': {
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .query(`
+            SELECT
+              project_code,
+              project_name,
+              time_to_delivery_percent as actual_percent,
+              target_percent,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_time_to_delivery
+            ${whereClause}
+            ORDER BY time_to_delivery_percent DESC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'Man-day Control': {
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .query(`
+            SELECT
+              project_code,
+              project_name,
+              manday_control_percent as actual_percent,
+              target_percent,
+              total_planned_mandays as planned_mandays,
+              total_actual_mandays as actual_mandays,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_manday_control
+            ${whereClause}
+            ORDER BY manday_control_percent DESC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'Defect Ratio': {
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .query(`
+            SELECT
+              project_code,
+              project_name,
+              defect_ratio_percent as actual_percent,
+              defect_mandays as done_not_planned_count,
+              total_mandays as done_count,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_defect_ratio
+            ${whereClause}
+            ORDER BY defect_ratio_percent ASC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'Post Go-live Rework': {
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .query(`
+            SELECT
+              project_code,
+              project_name,
+              rework_ratio_percent as actual_percent,
+              rework_mandays as post_golive_tasks,
+              total_mandays as total_tasks,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_post_golive_rework
+            ${whereClause}
+            ORDER BY rework_ratio_percent ASC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'Deploy Success Rate': {
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .query(`
+            SELECT
+              customer_code as project_code,
+              customer_name as project_name,
+              success_rate_percent as actual_percent,
+              successful_deploys as success_count,
+              total_deploys,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_deploy_success
+            ${whereClause}
+            ORDER BY success_rate_percent DESC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'Pre-deploy Backup': {
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .query(`
+            SELECT
+              source_code as project_code,
+              source_name as project_name,
+              backup_compliance_percent as actual_percent,
+              verified_backups as backup_count,
+              total_backups as total_deploys,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_predeploy_backup
+            ${whereClause}
+            ORDER BY backup_compliance_percent DESC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'On-time Meeting Minutes': {
+        let empWhereClause = whereClause
+        if (employeeId) {
+          empWhereClause += ' AND employee_id = @employeeId'
+        }
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .input('employeeId', sql.UniqueIdentifier, employeeId)
+          .query(`
+            SELECT
+              employee_name,
+              employee_code as project_code,
+              position as project_name,
+              late_count,
+              total_meetings,
+              ontime_count,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_meeting_minutes
+            ${empWhereClause}
+            ORDER BY late_count ASC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? details.reduce((sum, d) => sum + (d.late_count || 0), 0)
+          : 0
+        break
+      }
+
+      case 'Required Docs On-time': {
+        let empWhereClause = whereClause
+        if (employeeId) {
+          empWhereClause += ' AND employee_id = @employeeId'
+        }
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .input('employeeId', sql.UniqueIdentifier, employeeId)
+          .query(`
+            SELECT
+              employee_name,
+              project_code,
+              project_name,
+              ontime_percent as actual_percent,
+              ontime_count,
+              total_docs,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_docs_ontime
+            ${empWhereClause}
+            ORDER BY ontime_percent DESC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+
+      case 'Issue Clearing': {
+        let empWhereClause = whereClause
+        if (employeeId) {
+          empWhereClause += ' AND employee_id = @employeeId'
+        }
+        const result = await pool.request()
+          .input('year', sql.Int, year)
+          .input('periodValue', sql.Int, periodValue)
+          .input('employeeId', sql.UniqueIdentifier, employeeId)
+          .query(`
+            SELECT
+              employee_name,
+              clearing_percent as actual_percent,
+              cleared_tasks,
+              pending_count,
+              total_tasks,
+              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+            FROM pms.vw_kpi_issue_clearing
+            ${empWhereClause}
+            ORDER BY clearing_percent DESC
+          `)
+        details = result.recordset
+        actualValue = details.length > 0
+          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+          : 0
+        break
+      }
+    }
+
+    // Determine target value
+    const targetValue = kpiName === 'On-time Meeting Minutes' ? 3 :
+      kpiName === 'Defect Ratio' ? 15 :
+      kpiName === 'Post Go-live Rework' ? 8 :
+      kpiName === 'Man-day Control' ? 85 :
+      kpiName === 'Pre-deploy Backup' ? 100 :
+      kpiName === 'Deploy Success Rate' ? 95 : 80
+
+    // Determine pass/fail
+    const isPass = kpiName === 'On-time Meeting Minutes' ? actualValue <= 3 :
+      kpiName === 'Defect Ratio' ? actualValue <= 15 :
+      kpiName === 'Post Go-live Rework' ? actualValue <= 8 :
+      actualValue >= targetValue
+
+    return {
+      kpiName,
+      category: info.category,
+      target: info.target,
+      targetValue,
+      actualValue,
+      isPass,
+      description: info.description,
+      formula: info.formula,
+      details
+    }
+  } catch (error) {
+    console.error('getKPIDetail error:', error)
+    return null
+  }
+}
+
+// ============================================
+// Employee List for Personal KPI Filter
+// ============================================
+
+export interface EmployeeKPIOption {
+  id: string
+  name: string
+  employeeCode: string
+  position: string
+}
+
+export async function getEmployeesForPersonalKPI(
+  kpiName: string,
+  year: number,
+  period: 'month' | 'quarter' | 'year',
+  periodValue?: number
+): Promise<EmployeeKPIOption[]> {
+  try {
+    const pool = await getConnection()
+
+    // Get all active employees (like my-calendar does)
+    // This ensures dropdown always has options even if no KPI data exists yet
+    const result = await pool.request()
+      .query(`
+        SELECT
+          e.id,
+          e.employee_code,
+          COALESCE(
+            NULLIF(e.first_name_th, '') + ' ' + NULLIF(e.last_name_th, ''),
+            NULLIF(e.first_name, '') + ' ' + NULLIF(e.last_name, ''),
+            e.nickname,
+            e.employee_code
+          ) as full_name,
+          ISNULL(p.name, 'Unknown') as position_name
+        FROM pms.employees e
+        LEFT JOIN pms.positions p ON e.position_id = p.id
+        WHERE e.is_active = 1
+        ORDER BY e.first_name_th, e.first_name, e.nickname
+      `)
+
+    return result.recordset.map(r => ({
+      id: r.id,
+      name: r.full_name,
+      employeeCode: r.employee_code,
+      position: r.position_name
+    }))
+  } catch (error) {
+    console.error('getEmployeesForPersonalKPI error:', error)
+    return []
   }
 }

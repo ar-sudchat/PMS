@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from "react"
-import { CheckCircle2, AlertTriangle, RefreshCw, TrendingUp, Users, Target, ListTodo, Eye } from "lucide-react"
+import { CheckCircle2, AlertTriangle, RefreshCw, TrendingUp, Users, Target, ListTodo, Eye, Award, X, Zap, BarChart3 } from "lucide-react"
 import {
     getIssueClearingKPI,
     getTasksNotAsPlanned,
@@ -52,7 +52,7 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
 
     // Filters
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
-    const [monthFilter, setMonthFilter] = useState<number>(0) // 0 = whole year
+    const [monthFilter, setMonthFilter] = useState<number>(0)
     const [employeeFilter, setEmployeeFilter] = useState<string | null>(null)
 
     // Modal
@@ -73,7 +73,6 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
     const fetchData = useCallback(async () => {
         setIsLoading(true)
         try {
-            // Fetch KPI data
             const kpiResult = await getIssueClearingKPI({
                 year: yearFilter,
                 month: monthFilter || undefined,
@@ -83,7 +82,6 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
             if (kpiResult.success) {
                 setKpiData(kpiResult.data)
 
-                // Calculate summary
                 const totalCompleted = kpiResult.data.reduce((sum, r) => sum + r.total_completed, 0)
                 const doneAsPlanned = kpiResult.data.reduce((sum, r) => sum + r.done_as_planned, 0)
                 const doneNotAsPlanned = kpiResult.data.reduce((sum, r) => sum + r.done_not_as_planned, 0)
@@ -102,7 +100,6 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                 })
             }
 
-            // Fetch tasks not as planned
             const tasksResult = await getTasksNotAsPlanned({
                 year: yearFilter,
                 month: monthFilter || undefined,
@@ -112,7 +109,6 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                 setTasksNotPlanned(tasksResult.data)
             }
 
-            // Fetch monthly trend
             const trendResult = await getIssueClearingMonthlyTrend({
                 year: yearFilter,
                 employeeId: employeeFilter || undefined
@@ -160,79 +156,116 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
         ? tasksNotPlanned.filter(t => t.assignee_name === selectedEmployee.employee_name)
         : []
 
+    // Score gradient
+    const getScoreGradient = (rate: number) => {
+        if (rate >= 85) return 'from-emerald-500 via-green-500 to-teal-500'
+        if (rate >= 70) return 'from-yellow-500 via-amber-500 to-orange-500'
+        return 'from-rose-500 via-red-500 to-pink-500'
+    }
+
     return (
         <div className="p-6 max-w-[1400px] mx-auto">
-            {/* Page Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Issue Clearing KPI</h1>
-                    <p className="text-slate-500 text-sm mt-1">
-                        อัตราการทำงานเสร็จตามแผน (Done / Total Completed) - Target: &gt;= 85%
-                    </p>
+            {/* Page Header with Gradient */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 p-6 mb-6 shadow-lg">
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.3) 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+                <div className="relative flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                            <Zap size={28} className="text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold text-white">Issue Clearing KPI</h1>
+                            <p className="text-purple-100 text-sm mt-1">Task completion rate (Done / Total) - Target: &ge; 85%</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="px-4 py-2 bg-white/20 backdrop-blur-sm rounded-xl">
+                            <div className="text-white/70 text-xs">Employees</div>
+                            <div className="text-white font-bold text-lg">{summary.passCount}/{summary.totalEmployees} Pass</div>
+                        </div>
+                        <button
+                            onClick={() => fetchData()}
+                            disabled={isLoading}
+                            className="p-3 bg-white/20 backdrop-blur-sm rounded-xl text-white hover:bg-white/30 transition-all"
+                        >
+                            <RefreshCw size={20} className={isLoading ? 'animate-spin' : ''} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                {/* Overall Rate */}
-                <div className={`rounded-xl border-2 p-4 ${summary.overallRate >= 85 ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
-                    <div className="flex items-center gap-2 text-slate-600 mb-2">
-                        <Target size={18} />
-                        <span className="text-sm font-medium">Overall Rate</span>
-                    </div>
-                    <div className={`text-3xl font-bold ${summary.overallRate >= 85 ? 'text-green-600' : 'text-red-600'}`}>
-                        {summary.overallRate}%
-                    </div>
-                    <div className="w-full h-2 bg-slate-200 rounded-full mt-2 overflow-hidden">
-                        <div
-                            className={`h-full rounded-full ${summary.overallRate >= 85 ? 'bg-green-500' : 'bg-red-500'}`}
-                            style={{ width: `${Math.min(summary.overallRate, 100)}%` }}
-                        />
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                        {summary.overallRate >= 85 ? '✅ Pass' : '❌ Below Target'}
+                {/* Overall Rate Card */}
+                <div className={`rounded-2xl shadow-lg overflow-hidden ${summary.overallRate >= 85 ? 'bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 border-2 border-emerald-200' : 'bg-gradient-to-br from-rose-50 via-red-50 to-pink-50 border-2 border-rose-200'}`}>
+                    <div className="p-5">
+                        <div className="flex items-center gap-2 text-slate-600 mb-3">
+                            <Target size={18} className={summary.overallRate >= 85 ? 'text-emerald-600' : 'text-rose-600'} />
+                            <span className="text-sm font-semibold">Overall Rate</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className={`relative w-20 h-20 rounded-full bg-gradient-to-br ${getScoreGradient(summary.overallRate)} p-0.5`}>
+                                <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+                                    <span className={`text-2xl font-black ${summary.overallRate >= 85 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {summary.overallRate}%
+                                    </span>
+                                </div>
+                            </div>
+                            <div>
+                                <div className={`px-3 py-1.5 rounded-lg text-sm font-bold ${summary.overallRate >= 85 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {summary.overallRate >= 85 ? '✓ Pass' : '✗ Below'}
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">Target: 85%</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Total Completed */}
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-center gap-2 text-slate-600 mb-2">
-                        <ListTodo size={18} />
-                        <span className="text-sm font-medium">Total Completed</span>
+                {/* Total Completed Card */}
+                <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-slate-600 mb-3">
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                            <ListTodo size={18} className="text-blue-600" />
+                        </div>
+                        <span className="text-sm font-semibold">Total Completed</span>
                     </div>
-                    <div className="text-3xl font-bold text-slate-800">{summary.totalCompleted}</div>
-                    <div className="text-xs text-slate-500 mt-1">tasks</div>
+                    <div className="text-4xl font-black text-slate-800">{summary.totalCompleted}</div>
+                    <div className="text-xs text-slate-500 mt-1">tasks completed</div>
                 </div>
 
-                {/* Done (As Planned) */}
-                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-                    <div className="flex items-center gap-2 text-green-600 mb-2">
-                        <CheckCircle2 size={18} />
-                        <span className="text-sm font-medium">Done (As Planned)</span>
+                {/* Done (As Planned) Card */}
+                <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-emerald-600 mb-3">
+                        <div className="p-2 bg-emerald-100 rounded-lg">
+                            <CheckCircle2 size={18} className="text-emerald-600" />
+                        </div>
+                        <span className="text-sm font-semibold">Done (As Planned)</span>
                     </div>
-                    <div className="text-3xl font-bold text-green-600">{summary.doneAsPlanned}</div>
-                    <div className="text-xs text-green-600 mt-1">✅ tasks</div>
+                    <div className="text-4xl font-black text-emerald-600">{summary.doneAsPlanned}</div>
+                    <div className="text-xs text-emerald-600 mt-1">tasks on track</div>
                 </div>
 
-                {/* Not as Planned */}
-                <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-                    <div className="flex items-center gap-2 text-orange-600 mb-2">
-                        <AlertTriangle size={18} />
-                        <span className="text-sm font-medium">Not as Planned</span>
+                {/* Not as Planned Card */}
+                <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-amber-600 mb-3">
+                        <div className="p-2 bg-amber-100 rounded-lg">
+                            <AlertTriangle size={18} className="text-amber-600" />
+                        </div>
+                        <span className="text-sm font-semibold">Not as Planned</span>
                     </div>
-                    <div className="text-3xl font-bold text-orange-600">{summary.doneNotAsPlanned}</div>
-                    <div className="text-xs text-orange-600 mt-1">⚠️ tasks</div>
+                    <div className="text-4xl font-black text-amber-600">{summary.doneNotAsPlanned}</div>
+                    <div className="text-xs text-amber-600 mt-1">need attention</div>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
+            <div className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-xl shadow-sm p-4 mb-6">
                 <div className="flex items-center gap-4 flex-wrap">
                     {/* Year Filter */}
                     <select
                         value={yearFilter}
                         onChange={(e) => setYearFilter(parseInt(e.target.value))}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
+                        className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-purple-500 outline-none bg-white font-medium"
                     >
                         {years.map(y => (
                             <option key={y} value={y}>{y}</option>
@@ -243,7 +276,7 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                     <select
                         value={monthFilter}
                         onChange={(e) => setMonthFilter(parseInt(e.target.value))}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
+                        className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-purple-500 outline-none bg-white font-medium"
                     >
                         {MONTHS.map(m => (
                             <option key={m.value} value={m.value}>{m.label}</option>
@@ -251,7 +284,7 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                     </select>
 
                     {/* Employee Filter */}
-                    <div className="min-w-[200px]">
+                    <div className="min-w-[220px]">
                         <SmartCombobox
                             options={[
                                 { value: '', label: 'All Employees' },
@@ -263,61 +296,65 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                         />
                     </div>
 
-                    {/* Refresh */}
-                    <button
-                        onClick={() => fetchData()}
-                        disabled={isLoading}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                        title="Refresh"
-                    >
-                        <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
-                    </button>
+                    {(employeeFilter || monthFilter !== 0) && (
+                        <button
+                            onClick={() => { setEmployeeFilter(null); setMonthFilter(0) }}
+                            className="flex items-center gap-1.5 px-4 py-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all font-medium"
+                        >
+                            <X size={16} />
+                            Clear
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* Monthly Trend */}
             {monthFilter === 0 && (
-                <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
-                    <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
-                        <TrendingUp size={18} />
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
+                        <div className="p-2 bg-gradient-to-br from-violet-100 to-purple-100 rounded-lg">
+                            <BarChart3 size={18} className="text-violet-600" />
+                        </div>
                         Monthly Trend - {yearFilter}
                     </h3>
-                    <div className="flex items-end gap-2 h-32">
+                    <div className="flex items-end gap-2 h-40">
                         {monthlyTrend.map((item, index) => (
-                            <div key={index} className="flex-1 flex flex-col items-center">
-                                <div
-                                    className={`w-full rounded-t transition-all ${item.total_completed === 0
-                                        ? 'bg-slate-200'
-                                        : item.is_pass
-                                            ? 'bg-green-500'
-                                            : 'bg-red-500'
-                                        }`}
-                                    style={{ height: `${Math.max(item.clearing_rate, 10)}%` }}
-                                    title={`${item.clearing_rate}% (${item.done_as_planned}/${item.total_completed})`}
-                                />
-                                <div className="text-xs text-slate-500 mt-1">
+                            <div key={index} className="flex-1 flex flex-col items-center group">
+                                <div className="relative w-full">
+                                    <div
+                                        className={`w-full rounded-t-lg transition-all group-hover:scale-105 ${item.total_completed === 0
+                                            ? 'bg-slate-200'
+                                            : item.is_pass
+                                                ? 'bg-gradient-to-t from-emerald-500 to-green-400'
+                                                : 'bg-gradient-to-t from-rose-500 to-red-400'
+                                            }`}
+                                        style={{ height: `${Math.max(item.clearing_rate * 1.2, 15)}px` }}
+                                        title={`${item.clearing_rate}% (${item.done_as_planned}/${item.total_completed})`}
+                                    />
+                                    {item.total_completed > 0 && (
+                                        <div className={`absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity ${item.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            {item.clearing_rate}%
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-xs text-slate-500 mt-2 font-medium">
                                     {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][index]}
                                 </div>
-                                {item.total_completed > 0 && (
-                                    <div className={`text-xs font-medium ${item.is_pass ? 'text-green-600' : 'text-red-600'}`}>
-                                        {item.clearing_rate}%
-                                    </div>
-                                )}
                             </div>
                         ))}
                     </div>
-                    <div className="flex items-center justify-center gap-4 mt-4 text-xs">
-                        <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 bg-green-500 rounded" />
-                            <span>Pass (&gt;= 85%)</span>
+                    <div className="flex items-center justify-center gap-6 mt-5 text-xs">
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-t from-emerald-500 to-green-400 rounded" />
+                            <span className="font-medium">Pass (&ge; 85%)</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 bg-red-500 rounded" />
-                            <span>Fail (&lt; 85%)</span>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-t from-rose-500 to-red-400 rounded" />
+                            <span className="font-medium">Fail (&lt; 85%)</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 bg-slate-200 rounded" />
-                            <span>No Data</span>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-slate-200 rounded" />
+                            <span className="font-medium">No Data</span>
                         </div>
                     </div>
                 </div>
@@ -325,92 +362,110 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
 
             {/* KPI by Employee Table */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-6">
-                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                        <Users size={18} />
+                <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-purple-50 flex items-center justify-between">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <Users size={18} className="text-violet-600" />
                         KPI by Employee - {monthName} {yearFilter}
                     </h3>
                     <div className="flex items-center gap-4 text-sm">
-                        <span className="text-green-600">✅ Pass: {summary.passCount}</span>
-                        <span className="text-red-600">❌ Fail: {summary.failCount}</span>
+                        <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg font-semibold flex items-center gap-1">
+                            <CheckCircle2 size={14} />
+                            Pass: {summary.passCount}
+                        </span>
+                        <span className="px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg font-semibold flex items-center gap-1">
+                            <X size={14} />
+                            Fail: {summary.failCount}
+                        </span>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
-                                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">Employee</th>
-                                <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">Total Completed</th>
-                                <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">Done ✅</th>
-                                <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">Not as Planned ⚠️</th>
-                                <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">Rate</th>
-                                <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">Status</th>
-                                <th className="text-center px-4 py-3 text-sm font-medium text-slate-600"></th>
+                                <th className="text-left px-5 py-3.5 text-sm font-semibold text-slate-600">Employee</th>
+                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Total</th>
+                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Done</th>
+                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Not Planned</th>
+                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Rate</th>
+                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Status</th>
+                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600"></th>
                             </tr>
                         </thead>
                         <tbody>
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-8 text-slate-500">
-                                        <RefreshCw size={24} className="animate-spin mx-auto mb-2" />
-                                        Loading...
+                                    <td colSpan={7} className="text-center py-12 text-slate-500">
+                                        <RefreshCw size={28} className="animate-spin mx-auto mb-3 text-violet-500" />
+                                        <div className="font-medium">Loading...</div>
                                     </td>
                                 </tr>
                             ) : kpiData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-8 text-slate-500">
-                                        ไม่มีข้อมูล Task ที่เสร็จในช่วงเวลานี้
+                                    <td colSpan={7} className="text-center py-12 text-slate-500">
+                                        <ListTodo size={28} className="mx-auto mb-3 text-slate-300" />
+                                        <div className="font-medium">ไม่มีข้อมูล Task ที่เสร็จในช่วงเวลานี้</div>
                                     </td>
                                 </tr>
                             ) : (
                                 kpiData.map((row) => (
                                     <tr
                                         key={row.employee_id}
-                                        className="border-b border-slate-100 hover:bg-slate-50"
+                                        className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                                     >
-                                        <td className="px-4 py-3">
-                                            <span className="font-medium text-slate-800">{row.employee_name}</span>
-                                            {row.employee_id === currentUserId && (
-                                                <span className="ml-2 text-xs text-blue-600">(You)</span>
-                                            )}
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm ${row.is_pass
+                                                    ? 'bg-gradient-to-br from-emerald-500 to-green-600'
+                                                    : 'bg-gradient-to-br from-rose-500 to-red-600'
+                                                    }`}>
+                                                    {row.employee_name?.charAt(0) || '?'}
+                                                </div>
+                                                <div>
+                                                    <span className="font-semibold text-slate-800">{row.employee_name}</span>
+                                                    {row.employee_id === currentUserId && (
+                                                        <span className="ml-2 text-xs text-violet-600 font-medium bg-violet-50 px-2 py-0.5 rounded-full">(You)</span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </td>
-                                        <td className="text-center px-4 py-3 font-medium text-slate-800">
+                                        <td className="text-center px-4 py-4 font-bold text-slate-800 text-lg">
                                             {row.total_completed}
                                         </td>
-                                        <td className="text-center px-4 py-3 font-medium text-green-600">
-                                            {row.done_as_planned}
+                                        <td className="text-center px-4 py-4">
+                                            <span className="font-bold text-emerald-600 text-lg">{row.done_as_planned}</span>
                                         </td>
-                                        <td className="text-center px-4 py-3 font-medium text-orange-600">
-                                            {row.done_not_as_planned}
+                                        <td className="text-center px-4 py-4">
+                                            <span className="font-bold text-amber-600 text-lg">{row.done_not_as_planned}</span>
                                         </td>
-                                        <td className="text-center px-4 py-3">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <div className="w-20 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                        <td className="text-center px-4 py-4">
+                                            <div className="flex items-center justify-center gap-3">
+                                                <div className="w-24 h-2.5 bg-slate-200 rounded-full overflow-hidden">
                                                     <div
-                                                        className={`h-full rounded-full ${row.clearing_rate >= 85 ? 'bg-green-500' : 'bg-red-500'}`}
+                                                        className={`h-full rounded-full transition-all ${row.clearing_rate >= 85 ? 'bg-gradient-to-r from-emerald-500 to-green-500' : 'bg-gradient-to-r from-rose-500 to-red-500'}`}
                                                         style={{ width: `${Math.min(row.clearing_rate, 100)}%` }}
                                                     />
                                                 </div>
-                                                <span className={`font-bold ${row.clearing_rate >= 85 ? 'text-green-600' : 'text-red-600'}`}>
+                                                <span className={`font-black text-lg ${row.clearing_rate >= 85 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                     {row.clearing_rate}%
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="text-center px-4 py-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-medium ${row.is_pass
-                                                ? 'bg-green-100 text-green-700'
-                                                : 'bg-red-100 text-red-700'
+                                        <td className="text-center px-4 py-4">
+                                            <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shadow-sm ${row.is_pass
+                                                ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white'
+                                                : 'bg-gradient-to-r from-rose-500 to-red-500 text-white'
                                                 }`}>
-                                                {row.is_pass ? '✅ Pass' : '❌ Fail'}
+                                                {row.is_pass ? <CheckCircle2 size={14} /> : <X size={14} />}
+                                                {row.is_pass ? 'Pass' : 'Fail'}
                                             </span>
                                         </td>
-                                        <td className="text-center px-4 py-3">
+                                        <td className="text-center px-4 py-4">
                                             {row.done_not_as_planned > 0 && (
                                                 <button
                                                     onClick={() => handleViewEmployeeTasks(row)}
-                                                    className="flex items-center gap-1 px-2 py-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded text-sm font-medium transition-colors"
+                                                    className="flex items-center gap-1.5 px-3 py-2 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded-lg text-sm font-semibold transition-all"
                                                 >
-                                                    <Eye size={14} />
+                                                    <Eye size={15} />
                                                     View
                                                 </button>
                                             )}
@@ -425,51 +480,54 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
 
             {/* Tasks Not as Planned */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-slate-100 bg-orange-50 flex items-center justify-between">
-                    <h3 className="font-semibold text-orange-800 flex items-center gap-2">
-                        <AlertTriangle size={18} />
-                        Tasks Not as Planned ({tasksNotPlanned.length})
+                <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center justify-between">
+                    <h3 className="font-bold text-amber-800 flex items-center gap-2">
+                        <AlertTriangle size={18} className="text-amber-600" />
+                        Tasks Not as Planned
+                        <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full text-sm ml-1">{tasksNotPlanned.length}</span>
                     </h3>
-                    <span className="text-sm text-orange-600">รายการ Tasks ที่เสร็จไม่ตามแผน</span>
+                    <span className="text-sm text-amber-600 font-medium">รายการ Tasks ที่เสร็จไม่ตามแผน</span>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
-                                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">Date</th>
-                                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">Task</th>
-                                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">Project</th>
-                                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">Employee</th>
-                                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">Reason</th>
+                                <th className="text-left px-5 py-3.5 text-sm font-semibold text-slate-600">Date</th>
+                                <th className="text-left px-4 py-3.5 text-sm font-semibold text-slate-600">Task</th>
+                                <th className="text-left px-4 py-3.5 text-sm font-semibold text-slate-600">Project</th>
+                                <th className="text-left px-4 py-3.5 text-sm font-semibold text-slate-600">Employee</th>
+                                <th className="text-left px-4 py-3.5 text-sm font-semibold text-slate-600">Reason</th>
                             </tr>
                         </thead>
                         <tbody>
                             {tasksNotPlanned.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="text-center py-8 text-slate-500">
-                                        ไม่มี Tasks ที่เสร็จไม่ตามแผน 🎉
+                                    <td colSpan={5} className="text-center py-12">
+                                        <div className="text-5xl mb-3">🎉</div>
+                                        <div className="text-slate-600 font-semibold">ไม่มี Tasks ที่เสร็จไม่ตามแผน</div>
+                                        <div className="text-slate-400 text-sm mt-1">ทุกคนทำงานได้ตามแผนทั้งหมด!</div>
                                     </td>
                                 </tr>
                             ) : (
-                                tasksNotPlanned.map((task) => (
-                                    <tr key={task.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                tasksNotPlanned.slice(0, 10).map((task) => (
+                                    <tr key={task.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td className="px-5 py-3.5 text-sm text-slate-600 font-medium">
                                             {task.completed_date ? format(new Date(task.completed_date), 'dd/MM/yyyy', { locale: th }) : '-'}
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-3.5">
                                             <div>
-                                                <span className="font-medium text-slate-800">{task.task_code}</span>
+                                                <span className="font-semibold text-slate-800">{task.task_code}</span>
                                                 <p className="text-sm text-slate-500 truncate max-w-[200px]">{task.title}</p>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-sm text-slate-600">{task.project_code}</span>
+                                        <td className="px-4 py-3.5">
+                                            <span className="text-sm text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded">{task.project_code}</span>
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                        <td className="px-4 py-3.5 text-sm text-slate-700 font-medium">
                                             {task.assignee_name}
                                         </td>
-                                        <td className="px-4 py-3">
-                                            <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-700">
+                                        <td className="px-4 py-3.5">
+                                            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 border border-amber-200">
                                                 {getReasonLabel(task.not_as_planned_reason)}
                                             </span>
                                         </td>
@@ -478,6 +536,11 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                             )}
                         </tbody>
                     </table>
+                    {tasksNotPlanned.length > 10 && (
+                        <div className="px-5 py-3 text-center text-sm text-slate-500 bg-slate-50 border-t border-slate-100">
+                            แสดง 10 จาก {tasksNotPlanned.length} รายการ
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -485,8 +548,10 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
             <Dialog open={showTasksModal} onOpenChange={setShowTasksModal}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <AlertTriangle className="text-orange-500" size={20} />
+                        <DialogTitle className="flex items-center gap-3 text-lg">
+                            <div className="p-2 bg-amber-100 rounded-lg">
+                                <AlertTriangle className="text-amber-600" size={20} />
+                            </div>
                             Tasks Not as Planned - {selectedEmployee?.employee_name}
                         </DialogTitle>
                     </DialogHeader>
@@ -494,26 +559,26 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                         <table className="w-full">
                             <thead className="bg-slate-50 sticky top-0">
                                 <tr>
-                                    <th className="text-left px-3 py-2 text-sm font-medium text-slate-600">Date</th>
-                                    <th className="text-left px-3 py-2 text-sm font-medium text-slate-600">Task</th>
-                                    <th className="text-left px-3 py-2 text-sm font-medium text-slate-600">Reason</th>
+                                    <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">Date</th>
+                                    <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">Task</th>
+                                    <th className="text-left px-4 py-3 text-sm font-semibold text-slate-600">Reason</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {employeeTasksNotPlanned.map((task) => (
-                                    <tr key={task.id} className="border-b border-slate-100">
-                                        <td className="px-3 py-2 text-sm text-slate-600">
+                                    <tr key={task.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                        <td className="px-4 py-3 text-sm text-slate-600 font-medium">
                                             {task.completed_date ? format(new Date(task.completed_date), 'dd/MM/yyyy') : '-'}
                                         </td>
-                                        <td className="px-3 py-2">
+                                        <td className="px-4 py-3">
                                             <div>
-                                                <span className="font-medium text-slate-800">{task.task_code}</span>
+                                                <span className="font-semibold text-slate-800">{task.task_code}</span>
                                                 <p className="text-xs text-slate-500">{task.title}</p>
-                                                <p className="text-xs text-blue-600">{task.project_code}</p>
+                                                <p className="text-xs text-blue-600 font-medium">{task.project_code}</p>
                                             </div>
                                         </td>
-                                        <td className="px-3 py-2">
-                                            <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-700">
+                                        <td className="px-4 py-3">
+                                            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
                                                 {getReasonLabel(task.not_as_planned_reason)}
                                             </span>
                                         </td>

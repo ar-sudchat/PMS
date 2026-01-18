@@ -169,7 +169,7 @@ export async function getEmployeeTimesheetMonthly(year: number, month: number): 
         SELECT
           e.id AS employee_id,
           e.employee_code,
-          e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
+          COALESCE(e.first_name_th + ' ' + ISNULL(e.last_name_th, ''), e.first_name + ' ' + ISNULL(e.last_name, '')) AS employee_name,
           ISNULL(d.name, 'No Department') AS department_name,
           ISNULL(SUM(CASE WHEN wn.week_of_month = 1 THEN wn.hours END), 0) AS week1_hours,
           ISNULL(SUM(CASE WHEN wn.week_of_month = 2 THEN wn.hours END), 0) AS week2_hours,
@@ -182,7 +182,7 @@ export async function getEmployeeTimesheetMonthly(year: number, month: number): 
         LEFT JOIN pms.departments d ON e.department_id = d.id
         LEFT JOIN WeekNumbers wn ON e.id = wn.assignee_id
         WHERE e.is_active = 1
-        GROUP BY e.id, e.employee_code, e.first_name, e.last_name, d.name
+        GROUP BY e.id, e.employee_code, e.first_name_th, e.last_name_th, e.first_name, e.last_name, d.name
         ORDER BY total_hours DESC
       `)
 
@@ -319,7 +319,7 @@ export async function getMissingTimesheet(): Promise<MissingTimesheet[]> {
           SELECT
             e.id AS employee_id,
             e.employee_code,
-            e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
+            COALESCE(e.first_name_th + ' ' + ISNULL(e.last_name_th, ''), e.first_name + ' ' + ISNULL(e.last_name, '')) AS employee_name,
             ISNULL(d.name, 'No Department') AS department_name,
             MAX(te.entry_date) AS last_entry_date
           FROM pms.employees e
@@ -327,7 +327,7 @@ export async function getMissingTimesheet(): Promise<MissingTimesheet[]> {
           LEFT JOIN pms.tasks t ON e.id = t.assignee_id
           LEFT JOIN pms.timesheet_entries te ON t.id = te.task_id AND te.is_active = 1
           WHERE e.is_active = 1
-          GROUP BY e.id, e.employee_code, e.first_name, e.last_name, d.name
+          GROUP BY e.id, e.employee_code, e.first_name_th, e.last_name_th, e.first_name, e.last_name, d.name
         )
         SELECT
           et.*,
@@ -368,7 +368,7 @@ export async function getLowUtilizationEmployees(year: number, month: number, th
         SELECT
           e.id AS employee_id,
           e.employee_code,
-          e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
+          COALESCE(e.first_name_th + ' ' + ISNULL(e.last_name_th, ''), e.first_name + ' ' + ISNULL(e.last_name, '')) AS employee_name,
           ISNULL(d.name, 'No Department') AS department_name,
           ISNULL(SUM(te.hours), 0) AS total_hours,
           CAST(ROUND(ISNULL(SUM(te.hours), 0) * 100.0 / 140, 1) AS DECIMAL(5,1)) AS utilization_percent
@@ -380,7 +380,7 @@ export async function getLowUtilizationEmployees(year: number, month: number, th
           AND YEAR(te.entry_date) = @year
           AND MONTH(te.entry_date) = @month
         WHERE e.is_active = 1
-        GROUP BY e.id, e.employee_code, e.first_name, e.last_name, d.name
+        GROUP BY e.id, e.employee_code, e.first_name_th, e.last_name_th, e.first_name, e.last_name, d.name
         HAVING CAST(ROUND(ISNULL(SUM(te.hours), 0) * 100.0 / 140, 1) AS DECIMAL(5,1)) < @threshold
           AND ISNULL(SUM(te.hours), 0) > 0
         ORDER BY utilization_percent ASC

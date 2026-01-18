@@ -25,13 +25,15 @@ interface TaskStatusSelectProps {
   onChange: (status: string, reason?: string) => void
   disabled?: boolean
   excludeStatuses?: string[]
+  fullWidth?: boolean
 }
 
 export function TaskStatusSelect({
   value,
   onChange,
   disabled = false,
-  excludeStatuses = ['cancelled']
+  excludeStatuses = ['cancelled'],
+  fullWidth = false
 }: TaskStatusSelectProps) {
   const [showReasonModal, setShowReasonModal] = useState(false)
   const [selectedReason, setSelectedReason] = useState('')
@@ -65,7 +67,7 @@ export function TaskStatusSelect({
   return (
     <>
       <Select value={value} onValueChange={handleStatusChange} disabled={disabled}>
-        <SelectTrigger className="w-[200px]">
+        <SelectTrigger className={fullWidth ? "w-full" : "w-[200px]"}>
           <SelectValue>
             {currentConfig && (
               <div className="flex items-center gap-2">

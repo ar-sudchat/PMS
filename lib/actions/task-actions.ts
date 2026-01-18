@@ -226,6 +226,7 @@ export async function createTask(data: {
     due_date?: string
     is_count_for_kpi?: boolean
     checklist_items?: { title: string; sort_order: number }[]
+    attachments?: { id?: string; name: string; path: string; size: number; mimeType?: string; type?: string; uploadedAt?: string }[]
 }) {
     try {
         const user = await getCurrentUser()
@@ -310,6 +311,22 @@ export async function createTask(data: {
                         INSERT INTO pms.task_checklist_items (task_id, title, sort_order)
                         VALUES (@taskId, @title, @sortOrder)
                     `)
+            }
+        }
+
+        // Save attachments if provided
+        if (data.attachments && data.attachments.length > 0) {
+            // Check if attachments column exists
+            const attachmentsColumnCheck = await pool.request().query(`
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+                AND COLUMN_NAME = 'attachments'
+            `)
+            if (attachmentsColumnCheck.recordset.length > 0) {
+                await pool.request()
+                    .input('taskId', sql.UniqueIdentifier, taskId)
+                    .input('attachments', sql.NVarChar, JSON.stringify(data.attachments))
+                    .query(`UPDATE pms.tasks SET attachments = @attachments WHERE id = @taskId`)
             }
         }
 

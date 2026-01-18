@@ -234,7 +234,7 @@ export async function getActiveOwners() {
         const result = await pool.request().query(`
             SELECT DISTINCT
                 p.project_owner_id AS id,
-                e.first_name + ' ' + e.last_name AS name,
+                COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS name,
                 e.employee_code AS code
             FROM pms.projects p
             INNER JOIN pms.employees e ON p.project_owner_id = e.id

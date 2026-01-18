@@ -62,13 +62,14 @@ export async function getEmployees() {
     try {
         const result = await pool.request()
             .query(`
-                SELECT e.id, e.first_name + ' ' + e.last_name as full_name, 
-                       ISNULL(p.name, '') as position_name, 
+                SELECT e.id,
+                       COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) as full_name,
+                       ISNULL(p.name, '') as position_name,
                        ISNULL(p.code, '') as position_code
                 FROM pms.employees e
                 LEFT JOIN pms.positions p ON e.position_id = p.id
                 WHERE e.is_active = 1
-                ORDER BY e.first_name
+                ORDER BY e.first_name_th, e.first_name
             `)
         return result.recordset
     } catch (error) {
@@ -661,13 +662,13 @@ export async function getProjectFormOptions() {
             pool.request().query(`SELECT id, code, name FROM pms.customers WHERE is_active = 1 ORDER BY name`),
             pool.request().query(`
         SELECT e.id, e.employee_code,
-          CONCAT(e.first_name, ' ', e.last_name) as name,
+          COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) as name,
           CONCAT(e.first_name_th, ' ', e.last_name_th) as name_th,
           e.role, p.code as position_code
         FROM pms.employees e
         LEFT JOIN pms.positions p ON e.position_id = p.id
         WHERE e.is_active = 1
-        ORDER BY e.first_name
+        ORDER BY e.first_name_th, e.first_name
       `),
             pool.request().query(milestoneQuery),
             pool.request().query(deliverableQuery),

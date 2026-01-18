@@ -239,11 +239,8 @@ export function TaskTable({ tasks, onViewDetail, onLogTime, onStatusChange, canL
                                         {group.tasks.map(task => (
                                             <tr
                                                 key={task.task_id}
-                                                className={cn(
-                                                    "hover:bg-slate-50 transition-colors",
-                                                    canLogTime && "cursor-pointer"
-                                                )}
-                                                onClick={canLogTime ? () => onLogTime(task) : undefined}
+                                                className="hover:bg-slate-50 transition-colors cursor-pointer"
+                                                onClick={() => onViewDetail(task)}
                                             >
                                                 {/* Task Code */}
                                                 <td className="px-4 py-3">

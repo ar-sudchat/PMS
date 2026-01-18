@@ -79,6 +79,8 @@ export function MyTasksView({
     const [logTimeTask, setLogTimeTask] = useState<MyTask | null>(null)
     const [isDetailOpen, setIsDetailOpen] = useState(false)
     const [isLogTimeOpen, setIsLogTimeOpen] = useState(false)
+    const [detailRefreshKey, setDetailRefreshKey] = useState(0) // Key to trigger refresh in TaskDetailModal
+    const [detailActiveTab, setDetailActiveTab] = useState<'checklist' | 'timelog' | 'attachments'>('checklist')
 
     // Employee options for combobox
     const employeeOptions = useMemo(() => {
@@ -107,7 +109,7 @@ export function MyTasksView({
         setCurrentWeekDate(new Date())
     }
 
-    const fetchTasks = async (status: string, employeeId?: string, weekStart?: string) => {
+    const fetchTasks = async (status: string, employeeId?: string, weekStart?: string, updateDetailTask?: boolean) => {
         setIsLoading(true)
         try {
             const res = await getMyTasks({
@@ -123,6 +125,14 @@ export function MyTasksView({
 
             setTasks(res)
             setCounts(newCounts)
+
+            // Update detailTask if it's open and we found the updated task
+            if (updateDetailTask && detailTask) {
+                const updatedTask = res.find(t => t.task_id === detailTask.task_id)
+                if (updatedTask) {
+                    setDetailTask(updatedTask)
+                }
+            }
         } catch (error) {
             toast.error('Failed to refresh tasks')
         } finally {
@@ -349,19 +359,27 @@ export function MyTasksView({
                 open={isDetailOpen}
                 onOpenChange={setIsDetailOpen}
                 task={detailTask}
+                activeTab={detailActiveTab}
+                onTabChange={setDetailActiveTab}
                 onLogTime={(t) => {
                     setLogTimeTask(t)
                     setIsLogTimeOpen(true)
                 }}
                 onStatusChange={handleTaskStatusUpdate}
-                onDataChange={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)}
+                onDataChange={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date, true)}
+                refreshTrigger={detailRefreshKey}
             />
 
             <QuickLogTimeModal
                 open={isLogTimeOpen}
                 onOpenChange={setIsLogTimeOpen}
                 task={logTimeTask}
-                postLogAction={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)}
+                postLogAction={() => {
+                    // Fetch tasks and update detailTask with new progress/hours data
+                    fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date, true)
+                    // Trigger TaskDetailModal to refresh its internal data (time entries, checklist)
+                    setDetailRefreshKey(prev => prev + 1)
+                }}
             />
         </div>
     )

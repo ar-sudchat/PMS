@@ -247,7 +247,7 @@ export async function getProjectOwnersForRework(year?: number): Promise<{
         let query = `
             SELECT DISTINCT
                 e.id,
-                e.first_name + ' ' + e.last_name AS name
+                COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS name
             FROM pms.vw_post_golive_rework v
             INNER JOIN pms.employees e ON v.project_owner_id = e.id
         `

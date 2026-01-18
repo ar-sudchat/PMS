@@ -1,11 +1,14 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Target, AlertTriangle,
   CheckCircle, XCircle, Brain, Download, Building2, User,
-  TrendingUp, TrendingDown, Sparkles, Award, Zap, Activity
+  TrendingUp, TrendingDown, Sparkles, Award, Zap, Activity,
+  ExternalLink
 } from 'lucide-react'
+import { KPIDetailModal } from './KPIDetailModal'
 
 interface KPIDashboardTeamProps {
   data: any
@@ -13,11 +16,13 @@ interface KPIDashboardTeamProps {
   year: number
   period: 'month' | 'quarter' | 'year'
   periodValue: number
+  currentUserId?: string
 }
 
-export function KPIDashboardTeam({ data, aiAnalysis, year, period, periodValue }: KPIDashboardTeamProps) {
+export function KPIDashboardTeam({ data, aiAnalysis, year, period, periodValue, currentUserId }: KPIDashboardTeamProps) {
   const router = useRouter()
   const analysis = aiAnalysis?.analysis
+  const [selectedKPI, setSelectedKPI] = useState<string | null>(null)
 
   const handlePeriodChange = (newPeriod: string) => {
     router.push(`/kpi-dashboard?year=${year}&period=${newPeriod}&value=${periodValue}`)
@@ -333,9 +338,16 @@ export function KPIDashboardTeam({ data, aiAnalysis, year, period, periodValue }
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.departmentKPIs.map((kpi: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <tr
+                  key={idx}
+                  className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                  onClick={() => setSelectedKPI(kpi.kpi_name)}
+                >
                   <td className="py-4 px-6">
-                    <span className="font-medium text-slate-800">{kpi.kpi_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors">{kpi.kpi_name}</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </td>
                   <td className="text-center py-4 px-4">
                     <span className={`px-3 py-1.5 text-xs font-medium rounded-full border ${getCategoryColor(kpi.category)}`}>
@@ -344,13 +356,21 @@ export function KPIDashboardTeam({ data, aiAnalysis, year, period, periodValue }
                   </td>
                   <td className="text-center py-4 px-4 text-slate-600">{kpi.target}</td>
                   <td className="text-center py-4 px-4">
-                    <span className={`text-lg font-bold ${getStatusColor(kpi.is_pass)}`}>
-                      {kpi.actual_value}%
-                    </span>
+                    {kpi.no_data ? (
+                      <span className="text-sm text-slate-400 italic">ไม่มีข้อมูล</span>
+                    ) : (
+                      <span className={`text-lg font-bold ${getStatusColor(kpi.is_pass)}`}>
+                        {kpi.actual_value}%
+                      </span>
+                    )}
                   </td>
                   <td className="text-center py-4 px-4">
                     <div className="flex justify-center">
-                      {getStatusIcon(kpi.is_pass)}
+                      {kpi.no_data ? (
+                        <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 text-slate-500">N/A</span>
+                      ) : (
+                        getStatusIcon(kpi.is_pass)
+                      )}
                     </div>
                   </td>
                   <td className="text-center py-4 px-4">
@@ -396,32 +416,51 @@ export function KPIDashboardTeam({ data, aiAnalysis, year, period, periodValue }
             </thead>
             <tbody className="divide-y divide-slate-100">
               {Object.entries(data.personalKPIGroups).map(([name, stats]: [string, any], idx: number) => (
-                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <tr
+                  key={idx}
+                  className="hover:bg-purple-50/50 transition-colors cursor-pointer group"
+                  onClick={() => setSelectedKPI(name)}
+                >
                   <td className="py-4 px-6">
-                    <span className="font-medium text-slate-800">{name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-800 group-hover:text-purple-600 transition-colors">{name}</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </td>
                   <td className="text-center py-4 px-4 text-slate-600">
-                    {name.includes('Meeting') ? '≤3 ครั้ง' : '≥85%'}
+                    {name.includes('Meeting') ? '≤3 ครั้ง' : name.includes('Docs') ? '≥95%' : '≥85%'}
                   </td>
                   <td className="text-center py-4 px-4">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">
-                      <CheckCircle className="h-3.5 w-3.5" />
-                      {stats.pass}
-                    </span>
+                    {stats.no_data ? (
+                      <span className="text-sm text-slate-400 italic">-</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {stats.pass}
+                      </span>
+                    )}
                   </td>
                   <td className="text-center py-4 px-4">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-100 text-rose-700 font-medium">
-                      <XCircle className="h-3.5 w-3.5" />
-                      {stats.fail}
-                    </span>
+                    {stats.no_data ? (
+                      <span className="text-sm text-slate-400 italic">-</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-100 text-rose-700 font-medium">
+                        <XCircle className="h-3.5 w-3.5" />
+                        {stats.fail}
+                      </span>
+                    )}
                   </td>
                   <td className="text-center py-4 px-4">
                     <div className="flex justify-center gap-1">
-                      {stats.affected_positions?.split(',').map((pos: string, i: number) => (
-                        <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600">
-                          {pos.trim()}
-                        </span>
-                      ))}
+                      {stats.no_data ? (
+                        <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 text-slate-400 italic">ไม่มีข้อมูล</span>
+                      ) : (
+                        stats.affected_positions?.split(',').map((pos: string, i: number) => (
+                          <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600">
+                            {pos.trim()}
+                          </span>
+                        ))
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -470,6 +509,17 @@ export function KPIDashboardTeam({ data, aiAnalysis, year, period, periodValue }
           </div>
         </div>
       )}
+
+      {/* KPI Detail Modal */}
+      <KPIDetailModal
+        isOpen={!!selectedKPI}
+        onClose={() => setSelectedKPI(null)}
+        kpiName={selectedKPI || ''}
+        year={year}
+        period={period}
+        periodValue={periodValue}
+        defaultEmployeeId={currentUserId}
+      />
     </div>
   )
 }

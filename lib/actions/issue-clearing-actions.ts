@@ -274,7 +274,7 @@ export async function getActiveEmployeesForIssueClearing() {
         const result = await pool.request().query(`
             SELECT DISTINCT
                 e.id,
-                e.first_name + ' ' + e.last_name AS name,
+                COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS name,
                 e.employee_code AS code
             FROM pms.employees e
             INNER JOIN pms.timesheet_entries ts ON e.id = ts.employee_id

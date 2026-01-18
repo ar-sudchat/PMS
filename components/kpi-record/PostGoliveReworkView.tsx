@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { RefreshCw, AlertTriangle, CheckCircle2, XCircle, Wrench } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { RefreshCw, AlertTriangle, CheckCircle2, XCircle, Wrench, Target, TrendingDown, FolderKanban, Users, X, Award } from 'lucide-react'
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import {
@@ -35,7 +34,6 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
     const [statusFilter, setStatusFilter] = useState<'all' | 'closed' | 'post-golive'>('all')
     const [ownerFilter, setOwnerFilter] = useState<string>('')
 
-    // Fetch initial data
     useEffect(() => {
         fetchYears()
     }, [])
@@ -119,6 +117,13 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
         ...owners.map(o => ({ value: o.id, label: o.name }))
     ]
 
+    // Score gradient
+    const getScoreGradient = (ratio: number) => {
+        if (ratio <= 8) return 'from-emerald-500 via-green-500 to-teal-500'
+        if (ratio <= 12) return 'from-yellow-500 via-amber-500 to-orange-500'
+        return 'from-rose-500 via-red-500 to-pink-500'
+    }
+
     // Table columns
     const columns = [
         {
@@ -126,7 +131,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             accessorKey: 'project_code',
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
                 <div>
-                    <p className="font-medium text-slate-900">{row.original.project_code}</p>
+                    <p className="font-semibold text-slate-900">{row.original.project_code}</p>
                     <p className="text-xs text-slate-500 truncate max-w-[280px]">{row.original.project_name}</p>
                 </div>
             ),
@@ -136,7 +141,9 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             header: 'Owner',
             accessorKey: 'owner_name',
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
-                <span className="text-slate-700">{row.original.owner_name}</span>
+                <span className="text-sm font-medium text-violet-700 bg-gradient-to-r from-violet-50 to-purple-50 px-2.5 py-1 rounded-full border border-violet-200">
+                    {row.original.owner_name}
+                </span>
             ),
             size: 200,
         },
@@ -144,7 +151,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             header: 'Go-Live',
             accessorKey: 'golive_completed_date',
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
-                <span className="text-slate-600 text-sm">{formatDate(row.original.golive_completed_date)}</span>
+                <span className="text-sm text-slate-600 font-medium">{formatDate(row.original.golive_completed_date)}</span>
             ),
             size: 110,
         },
@@ -154,9 +161,9 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => {
                 const status = row.original.project_status
                 return (
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${status === 'Closed'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-yellow-100 text-yellow-700'
+                    <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${status === 'Closed'
+                        ? 'bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 border border-blue-200'
+                        : 'bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700 border border-amber-200'
                         }`}>
                         {status === 'Closed' ? 'Closed' : 'Post GL'}
                     </span>
@@ -168,7 +175,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             header: 'Total MD',
             accessorKey: 'total_manday',
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
-                <span className="text-slate-700 font-medium">{row.original.total_manday}</span>
+                <span className="text-slate-800 font-bold text-lg">{row.original.total_manday}</span>
             ),
             size: 90,
         },
@@ -176,7 +183,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             header: 'Rework',
             accessorKey: 'rework_manday',
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => (
-                <span className="text-slate-700">{row.original.rework_manday}</span>
+                <span className="text-amber-600 font-bold text-lg">{row.original.rework_manday}</span>
             ),
             size: 90,
         },
@@ -186,11 +193,11 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             cell: ({ row }: { row: { original: PostGoliveReworkProject } }) => {
                 const { rework_ratio, is_pass } = row.original
                 return (
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${is_pass
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-sm ${is_pass
+                        ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white'
+                        : 'bg-gradient-to-r from-rose-500 to-red-500 text-white'
                         }`}>
-                        {is_pass ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                        {is_pass ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
                         {rework_ratio}%
                     </span>
                 )
@@ -201,27 +208,41 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
 
     return (
         <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-6 w-full"}>
-            {/* Header - only show when not embedded */}
+            {/* Header with Gradient */}
             {!embedded && (
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-orange-100 rounded-lg">
-                            <Wrench className="w-6 h-6 text-orange-600" />
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 p-6 shadow-lg">
+                    <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.3) 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+                    <div className="relative flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                                <Wrench size={28} className="text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-bold text-white">Post Go-live Rework Ratio</h1>
+                                <p className="text-orange-100 text-sm mt-1">Measure rework effort after go-live - Target: &le; {TARGET_RATIO}%</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-slate-900">Post Go-live Rework Ratio</h1>
-                            <p className="text-slate-500">Target: &le; {TARGET_RATIO}%</p>
+                        <div className="flex items-center gap-3">
+                            {summary && (
+                                <div className="px-4 py-2 bg-white/20 backdrop-blur-sm rounded-xl">
+                                    <div className="text-white/70 text-xs">Projects Pass</div>
+                                    <div className="text-white font-bold text-lg">{summary.projects_pass}/{summary.total_projects}</div>
+                                </div>
+                            )}
+                            <button
+                                onClick={handleRefresh}
+                                disabled={isLoading}
+                                className="p-3 bg-white/20 backdrop-blur-sm rounded-xl text-white hover:bg-white/30 transition-all"
+                            >
+                                <RefreshCw size={20} className={isLoading ? 'animate-spin' : ''} />
+                            </button>
                         </div>
                     </div>
-                    <Button onClick={handleRefresh} variant="outline" size="sm">
-                        <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                        Refresh
-                    </Button>
                 </div>
             )}
 
             {/* Filters */}
-            <div className={`flex flex-wrap items-center gap-4 bg-white ${embedded ? 'p-3' : 'p-4'} rounded-xl border border-slate-200`}>
+            <div className={`flex flex-wrap items-center gap-4 bg-white/80 backdrop-blur-sm ${embedded ? 'p-3' : 'p-4'} rounded-xl border border-slate-200 shadow-sm`}>
                 <div className="w-32">
                     <SmartCombobox
                         options={yearOptions}
@@ -246,76 +267,111 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
                         placeholder="Owner"
                     />
                 </div>
+                {(statusFilter !== 'all' || ownerFilter) && (
+                    <button
+                        onClick={() => { setStatusFilter('all'); setOwnerFilter('') }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all font-medium"
+                    >
+                        <X size={16} />
+                        Clear
+                    </button>
+                )}
             </div>
 
             {/* Summary Card */}
             {summary && (
-                <div className={`bg-white rounded-xl border border-slate-200 ${embedded ? 'p-4' : 'p-6'}`}>
-                    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                <div className={`bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden ${embedded ? 'p-4' : 'p-6'}`}>
+                    <h2 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+                        <div className="p-2 bg-gradient-to-br from-amber-100 to-orange-100 rounded-lg">
+                            <TrendingDown size={18} className="text-amber-600" />
+                        </div>
                         Summary {yearFilter}
                     </h2>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Main KPI */}
-                        <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-lg">
-                            <div className={`text-4xl font-bold ${summary.is_pass ? 'text-green-600' : 'text-red-600'}`}>
-                                {summary.overall_ratio}%
-                            </div>
-                            <div className="flex items-center gap-2 mt-2">
-                                {summary.is_pass ? (
-                                    <span className="flex items-center gap-1 text-green-600 text-sm font-medium">
-                                        <CheckCircle2 size={16} /> Pass (Target &le; {TARGET_RATIO}%)
-                                    </span>
-                                ) : (
-                                    <span className="flex items-center gap-1 text-red-600 text-sm font-medium">
-                                        <XCircle size={16} /> Fail (Target &le; {TARGET_RATIO}%)
-                                    </span>
+                        <div className={`flex flex-col items-center justify-center p-6 rounded-2xl ${summary.is_pass
+                            ? 'bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 border-2 border-emerald-200'
+                            : 'bg-gradient-to-br from-rose-50 via-red-50 to-pink-50 border-2 border-rose-200'
+                            }`}>
+                            <div className="relative">
+                                <div className={`w-28 h-28 rounded-full bg-gradient-to-br ${getScoreGradient(summary.overall_ratio)} p-1`}>
+                                    <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center">
+                                        <span className={`text-3xl font-black ${summary.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            {summary.overall_ratio}%
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-medium">Rework Ratio</span>
+                                    </div>
+                                </div>
+                                {summary.is_pass && (
+                                    <div className="absolute -top-1 -right-1 p-1.5 bg-emerald-500 rounded-full shadow-lg">
+                                        <Award size={14} className="text-white" />
+                                    </div>
                                 )}
                             </div>
-                            {/* Progress bar */}
-                            <div className="w-full mt-3">
-                                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                                    <div
-                                        className={`h-full rounded-full transition-all ${summary.is_pass ? 'bg-green-500' : 'bg-red-500'}`}
-                                        style={{ width: `${Math.min(summary.overall_ratio / (TARGET_RATIO * 2) * 100, 100)}%` }}
-                                    />
-                                </div>
+                            <div className={`mt-4 px-4 py-2 rounded-xl font-bold ${summary.is_pass
+                                ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white'
+                                : 'bg-gradient-to-r from-rose-500 to-red-500 text-white'
+                                }`}>
+                                {summary.is_pass ? '✓ PASS' : '✗ OVER TARGET'}
                             </div>
+                            <div className="text-xs text-slate-500 mt-2">Target: &le; {TARGET_RATIO}%</div>
                         </div>
 
-                        {/* Stats */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="text-center p-3 bg-slate-50 rounded-lg">
-                                <p className="text-2xl font-bold text-slate-800">{summary.total_projects}</p>
-                                <p className="text-xs text-slate-500">Total Projects</p>
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="text-center p-4 bg-gradient-to-br from-slate-50 to-gray-50 rounded-xl border border-slate-200">
+                                <div className="p-2 bg-slate-100 rounded-lg inline-block mb-2">
+                                    <FolderKanban size={18} className="text-slate-600" />
+                                </div>
+                                <p className="text-2xl font-black text-slate-800">{summary.total_projects}</p>
+                                <p className="text-xs text-slate-500 font-medium">Total Projects</p>
                             </div>
-                            <div className="text-center p-3 bg-blue-50 rounded-lg">
-                                <p className="text-2xl font-bold text-blue-600">{summary.closed_count}</p>
-                                <p className="text-xs text-slate-500">Closed</p>
+                            <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                                <div className="p-2 bg-blue-100 rounded-lg inline-block mb-2">
+                                    <CheckCircle2 size={18} className="text-blue-600" />
+                                </div>
+                                <p className="text-2xl font-black text-blue-600">{summary.closed_count}</p>
+                                <p className="text-xs text-slate-500 font-medium">Closed</p>
                             </div>
-                            <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                                <p className="text-2xl font-bold text-yellow-600">{summary.post_golive_count}</p>
-                                <p className="text-xs text-slate-500">Post GL</p>
+                            <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl border border-amber-200">
+                                <div className="p-2 bg-amber-100 rounded-lg inline-block mb-2">
+                                    <Target size={18} className="text-amber-600" />
+                                </div>
+                                <p className="text-2xl font-black text-amber-600">{summary.post_golive_count}</p>
+                                <p className="text-xs text-slate-500 font-medium">Post GL</p>
                             </div>
-                            <div className="text-center p-3 bg-slate-50 rounded-lg">
-                                <p className="text-2xl font-bold text-slate-800">{summary.total_manday}</p>
-                                <p className="text-xs text-slate-500">Total MD</p>
+                            <div className="text-center p-4 bg-gradient-to-br from-slate-50 to-gray-50 rounded-xl border border-slate-200">
+                                <div className="p-2 bg-slate-100 rounded-lg inline-block mb-2">
+                                    <Users size={18} className="text-slate-600" />
+                                </div>
+                                <p className="text-2xl font-black text-slate-800">{summary.total_manday}</p>
+                                <p className="text-xs text-slate-500 font-medium">Total MD</p>
                             </div>
                         </div>
 
                         {/* Pass/Fail Stats */}
                         <div className="flex flex-col justify-center gap-3">
-                            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                                <span className="text-sm text-slate-600">Rework Manday</span>
-                                <span className="font-bold text-slate-800">{summary.rework_manday} MD</span>
+                            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border border-slate-200">
+                                <div className="flex items-center gap-2">
+                                    <Wrench size={16} className="text-amber-600" />
+                                    <span className="text-sm text-slate-600 font-medium">Rework Manday</span>
+                                </div>
+                                <span className="font-black text-amber-600 text-lg">{summary.rework_manday} MD</span>
                             </div>
-                            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                                <span className="text-sm text-green-700">Projects Pass</span>
-                                <span className="font-bold text-green-700">{summary.projects_pass}</span>
+                            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-200">
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 size={16} className="text-emerald-600" />
+                                    <span className="text-sm text-emerald-700 font-medium">Projects Pass</span>
+                                </div>
+                                <span className="font-black text-emerald-600 text-lg">{summary.projects_pass}</span>
                             </div>
-                            <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                                <span className="text-sm text-red-700">Projects Fail</span>
-                                <span className="font-bold text-red-700">{summary.projects_fail}</span>
+                            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-rose-50 to-red-50 rounded-xl border border-rose-200">
+                                <div className="flex items-center gap-2">
+                                    <XCircle size={16} className="text-rose-600" />
+                                    <span className="text-sm text-rose-700 font-medium">Projects Fail</span>
+                                </div>
+                                <span className="font-black text-rose-600 text-lg">{summary.projects_fail}</span>
                             </div>
                         </div>
                     </div>
@@ -324,26 +380,34 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
 
             {/* Alert: Projects Exceeding Target */}
             {exceedingProjects.length > 0 && (
-                <div className={`bg-red-50 border border-red-200 rounded-xl ${embedded ? 'p-3' : 'p-4'}`}>
-                    <div className="flex items-center gap-2 mb-3">
-                        <AlertTriangle className="w-5 h-5 text-red-600" />
-                        <h3 className="font-semibold text-red-800">
+                <div className={`rounded-2xl overflow-hidden shadow-sm ${embedded ? 'p-3' : 'p-5'}`} style={{ background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 50%, #fecaca 100%)' }}>
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-rose-200 rounded-lg">
+                            <AlertTriangle className="w-5 h-5 text-rose-700" />
+                        </div>
+                        <h3 className="font-bold text-rose-800 text-lg">
                             Projects Exceeding Target (&gt; {TARGET_RATIO}%)
                         </h3>
+                        <span className="px-2 py-0.5 bg-rose-200 text-rose-800 rounded-full text-sm font-semibold">{exceedingProjects.length}</span>
                     </div>
                     <div className="space-y-2">
                         {exceedingProjects.map((proj, idx) => (
-                            <div key={idx} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-red-100">
-                                <div>
-                                    <span className="font-medium text-slate-800">{proj.project_code}</span>
-                                    <span className="text-slate-500 ml-2">{proj.project_name}</span>
+                            <div key={idx} className="flex items-center justify-between bg-white rounded-xl px-5 py-3 border border-rose-200 shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center text-white font-bold text-sm">
+                                        {proj.project_code?.substring(0, 2) || '?'}
+                                    </div>
+                                    <div>
+                                        <span className="font-bold text-slate-800">{proj.project_code}</span>
+                                        <p className="text-xs text-slate-500 truncate max-w-[200px]">{proj.project_name}</p>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-4 text-sm">
-                                    <span className="text-red-600 font-bold">{proj.rework_ratio}%</span>
-                                    <span className="text-slate-500">
-                                        ({proj.rework_manday} MD / {proj.total_manday} MD)
+                                <div className="flex items-center gap-6 text-sm">
+                                    <span className="px-3 py-1.5 bg-rose-500 text-white rounded-full font-bold shadow-sm">{proj.rework_ratio}%</span>
+                                    <span className="text-slate-500 font-medium">
+                                        {proj.rework_manday} / {proj.total_manday} MD
                                     </span>
-                                    <span className="text-red-500">Over by {proj.over_by}%</span>
+                                    <span className="text-rose-600 font-bold">+{proj.over_by}%</span>
                                 </div>
                             </div>
                         ))}
@@ -352,9 +416,13 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
             )}
 
             {/* Projects Table */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className={`${embedded ? 'p-3' : 'p-4'} border-b border-slate-200`}>
-                    <h3 className="font-semibold text-slate-800">Project Breakdown</h3>
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className={`${embedded ? 'p-3' : 'px-5 py-4'} border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center justify-between`}>
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <FolderKanban size={18} className="text-amber-600" />
+                        Project Breakdown
+                        <span className="text-sm font-normal text-slate-500 ml-2">({projects.length} projects)</span>
+                    </h3>
                 </div>
                 <SuperTable
                     data={projects}

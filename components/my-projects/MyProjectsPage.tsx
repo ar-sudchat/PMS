@@ -33,9 +33,10 @@ import { LayoutGrid, List } from 'lucide-react'
 interface MyProjectsPageProps {
     projects: Project[]
     multiProjectGanttData: GanttData
+    currentUserId?: string
 }
 
-export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPageProps) {
+export function MyProjectsPage({ projects, multiProjectGanttData, currentUserId }: MyProjectsPageProps) {
     const [zoomScale, setZoomScale] = useState<'day' | 'month'>('day')
 
     // Modals State
@@ -148,6 +149,7 @@ export function MyProjectsPage({ projects, multiProjectGanttData }: MyProjectsPa
                 storyId={taskModal.storyId}
                 onSuccess={handleRefresh}
                 mode="create"
+                currentUserId={currentUserId}
             />
         </div>
     )

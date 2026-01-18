@@ -340,6 +340,10 @@ GO
 
 -- 7. On-time Meeting Minutes (Personal KPI)
 -- Schema: meeting_minutes_records has mom_sent_at (not submitted_at)
+-- IMPORTANT: Only count as late if:
+-- 1. MoM was sent but after 24 hours deadline
+-- 2. MoM not sent AND past the 24-hour deadline (deadline < GETDATE())
+-- Meetings within 24-hour window that haven't sent MoM yet should NOT be counted as late
 IF OBJECT_ID('pms.vw_kpi_meeting_minutes', 'V') IS NOT NULL
     DROP VIEW pms.vw_kpi_meeting_minutes;
 GO
@@ -353,18 +357,41 @@ SELECT
     e.employee_code,
     e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
     ISNULL(pos.name, 'Unknown') AS position,
-    COUNT(*) AS total_meetings,
-    SUM(CASE WHEN m.mom_sent_at IS NOT NULL AND
-        DATEDIFF(HOUR, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date)), m.mom_sent_at) <= 24
-        THEN 1 ELSE 0 END) AS ontime_count,
-    SUM(CASE WHEN m.mom_sent_at IS NULL OR
-        DATEDIFF(HOUR, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date)), m.mom_sent_at) > 24
-        THEN 1 ELSE 0 END) AS late_count,
+    -- Deadline = meeting_end_time + 24 hours (or meeting_date + 2h + 24h if no end time)
+    -- Total = only meetings that are past deadline OR MoM already sent
+    SUM(CASE
+        WHEN m.mom_sent_at IS NOT NULL THEN 1  -- Already sent
+        WHEN DATEADD(HOUR, 24, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date))) < GETDATE() THEN 1  -- Past deadline
+        ELSE 0  -- Within 24h window, not sent yet = don't count
+    END) AS total_meetings,
+    -- On-time = sent within 24 hours
+    SUM(CASE
+        WHEN m.mom_sent_at IS NOT NULL AND
+             DATEDIFF(HOUR, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date)), m.mom_sent_at) <= 24
+        THEN 1 ELSE 0
+    END) AS ontime_count,
+    -- Late = sent after 24h OR past deadline but not sent
+    SUM(CASE
+        WHEN m.mom_sent_at IS NOT NULL AND
+             DATEDIFF(HOUR, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date)), m.mom_sent_at) > 24
+        THEN 1  -- Sent but late
+        WHEN m.mom_sent_at IS NULL AND
+             DATEADD(HOUR, 24, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date))) < GETDATE()
+        THEN 1  -- Not sent and past deadline
+        ELSE 0
+    END) AS late_count,
     3 AS max_late_allowed,
+    -- Pass if late_count <= 3
     CASE
-        WHEN SUM(CASE WHEN m.mom_sent_at IS NULL OR
-            DATEDIFF(HOUR, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date)), m.mom_sent_at) > 24
-            THEN 1 ELSE 0 END) <= 3
+        WHEN SUM(CASE
+            WHEN m.mom_sent_at IS NOT NULL AND
+                 DATEDIFF(HOUR, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date)), m.mom_sent_at) > 24
+            THEN 1
+            WHEN m.mom_sent_at IS NULL AND
+                 DATEADD(HOUR, 24, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date))) < GETDATE()
+            THEN 1
+            ELSE 0
+        END) <= 3
         THEN 1 ELSE 0
     END AS is_pass
 FROM pms.meeting_minutes_records m
@@ -372,11 +399,18 @@ INNER JOIN pms.employees e ON m.organized_by = e.id
 LEFT JOIN pms.positions pos ON e.position_id = pos.id
 WHERE e.is_active = 1
 GROUP BY YEAR(m.meeting_date), MONTH(m.meeting_date), DATEPART(QUARTER, m.meeting_date),
-         m.organized_by, e.employee_code, e.first_name, e.last_name, pos.name;
+         m.organized_by, e.employee_code, e.first_name, e.last_name, pos.name
+HAVING SUM(CASE
+    WHEN m.mom_sent_at IS NOT NULL THEN 1
+    WHEN DATEADD(HOUR, 24, ISNULL(m.meeting_end_time, DATEADD(HOUR, 2, m.meeting_date))) < GETDATE() THEN 1
+    ELSE 0
+END) > 0;  -- Only show employees who have meetings that are past deadline or sent
 GO
 
 -- 8. Required Docs On-time (Personal KPI)
 -- Calculate from project deliverables - due date comes from project_milestones
+-- IMPORTANT: Only count docs that are past due date OR already submitted
+-- Docs with future due_date and no submission should NOT be counted as late
 IF OBJECT_ID('pms.vw_kpi_docs_ontime', 'V') IS NOT NULL
     DROP VIEW pms.vw_kpi_docs_ontime;
 GO
@@ -390,19 +424,51 @@ SELECT
     e.employee_code,
     e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
     ISNULL(pos.name, 'Unknown') AS position,
-    COUNT(*) AS total_docs,
+    -- Total = only docs that are due (past due_date) or already submitted
+    SUM(CASE
+        WHEN pd.submitted_date IS NOT NULL THEN 1  -- Already submitted
+        WHEN pm.due_date < GETDATE() THEN 1        -- Past due date
+        ELSE 0                                      -- Future due date, not submitted = don't count yet
+    END) AS total_docs,
+    -- On-time = submitted before or on due date
     SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) AS ontime_count,
-    SUM(CASE WHEN pd.submitted_date IS NULL OR pd.submitted_date > pm.due_date THEN 1 ELSE 0 END) AS late_count,
+    -- Late = past due date but not submitted, OR submitted after due date
+    SUM(CASE
+        WHEN pd.submitted_date IS NULL AND pm.due_date < GETDATE() THEN 1  -- Past due, not submitted
+        WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date > pm.due_date THEN 1  -- Submitted late
+        ELSE 0
+    END) AS late_count,
+    -- Percent calculation (avoid divide by zero)
     CASE
-        WHEN COUNT(*) > 0
-        THEN CAST(ROUND(SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS DECIMAL(5,2))
-        ELSE 100
+        WHEN SUM(CASE
+            WHEN pd.submitted_date IS NOT NULL THEN 1
+            WHEN pm.due_date < GETDATE() THEN 1
+            ELSE 0
+        END) > 0
+        THEN CAST(ROUND(
+            SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) * 100.0 /
+            SUM(CASE
+                WHEN pd.submitted_date IS NOT NULL THEN 1
+                WHEN pm.due_date < GETDATE() THEN 1
+                ELSE 0
+            END), 2) AS DECIMAL(5,2))
+        ELSE 100  -- No docs due yet = 100% on-time
     END AS ontime_percent,
     95 AS target_percent,
+    -- Pass if no docs due yet (100%) or >= 95% on-time
     CASE
-        WHEN COUNT(*) = 0 OR
-             (SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) >= 95
-        THEN 1 ELSE 0
+        WHEN SUM(CASE
+            WHEN pd.submitted_date IS NOT NULL THEN 1
+            WHEN pm.due_date < GETDATE() THEN 1
+            ELSE 0
+        END) = 0 THEN 1  -- No docs due yet = pass
+        WHEN (SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) * 100.0 /
+              SUM(CASE
+                  WHEN pd.submitted_date IS NOT NULL THEN 1
+                  WHEN pm.due_date < GETDATE() THEN 1
+                  ELSE 0
+              END)) >= 95 THEN 1
+        ELSE 0
     END AS is_pass
 FROM pms.project_deliverables pd
 INNER JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
@@ -414,10 +480,19 @@ WHERE e.is_active = 1
   AND pm.due_date IS NOT NULL
   AND pd.is_required = 1
 GROUP BY YEAR(pm.due_date), MONTH(pm.due_date), DATEPART(QUARTER, pm.due_date),
-         p.project_owner_id, e.employee_code, e.first_name, e.last_name, pos.name;
+         p.project_owner_id, e.employee_code, e.first_name, e.last_name, pos.name
+HAVING SUM(CASE
+    WHEN pd.submitted_date IS NOT NULL THEN 1
+    WHEN pm.due_date < GETDATE() THEN 1
+    ELSE 0
+END) > 0;  -- Only show employees who have docs that are due or submitted
 GO
 
 -- 9. Issue Clearing (Personal KPI)
+-- IMPORTANT: Only count tasks that are:
+-- 1. Already completed (done/done_not_planned) - regardless of due_date
+-- 2. Past due_date but not completed (overdue)
+-- Tasks with future due_date that are not done should NOT affect the KPI yet
 IF OBJECT_ID('pms.vw_kpi_issue_clearing', 'V') IS NOT NULL
     DROP VIEW pms.vw_kpi_issue_clearing;
 GO
@@ -431,21 +506,52 @@ SELECT
     e.employee_code,
     e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
     ISNULL(pos.name, 'Unknown') AS position,
-    COUNT(*) AS total_tasks,
+    -- Total = only tasks that are done OR past due date
+    SUM(CASE
+        WHEN t.status IN ('done', 'done_not_planned') THEN 1  -- Completed tasks
+        WHEN t.due_date < GETDATE() THEN 1                     -- Past due date (overdue)
+        ELSE 0                                                  -- Future tasks not done = don't count
+    END) AS total_tasks,
+    -- Cleared = completed tasks (done or done_not_planned)
     SUM(CASE WHEN t.status IN ('done', 'done_not_planned') THEN 1 ELSE 0 END) AS cleared_tasks,
     SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done_count,
     SUM(CASE WHEN t.status = 'done_not_planned' THEN 1 ELSE 0 END) AS done_not_planned_count,
-    SUM(CASE WHEN t.status NOT IN ('done', 'done_not_planned') THEN 1 ELSE 0 END) AS pending_count,
+    -- Pending = past due date but not completed
+    SUM(CASE
+        WHEN t.status NOT IN ('done', 'done_not_planned') AND t.due_date < GETDATE() THEN 1
+        ELSE 0
+    END) AS pending_count,
+    -- Clearing percent
     CASE
-        WHEN COUNT(*) > 0
-        THEN CAST(ROUND(SUM(CASE WHEN t.status IN ('done', 'done_not_planned') THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS DECIMAL(5,2))
-        ELSE 100
+        WHEN SUM(CASE
+            WHEN t.status IN ('done', 'done_not_planned') THEN 1
+            WHEN t.due_date < GETDATE() THEN 1
+            ELSE 0
+        END) > 0
+        THEN CAST(ROUND(
+            SUM(CASE WHEN t.status IN ('done', 'done_not_planned') THEN 1 ELSE 0 END) * 100.0 /
+            SUM(CASE
+                WHEN t.status IN ('done', 'done_not_planned') THEN 1
+                WHEN t.due_date < GETDATE() THEN 1
+                ELSE 0
+            END), 2) AS DECIMAL(5,2))
+        ELSE 100  -- No tasks due yet = 100%
     END AS clearing_percent,
     85 AS target_percent,
+    -- Pass if no tasks due yet OR >= 85% cleared
     CASE
-        WHEN COUNT(*) = 0 OR
-             (SUM(CASE WHEN t.status IN ('done', 'done_not_planned') THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) >= 85
-        THEN 1 ELSE 0
+        WHEN SUM(CASE
+            WHEN t.status IN ('done', 'done_not_planned') THEN 1
+            WHEN t.due_date < GETDATE() THEN 1
+            ELSE 0
+        END) = 0 THEN 1  -- No tasks due yet = pass
+        WHEN (SUM(CASE WHEN t.status IN ('done', 'done_not_planned') THEN 1 ELSE 0 END) * 100.0 /
+              SUM(CASE
+                  WHEN t.status IN ('done', 'done_not_planned') THEN 1
+                  WHEN t.due_date < GETDATE() THEN 1
+                  ELSE 0
+              END)) >= 85 THEN 1
+        ELSE 0
     END AS is_pass
 FROM pms.tasks t
 INNER JOIN pms.employees e ON t.assignee_id = e.id
@@ -455,7 +561,12 @@ WHERE t.assignee_id IS NOT NULL
   AND e.is_active = 1
   AND t.is_active = 1
 GROUP BY YEAR(t.due_date), MONTH(t.due_date), DATEPART(QUARTER, t.due_date),
-         t.assignee_id, e.employee_code, e.first_name, e.last_name, pos.name;
+         t.assignee_id, e.employee_code, e.first_name, e.last_name, pos.name
+HAVING SUM(CASE
+    WHEN t.status IN ('done', 'done_not_planned') THEN 1
+    WHEN t.due_date < GETDATE() THEN 1
+    ELSE 0
+END) > 0;  -- Only show employees who have tasks that are due or completed
 GO
 
 -- 10. Department KPI Summary View

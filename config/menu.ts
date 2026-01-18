@@ -35,6 +35,9 @@ import {
   Bell,
   ClipboardCheck,
   GitBranch,
+  Timer,
+  Calculator,
+  Bug,
   type LucideIcon
 } from 'lucide-react'
 
@@ -125,7 +128,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'บันทึกเวลา',
         children: [
           { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
-          { id: 'my-timesheet', label: 'My Timesheet', labelTh: 'บันทึกเวลาของฉัน', path: '/timesheet', icon: Clock },
+          { id: 'my-calendar', label: 'My Calendar', labelTh: 'ปฏิทินของฉัน', path: '/my-calendar', icon: Calendar },
         ]
       },
       {
@@ -164,16 +167,35 @@ export const MENU_CONFIG: MenuModule[] = [
     icon: ClipboardList,
     children: [
       {
-        id: 'kpi-tracking',
-        title: 'KPI Tracking',
-        titleTh: 'ติดตาม KPI',
+        id: 'kpi-dashboard',
+        title: 'Dashboard',
+        titleTh: 'แดชบอร์ด',
+        children: [
+          { id: 'kpi-dashboard', label: 'KPI Dashboard', labelTh: 'KPI Dashboard (ทีม)', path: '/kpi-dashboard', icon: PieChart, roles: ['admin', 'manager'] },
+          { id: 'my-kpi', label: 'My KPI', labelTh: 'KPI ของฉัน', path: '/my-kpi', icon: Target },
+        ]
+      },
+      {
+        id: 'personal-kpi',
+        title: 'Personal KPI',
+        titleTh: 'KPI ส่วนบุคคล',
         children: [
           { id: 'deploy-success', label: 'Deploy Success', labelTh: 'ผลการ Deploy', path: '/kpi-record/deploy-success', icon: Rocket, roles: ['admin', 'manager'] },
           { id: 'deploy-backup', label: 'Deploy Backup', labelTh: 'Backup ก่อน Deploy', path: '/kpi-record/deploy-backup', icon: HardDrive, roles: ['admin', 'manager'] },
           { id: 'meeting-minutes', label: 'Meeting Minutes', labelTh: 'MoM Tracking', path: '/kpi-record/meeting-minutes', icon: FileCheck, roles: ['admin', 'manager'] },
+        ]
+      },
+      {
+        id: 'department-kpi',
+        title: 'Department KPI',
+        titleTh: 'KPI ส่วนงาน',
+        children: [
           { id: 'docs-ontime', label: 'Docs On-time', labelTh: 'เอกสารตรงเวลา', path: '/kpi-record/docs-ontime', icon: FileText, roles: ['admin', 'manager'] },
           { id: 'issue-clearing', label: 'Issue Clearing', labelTh: 'งานคงค้าง', path: '/kpi-record/issue-clearing', icon: CheckSquare, roles: ['admin', 'manager'] },
           { id: 'post-golive-rework', label: 'Post Go-Live Rework', labelTh: 'Rework หลัง Go-Live', path: '/kpi-record/post-golive-rework', icon: Wrench, roles: ['admin', 'manager'] },
+          { id: 'time-to-delivery', label: 'Time to Delivery', labelTh: 'ส่งมอบตรงเวลา', path: '/kpi-record/time-to-delivery', icon: Timer, roles: ['admin', 'manager'] },
+          { id: 'manday-control', label: 'Man-day Control', labelTh: 'ควบคุม Man-day', path: '/kpi-record/manday-control', icon: Calculator, roles: ['admin', 'manager'] },
+          { id: 'defect-ratio', label: 'Defect Ratio', labelTh: 'อัตรา Defect', path: '/kpi-record/defect-ratio', icon: Bug, roles: ['admin', 'manager'] },
         ]
       },
       {
@@ -228,7 +250,7 @@ export const QUICK_MENU: MenuItem[] = [
   { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
   { id: 'projects', label: 'Projects', labelTh: 'โครงการ', path: '/projects', icon: FolderKanban },
   { id: 'tasks', label: 'Tasks', labelTh: 'งาน', path: '/tasks', icon: CheckSquare },
-  { id: 'timesheet', label: 'Timesheet', labelTh: 'บันทึกเวลา', path: '/timesheet', icon: Clock },
+  { id: 'calendar', label: 'Calendar', labelTh: 'ปฏิทิน', path: '/my-calendar', icon: Calendar },
 ]
 
 export function filterMenuByRole(

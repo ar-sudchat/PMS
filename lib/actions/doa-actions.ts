@@ -323,9 +323,9 @@ export async function fetchDOAAssignments(
                 da.min_amount, da.max_amount, da.conditions, da.is_active,
                 da.effective_date, da.expiry_date, da.delegated_from, da.delegation_reason,
                 da.created_by, da.created_at,
-                CONCAT(e.first_name, ' ', e.last_name) AS user_name,
+                COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name,
                 dr.rule_name,
-                CONCAT(df.first_name, ' ', df.last_name) AS delegated_from_name
+                COALESCE(CONCAT(df.first_name_th, ' ', df.last_name_th), CONCAT(df.first_name, ' ', df.last_name)) AS delegated_from_name
             FROM pms.doa_assignments da
             JOIN pms.doa_rules dr ON da.doa_rule_id = dr.id
             LEFT JOIN pms.employees e ON da.user_id = e.id
@@ -377,7 +377,7 @@ export async function fetchMyDOAAssignments(): Promise<DOAAssignment[]> {
                     da.effective_date, da.expiry_date, da.delegated_from, da.delegation_reason,
                     da.created_by, da.created_at,
                     dr.rule_name, dr.rule_code, dr.module_code, dr.document_type,
-                    CONCAT(df.first_name, ' ', df.last_name) AS delegated_from_name
+                    COALESCE(CONCAT(df.first_name_th, ' ', df.last_name_th), CONCAT(df.first_name, ' ', df.last_name)) AS delegated_from_name
                 FROM pms.doa_assignments da
                 JOIN pms.doa_rules dr ON da.doa_rule_id = dr.id
                 LEFT JOIN pms.employees df ON da.delegated_from = df.id
@@ -780,7 +780,7 @@ export async function findDOAApprover(
             .input('ruleId', sql.UniqueIdentifier, rule.id)
             .input('amount', sql.Decimal(15, 2), amount)
             .query(`
-                SELECT TOP 1 e.id AS user_id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+                SELECT TOP 1 e.id AS user_id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
                 FROM pms.doa_assignments da
                 JOIN pms.employees e ON da.user_id = e.id
                 WHERE da.doa_rule_id = @ruleId
@@ -798,7 +798,7 @@ export async function findDOAApprover(
             const roleResult = await pool.request()
                 .input('positionCode', sql.VarChar(50), matchingLevel.position || matchingLevel.role)
                 .query(`
-                    SELECT TOP 1 e.id AS user_id, CONCAT(e.first_name, ' ', e.last_name) AS user_name, e.email
+                    SELECT TOP 1 e.id AS user_id, COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS user_name, e.email
                     FROM pms.employees e
                     JOIN pms.positions p ON e.position_id = p.id
                     WHERE p.position_code = @positionCode AND e.is_active = 1

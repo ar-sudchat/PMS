@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, Building, Target, ChevronDown, Check } from 'lucide-react'
+import { Plus, Search, Building, Target, ChevronDown, Check, Briefcase } from 'lucide-react'
 import Link from 'next/link'
 import { getProjectFilterOptions, getProjects, ProjectFilters } from '@/lib/actions/project-actions'
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
@@ -296,12 +296,28 @@ export default function ProjectsPage() {
     ]
 
     return (
-        <div className="p-6">
+        <div className="p-6 space-y-6">
             {/* Header */}
-
+            <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-2xl p-6 shadow-lg shadow-blue-200/50">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                            <Briefcase className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold text-white">Project Onhand</h1>
+                            <p className="text-blue-100">รายการโปรเจกต์ทั้งหมดในระบบ</p>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-3xl font-bold text-white">{projects.length}</div>
+                        <div className="text-blue-100 text-sm">Projects</div>
+                    </div>
+                </div>
+            </div>
 
             {/* Filters */}
-            <div className="bg-white rounded-xl border p-4 mb-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
                 <div className="flex items-end gap-4 flex-wrap">
                     {/* Year */}
                     <div>
@@ -517,7 +533,7 @@ export default function ProjectsPage() {
             </div>
 
             {/* Projects Table - ใช้ SuperTable */}
-            <div className="bg-white rounded-xl border">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <SuperTable
                     data={projects}
                     columns={columns}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, FileText, Check, AlertCircle } from 'lucide-react'
+import { X, Plus, Trash2, FileText, Check, AlertCircle, Paperclip } from 'lucide-react'
 import { Project, ProjectFormData, MilestoneRow } from '@/types/project'
 import {
     getCustomers,
@@ -17,9 +17,11 @@ import {
     deleteProjectDeliverable
 } from '@/lib/actions/project-actions'
 import { getProjectTypes, ProjectType } from '@/lib/actions/project-type-actions'
+import { getProjectAttachments, updateProjectAttachments, Attachment } from '@/lib/actions/attachment-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { MilestonesTab } from './ProjectModal/MilestonesTab'
 import { DeliverablesTab } from './ProjectModal/DeliverablesTab'
+import FileUpload from '@/components/ui/FileUpload'
 
 interface ProjectModalProps {
     open: boolean
@@ -31,7 +33,10 @@ interface ProjectModalProps {
 
 export function ProjectModal({ open, onClose, mode, project, onSuccess }: ProjectModalProps) {
     // Active Tab
-    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables'>('info')
+    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables' | 'attachments'>('info')
+
+    // Attachments State
+    const [attachments, setAttachments] = useState<Attachment[]>([])
 
     // Form State - Project Info
     const [formData, setFormData] = useState({
@@ -158,6 +163,12 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                         submitted_required_docs: m.deliverables?.filter((d: any) => d.is_required && d.submitted_date).length || 0
                     })))
                 }
+
+                // Load attachments
+                const attachmentsResult = await getProjectAttachments(id)
+                if (attachmentsResult.success) {
+                    setAttachments(attachmentsResult.data)
+                }
             }
         } catch (error) {
             console.error('Failed to load project details:', error)
@@ -263,6 +274,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
         initializeMilestonesFromConfigs()
         setActiveTab('info')
         setErrors({})
+        setAttachments([])
     }
 
     // Initialize milestones from milestone_configs template
@@ -358,7 +370,11 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             const payload: ProjectFormData = { ...formData, milestones }
 
             if (mode === 'create') {
-                await createProject(payload)
+                const result = await createProject(payload)
+                // Save attachments after project created
+                if (result.success && result.id && attachments.length > 0) {
+                    await updateProjectAttachments(result.id, attachments)
+                }
             } else {
                 await updateProject(project!.id, payload)
 
@@ -464,6 +480,22 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                             📄 Deliverables
                         </button>
                     )}
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('attachments')}
+                        className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${activeTab === 'attachments'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-slate-600 hover:text-slate-900'
+                            }`}
+                    >
+                        <Paperclip className="w-4 h-4" />
+                        Attachments
+                        {attachments.length > 0 && (
+                            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                {attachments.length}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
                 {/* Body - Fixed height for stability */}
@@ -733,6 +765,34 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
                             onMarkDelete={(id, name) => {
                                 setPendingDeletes(prev => new Set([...prev, id]))
                             }}
+                        />
+                    </div>
+
+                    {/* ═══ Tab: Attachments ═══ */}
+                    <div className={`${activeTab === 'attachments' ? 'block' : 'hidden'} space-y-4`}>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-blue-700">
+                                อัปโหลดไฟล์แนบสำหรับโครงการนี้ รองรับไฟล์ภาพ, PDF, Word, Excel (สูงสุด 10 ไฟล์, ไม่เกิน 10MB ต่อไฟล์)
+                                {mode === 'create' && (
+                                    <span className="block mt-1 text-blue-600 font-medium">
+                                        * ไฟล์จะถูกบันทึกเมื่อกด Create Project
+                                    </span>
+                                )}
+                            </p>
+                        </div>
+                        <FileUpload
+                            value={attachments}
+                            onChange={async (files) => {
+                                setAttachments(files)
+                                // Auto-save attachments immediately in edit mode
+                                if (mode === 'edit' && project?.id) {
+                                    await updateProjectAttachments(project.id, files)
+                                }
+                            }}
+                            maxFiles={10}
+                            maxSizeMB={10}
+                            subFolder={mode === 'edit' ? `projects/${project?.project_code || 'unknown'}` : `projects/temp-${Date.now()}`}
+                            label=""
                         />
                     </div>
                 </div>

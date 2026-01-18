@@ -76,7 +76,7 @@ export async function getDeployRecords(filters: DeployRecordFilters) {
                     dr.notes,
                     dr.created_at,
                     dr.created_by,
-                    CONCAT(e.first_name, ' ', e.last_name) as created_by_name,
+                    COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) as created_by_name,
                     dr.approval_status,
                     dr.approval_instance_id
                 FROM pms.deploy_success_records dr
@@ -119,7 +119,7 @@ export async function getDeployRecord(id: string) {
                 SELECT
                     dr.*,
                     c.name as customer_name,
-                    CONCAT(e.first_name, ' ', e.last_name) as created_by_name
+                    COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) as created_by_name
                 FROM pms.deploy_success_records dr
                 LEFT JOIN pms.customers c ON dr.customer_id = c.id
                 LEFT JOIN pms.employees e ON dr.created_by = e.id

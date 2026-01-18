@@ -250,7 +250,7 @@ export async function fetchApprovalHistory(documentId: string, moduleCode: strin
                     aa.action_date,
                     aa.action_type,
                     aa.comments,
-                    CONCAT(e.first_name, ' ', e.last_name) AS approver_name,
+                    COALESCE(CONCAT(e.first_name_th, ' ', e.last_name_th), CONCAT(e.first_name, ' ', e.last_name)) AS approver_name,
                     afs.step_name,
                     afs.step_order
                 FROM pms.approval_actions aa

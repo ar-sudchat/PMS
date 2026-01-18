@@ -101,117 +101,134 @@ export function TimesheetDashboard({ data, aiAnalysis, year, month }: TimesheetD
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            Timesheet Dashboard
-          </h1>
-          <p className="text-gray-500">ภาพรวมการบันทึกเวลาทำงานของทีม</p>
-        </div>
+      <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 rounded-2xl p-6 shadow-lg shadow-indigo-200/50">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+              <Clock className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                Timesheet Dashboard
+              </h1>
+              <p className="text-indigo-100">ภาพรวมการบันทึกเวลาทำงานของทีม</p>
+            </div>
+          </div>
 
-        <div className="flex items-center gap-2">
-          {/* Month Selector */}
-          <Select value={month.toString()} onValueChange={handleMonthChange}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {monthNames.map((name, idx) => (
-                <SelectItem key={idx} value={(idx + 1).toString()}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            {/* Month Selector */}
+            <Select value={month.toString()} onValueChange={handleMonthChange}>
+              <SelectTrigger className="w-[140px] bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors [&>span]:text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {monthNames.map((name, idx) => (
+                  <SelectItem key={idx} value={(idx + 1).toString()}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {/* Year Selector */}
-          <Select value={year.toString()} onValueChange={handleYearChange}>
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="2024">2024</SelectItem>
-              <SelectItem value="2025">2025</SelectItem>
-              <SelectItem value="2026">2026</SelectItem>
-            </SelectContent>
-          </Select>
+            {/* Year Selector */}
+            <Select value={year.toString()} onValueChange={handleYearChange}>
+              <SelectTrigger className="w-[100px] bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors [&>span]:text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2024">2024</SelectItem>
+                <SelectItem value="2025">2025</SelectItem>
+                <SelectItem value="2026">2026</SelectItem>
+              </SelectContent>
+            </Select>
 
-          {/* Export Button */}
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+            {/* Export Button */}
+            <Button variant="outline" onClick={handleExport} className="bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors">
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100 hover:shadow-md hover:shadow-blue-100/50 transition-all duration-300">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500 flex items-center gap-2">
-              <Clock className="h-4 w-4" />
+            <CardTitle className="text-sm text-blue-600 flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Clock className="h-4 w-4 text-blue-600" />
+              </div>
               Total Hours
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.total_hours || 0} hrs</div>
-            <p className={`text-xs ${(summary?.hours_change_percent || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {(summary?.hours_change_percent || 0) >= 0 ? '▲' : '▼'} {Math.abs(summary?.hours_change_percent || 0)}% vs last month
+            <div className="text-3xl font-bold text-slate-800">{summary?.total_hours || 0} <span className="text-lg text-slate-400">hrs</span></div>
+            <p className={`text-xs mt-1 font-medium ${(summary?.hours_change_percent || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {(summary?.hours_change_percent || 0) >= 0 ? '↑' : '↓'} {Math.abs(summary?.hours_change_percent || 0)}% vs last month
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-100 hover:shadow-md hover:shadow-emerald-100/50 transition-all duration-300">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
+            <CardTitle className="text-sm text-emerald-600 flex items-center gap-2">
+              <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+              </div>
               Avg Hours/Day
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.avg_hours_per_day || 0} hrs</div>
-            <Progress value={((summary?.avg_hours_per_day || 0) / 7) * 100} className="mt-2 h-2" />
-            <p className="text-xs text-gray-500 mt-1">Target: 7 hrs</p>
+            <div className="text-3xl font-bold text-slate-800">{summary?.avg_hours_per_day || 0} <span className="text-lg text-slate-400">hrs</span></div>
+            <Progress value={((summary?.avg_hours_per_day || 0) / 7) * 100} className="mt-2 h-2 [&>div]:bg-emerald-500" />
+            <p className="text-xs text-slate-500 mt-1">Target: 7 hrs</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-violet-50 to-white border-violet-100 hover:shadow-md hover:shadow-violet-100/50 transition-all duration-300">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
+            <CardTitle className="text-sm text-violet-600 flex items-center gap-2">
+              <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-violet-600" />
+              </div>
               Avg Utilization
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{avgUtil}%</div>
-            <Progress value={avgUtil} className="mt-2 h-2" />
-            <p className="text-xs text-gray-500 mt-1">Target: 80% {avgUtil >= 80 ? '✅' : ''}</p>
+            <div className="text-3xl font-bold text-slate-800">{avgUtil}<span className="text-lg text-slate-400">%</span></div>
+            <Progress value={avgUtil} className="mt-2 h-2 [&>div]:bg-violet-500" />
+            <p className="text-xs text-slate-500 mt-1">Target: 80% {avgUtil >= 80 ? '✓' : ''}</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-amber-50 to-white border-amber-100 hover:shadow-md hover:shadow-amber-100/50 transition-all duration-300">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500 flex items-center gap-2">
-              <Users className="h-4 w-4" />
+            <CardTitle className="text-sm text-amber-600 flex items-center gap-2">
+              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                <Users className="h-4 w-4 text-amber-600" />
+              </div>
               Active Employees
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.active_employees || 0}</div>
-            <p className="text-xs text-gray-500">of {employees?.length || 0} total</p>
+            <div className="text-3xl font-bold text-slate-800">{summary?.active_employees || 0}</div>
+            <p className="text-xs text-slate-500 mt-1">of {employees?.length || 0} total</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-rose-50 to-white border-rose-100 hover:shadow-md hover:shadow-rose-100/50 transition-all duration-300">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500 flex items-center gap-2">
-              <FolderKanban className="h-4 w-4" />
+            <CardTitle className="text-sm text-rose-600 flex items-center gap-2">
+              <div className="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center">
+                <FolderKanban className="h-4 w-4 text-rose-600" />
+              </div>
               Active Projects
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.active_projects || 0}</div>
-            <p className="text-xs text-gray-500">projects</p>
+            <div className="text-3xl font-bold text-slate-800">{summary?.active_projects || 0}</div>
+            <p className="text-xs text-slate-500 mt-1">projects</p>
           </CardContent>
         </Card>
       </div>
@@ -363,16 +380,21 @@ export function TimesheetDashboard({ data, aiAnalysis, year, month }: TimesheetD
       </div>
 
       {/* Employee Table */}
-      <Card>
-        <CardHeader>
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Employee Timesheet Overview
+            <CardTitle className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+                <Users className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div>
+                <span className="text-lg">Employee Timesheet Overview</span>
+                <p className="text-sm font-normal text-slate-500">รายละเอียดชั่วโมงทำงานรายสัปดาห์</p>
+              </div>
             </CardTitle>
             <div className="flex items-center gap-2">
               <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[180px] bg-white">
                   <SelectValue placeholder="All Departments" />
                 </SelectTrigger>
                 <SelectContent>
@@ -387,47 +409,60 @@ export function TimesheetDashboard({ data, aiAnalysis, year, month }: TimesheetD
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-2">Employee</th>
-                  <th className="text-left py-3 px-2">Department</th>
-                  <th className="text-center py-3 px-2">W1</th>
-                  <th className="text-center py-3 px-2">W2</th>
-                  <th className="text-center py-3 px-2">W3</th>
-                  <th className="text-center py-3 px-2">W4</th>
-                  <th className="text-center py-3 px-2">W5</th>
-                  <th className="text-center py-3 px-2">Total</th>
-                  <th className="text-center py-3 px-2">Util%</th>
-                  <th className="py-3 px-2 w-32">Progress</th>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left py-4 px-4 font-semibold text-slate-600">Employee</th>
+                  <th className="text-left py-4 px-3 font-semibold text-slate-600">Department</th>
+                  <th className="text-center py-4 px-2 font-semibold text-slate-600 w-14">W1</th>
+                  <th className="text-center py-4 px-2 font-semibold text-slate-600 w-14">W2</th>
+                  <th className="text-center py-4 px-2 font-semibold text-slate-600 w-14">W3</th>
+                  <th className="text-center py-4 px-2 font-semibold text-slate-600 w-14">W4</th>
+                  <th className="text-center py-4 px-2 font-semibold text-slate-600 w-14">W5</th>
+                  <th className="text-center py-4 px-3 font-semibold text-slate-600">Total</th>
+                  <th className="text-center py-4 px-3 font-semibold text-slate-600">Util%</th>
+                  <th className="py-4 px-4 font-semibold text-slate-600 w-36">Progress</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {(showAllEmployees ? filteredEmployees : filteredEmployees?.slice(0, 10))?.map((emp, idx) => {
                   const status = getUtilStatus(emp.utilization_percent || 0)
                   return (
-                    <tr key={idx} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{emp.employee_name}</span>
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium">
+                            {emp.employee_name?.charAt(0) || 'E'}
+                          </div>
+                          <span className="font-medium text-slate-800">{emp.employee_name}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-gray-500">{emp.department_name}</td>
-                      <td className="text-center py-3 px-2">{emp.week1_hours || '-'}</td>
-                      <td className="text-center py-3 px-2">{emp.week2_hours || '-'}</td>
-                      <td className="text-center py-3 px-2">{emp.week3_hours || '-'}</td>
-                      <td className="text-center py-3 px-2">{emp.week4_hours || '-'}</td>
-                      <td className="text-center py-3 px-2">{emp.week5_hours || '-'}</td>
-                      <td className="text-center py-3 px-2 font-medium">{emp.total_hours || 0}</td>
-                      <td className="text-center py-3 px-2">
-                        <span className={status.color}>{emp.utilization_percent || 0}%</span>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-1 bg-slate-100 rounded text-xs text-slate-600">{emp.department_name}</span>
                       </td>
-                      <td className="py-3 px-2">
+                      <td className="text-center py-3 px-2 text-slate-600">{emp.week1_hours || <span className="text-slate-300">-</span>}</td>
+                      <td className="text-center py-3 px-2 text-slate-600">{emp.week2_hours || <span className="text-slate-300">-</span>}</td>
+                      <td className="text-center py-3 px-2 text-slate-600">{emp.week3_hours || <span className="text-slate-300">-</span>}</td>
+                      <td className="text-center py-3 px-2 text-slate-600">{emp.week4_hours || <span className="text-slate-300">-</span>}</td>
+                      <td className="text-center py-3 px-2 text-slate-600">{emp.week5_hours || <span className="text-slate-300">-</span>}</td>
+                      <td className="text-center py-3 px-3 font-semibold text-slate-800">{emp.total_hours || 0}h</td>
+                      <td className="text-center py-3 px-3">
+                        <span className={`font-semibold ${status.color}`}>{emp.utilization_percent || 0}%</span>
+                      </td>
+                      <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <Progress value={emp.utilization_percent || 0} className="flex-1 h-2" />
-                          <span>{status.icon}</span>
+                          <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                (emp.utilization_percent || 0) >= 80 ? 'bg-emerald-500' :
+                                (emp.utilization_percent || 0) >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                              }`}
+                              style={{ width: `${Math.min(emp.utilization_percent || 0, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-sm">{status.icon}</span>
                         </div>
                       </td>
                     </tr>
@@ -438,10 +473,11 @@ export function TimesheetDashboard({ data, aiAnalysis, year, month }: TimesheetD
           </div>
 
           {filteredEmployees?.length > 10 && (
-            <div className="mt-4 text-center">
+            <div className="py-4 text-center border-t">
               <Button
                 variant="ghost"
                 onClick={() => setShowAllEmployees(!showAllEmployees)}
+                className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
               >
                 {showAllEmployees ? (
                   <>Show Less <ChevronUp className="h-4 w-4 ml-1" /></>
@@ -452,7 +488,7 @@ export function TimesheetDashboard({ data, aiAnalysis, year, month }: TimesheetD
             </div>
           )}
 
-          <div className="mt-4 text-sm text-gray-500 text-center">
+          <div className="py-3 px-4 bg-slate-50 text-sm text-slate-500 text-center border-t">
             Target: 35 hrs/week | 140 hrs/month
           </div>
         </CardContent>

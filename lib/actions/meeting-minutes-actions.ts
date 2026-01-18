@@ -109,13 +109,13 @@ export async function getMeetingMinutesRecords(filters: MeetingMinutesFilters = 
                     mm.meeting_type,
                     mm.meeting_title,
                     mm.organized_by,
-                    CONCAT(eo.first_name, ' ', eo.last_name) as organized_by_name,
+                    COALESCE(CONCAT(eo.first_name_th, ' ', eo.last_name_th), CONCAT(eo.first_name, ' ', eo.last_name)) as organized_by_name,
                     mm.attendees,
                     mm.mom_sent_at,
                     mm.is_on_time,
                     mm.hours_to_send,
                     mm.sent_by,
-                    CONCAT(es.first_name, ' ', es.last_name) as sent_by_name,
+                    COALESCE(CONCAT(es.first_name_th, ' ', es.last_name_th), CONCAT(es.first_name, ' ', es.last_name)) as sent_by_name,
                     mm.mom_file_path,
                     mm.notes,
                     mm.created_at,
@@ -156,8 +156,8 @@ export async function getMeetingMinutesRecord(id: string) {
                     mm.*,
                     p.project_code,
                     p.name as project_name,
-                    CONCAT(eo.first_name, ' ', eo.last_name) as organized_by_name,
-                    CONCAT(es.first_name, ' ', es.last_name) as sent_by_name
+                    COALESCE(CONCAT(eo.first_name_th, ' ', eo.last_name_th), CONCAT(eo.first_name, ' ', eo.last_name)) as organized_by_name,
+                    COALESCE(CONCAT(es.first_name_th, ' ', es.last_name_th), CONCAT(es.first_name, ' ', es.last_name)) as sent_by_name
                 FROM pms.meeting_minutes_records mm
                 LEFT JOIN pms.projects p ON mm.project_id = p.id
                 LEFT JOIN pms.employees eo ON mm.organized_by = eo.id
@@ -407,7 +407,7 @@ export async function getMeetingMinutesKPIByOrganizer(year: number, organizerId?
         const result = await request.query(`
             SELECT
                 m.organized_by AS organizer_id,
-                COALESCE(NULLIF(e.first_name, '') + ' ' + NULLIF(e.last_name, ''), e.nickname, e.employee_code) AS organizer_name,
+                COALESCE(NULLIF(e.first_name_th, '') + ' ' + NULLIF(e.last_name_th, ''), NULLIF(e.first_name, '') + ' ' + NULLIF(e.last_name, ''), e.nickname, e.employee_code) AS organizer_name,
                 COUNT(*) AS total_meetings,
                 SUM(CASE WHEN m.is_on_time = 1 THEN 1 ELSE 0 END) AS on_time_count,
                 SUM(CASE WHEN m.is_on_time = 0 THEN 1 ELSE 0 END) AS late_count,
@@ -419,8 +419,8 @@ export async function getMeetingMinutesKPIByOrganizer(year: number, organizerId?
             FROM pms.meeting_minutes_records m
             INNER JOIN pms.employees e ON m.organized_by = e.id
             WHERE ${whereClause}
-            GROUP BY m.organized_by, e.first_name, e.last_name, e.nickname, e.employee_code
-            ORDER BY SUM(CASE WHEN m.is_on_time = 0 THEN 1 ELSE 0 END) DESC, e.first_name
+            GROUP BY m.organized_by, e.first_name_th, e.last_name_th, e.first_name, e.last_name, e.nickname, e.employee_code
+            ORDER BY SUM(CASE WHEN m.is_on_time = 0 THEN 1 ELSE 0 END) DESC, e.first_name_th, e.first_name
         `)
 
         const data = result.recordset.map((r: any) => ({

@@ -70,15 +70,15 @@ export async function getEmployeesForReport(): Promise<EmployeeForReport[]> {
     try {
         const pool = await getConnection()
         const result = await pool.request().query(`
-      SELECT 
+      SELECT
         e.id,
-        e.first_name + ' ' + e.last_name AS name,
+        COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS name,
         e.nickname,
         ISNULL(p.name, 'Staff') AS role
       FROM pms.employees e
       LEFT JOIN pms.positions p ON e.position_id = p.id
       WHERE e.is_active = 1
-      ORDER BY e.first_name, e.last_name
+      ORDER BY e.first_name_th, e.first_name
     `)
         return result.recordset
     } catch (error) {
@@ -105,7 +105,7 @@ export async function getEmployeeWorkSummary(
             .query(`
         SELECT
           e.id AS employee_id,
-          e.first_name + ' ' + ISNULL(e.last_name, '') AS employee_name,
+          COALESCE(e.first_name_th + ' ' + ISNULL(e.last_name_th, ''), e.first_name + ' ' + ISNULL(e.last_name, '')) AS employee_name,
 
           -- Total Tasks = tasks ที่ assignee_id = employee และมี due_date หรือ created_at ใน period
           (SELECT COUNT(*)

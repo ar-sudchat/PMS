@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { KPIDashboardTeam } from '@/components/kpi/KPIDashboardTeam'
 import { getKPIDashboardData } from '@/lib/actions/kpi-dashboard-actions'
 import { analyzeKPIDashboard } from '@/lib/actions/kpi-ai-actions'
+import { getCurrentUser } from '@/lib/auth'
 
 export default async function KPIDashboardPage({
   searchParams
@@ -18,9 +19,10 @@ export default async function KPIDashboardPage({
   const period = params.period || 'quarter'
   const periodValue = parseInt(params.value || Math.ceil((now.getMonth() + 1) / 3).toString())
 
-  const [dashboardData, aiAnalysis] = await Promise.all([
+  const [dashboardData, aiAnalysis, currentUser] = await Promise.all([
     getKPIDashboardData(year, period, periodValue),
-    analyzeKPIDashboard(year, period, periodValue)
+    analyzeKPIDashboard(year, period, periodValue),
+    getCurrentUser()
   ])
 
   return (
@@ -32,6 +34,7 @@ export default async function KPIDashboardPage({
           year={year}
           period={period}
           periodValue={periodValue}
+          currentUserId={currentUser?.id}
         />
       </Suspense>
     </div>

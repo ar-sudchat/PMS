@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Target, CheckCircle, XCircle, Brain, Building2, User, AlertTriangle, Award,
-  TrendingUp, TrendingDown, Sparkles, Zap, Trophy, Star, Flame, Heart
+  TrendingUp, TrendingDown, Sparkles, Zap, Trophy, Star, Flame, Heart, ExternalLink
 } from 'lucide-react'
+import { KPIDetailModal } from './KPIDetailModal'
 
 interface MyKPIDashboardProps {
   data: any
@@ -18,6 +20,7 @@ interface MyKPIDashboardProps {
 export function MyKPIDashboard({ data, aiAnalysis, user, year, period, periodValue }: MyKPIDashboardProps) {
   const router = useRouter()
   const analysis = aiAnalysis?.analysis
+  const [selectedKPI, setSelectedKPI] = useState<string | null>(null)
 
   const handlePeriodChange = (newPeriod: string) => {
     router.push(`/my-kpi?year=${year}&period=${newPeriod}&value=${periodValue}`)
@@ -326,9 +329,16 @@ export function MyKPIDashboard({ data, aiAnalysis, user, year, period, periodVal
 
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {data.departmentKPIs.map((kpi: any, idx: number) => (
-            <div key={idx} className={`relative overflow-hidden p-5 rounded-xl border-2 transition-all hover:shadow-md ${kpi.is_pass ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white hover:border-emerald-300' : 'border-rose-200 bg-gradient-to-br from-rose-50 to-white hover:border-rose-300'}`}>
+            <div
+              key={idx}
+              className={`relative overflow-hidden p-5 rounded-xl border-2 transition-all hover:shadow-md cursor-pointer group ${kpi.is_pass ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white hover:border-emerald-300' : 'border-rose-200 bg-gradient-to-br from-rose-50 to-white hover:border-rose-300'}`}
+              onClick={() => setSelectedKPI(kpi.kpi_name)}
+            >
               <div className="flex justify-between items-start mb-3">
-                <span className="font-semibold text-slate-800">{kpi.kpi_name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{kpi.kpi_name}</span>
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <div className={`p-1.5 rounded-full ${kpi.is_pass ? 'bg-emerald-100' : 'bg-rose-100'}`}>
                   {kpi.is_pass ? (
                     <CheckCircle className="h-5 w-5 text-emerald-600" />
@@ -374,10 +384,17 @@ export function MyKPIDashboard({ data, aiAnalysis, user, year, period, periodVal
             </div>
           ) : (
             data.personalKPIs.map((kpi: any, idx: number) => (
-              <div key={idx} className={`relative overflow-hidden p-5 rounded-xl border-2 transition-all hover:shadow-md ${kpi.is_pass ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 to-white hover:border-emerald-300' : 'border-rose-200 bg-gradient-to-r from-rose-50 to-white hover:border-rose-300'}`}>
+              <div
+                key={idx}
+                className={`relative overflow-hidden p-5 rounded-xl border-2 transition-all hover:shadow-md cursor-pointer group ${kpi.is_pass ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 to-white hover:border-emerald-300' : 'border-rose-200 bg-gradient-to-r from-rose-50 to-white hover:border-rose-300'}`}
+                onClick={() => setSelectedKPI(kpi.kpi_name)}
+              >
                 <div className="flex justify-between items-center">
                   <div>
-                    <h4 className="font-semibold text-slate-800 text-lg">{kpi.kpi_name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-slate-800 text-lg group-hover:text-purple-600 transition-colors">{kpi.kpi_name}</h4>
+                      <ExternalLink className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                     <p className="text-sm text-slate-500">
                       Target: {kpi.kpi_name.includes('Meeting') ? `≤${kpi.target_value} ครั้ง` : `≥${kpi.target_value}%`}
                     </p>
@@ -458,6 +475,17 @@ export function MyKPIDashboard({ data, aiAnalysis, user, year, period, periodVal
           </div>
         </div>
       )}
+
+      {/* KPI Detail Modal */}
+      <KPIDetailModal
+        isOpen={!!selectedKPI}
+        onClose={() => setSelectedKPI(null)}
+        kpiName={selectedKPI || ''}
+        year={year}
+        period={period}
+        periodValue={periodValue}
+        employeeId={user.id}
+      />
     </div>
   )
 }

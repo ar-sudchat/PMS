@@ -39,21 +39,39 @@ function SummaryCard({
     color: 'blue' | 'green' | 'amber' | 'purple'
 }) {
     const colorClasses = {
-        blue: 'bg-blue-50 text-blue-600 border-blue-100',
-        green: 'bg-green-50 text-green-600 border-green-100',
-        amber: 'bg-amber-50 text-amber-600 border-amber-100',
-        purple: 'bg-purple-50 text-purple-600 border-purple-100'
+        blue: {
+            card: 'bg-gradient-to-br from-blue-50 to-white border-blue-100 hover:shadow-md hover:shadow-blue-100/50',
+            icon: 'bg-blue-100 text-blue-600',
+            text: 'text-blue-600'
+        },
+        green: {
+            card: 'bg-gradient-to-br from-emerald-50 to-white border-emerald-100 hover:shadow-md hover:shadow-emerald-100/50',
+            icon: 'bg-emerald-100 text-emerald-600',
+            text: 'text-emerald-600'
+        },
+        amber: {
+            card: 'bg-gradient-to-br from-amber-50 to-white border-amber-100 hover:shadow-md hover:shadow-amber-100/50',
+            icon: 'bg-amber-100 text-amber-600',
+            text: 'text-amber-600'
+        },
+        purple: {
+            card: 'bg-gradient-to-br from-violet-50 to-white border-violet-100 hover:shadow-md hover:shadow-violet-100/50',
+            icon: 'bg-violet-100 text-violet-600',
+            text: 'text-violet-600'
+        }
     }
 
+    const classes = colorClasses[color]
+
     return (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+        <div className={cn("rounded-xl border p-4 shadow-sm transition-all duration-300", classes.card)}>
             <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-lg", colorClasses[color])}>
+                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", classes.icon)}>
                     <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                    <div className="text-2xl font-bold text-slate-900">{value}</div>
-                    <div className="text-sm text-slate-500">{title}</div>
+                    <div className="text-3xl font-bold text-slate-800">{value}</div>
+                    <div className={cn("text-sm font-medium", classes.text)}>{title}</div>
                     {subtitle && <div className="text-xs text-slate-400">{subtitle}</div>}
                 </div>
             </div>
@@ -311,35 +329,42 @@ export function EmployeeWorkReportView() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Employee Work Report</h2>
-                    <p className="text-sm text-muted-foreground">รายงานการทำงานรายบุคคล</p>
-                </div>
-
-                {/* Filters */}
-                <div className="flex items-center gap-3">
-                    {/* Employee Selector */}
-                    <div className="w-64">
-                        <SmartCombobox
-                            value={employeeOptions.find(o => o.value === selectedEmployee)}
-                            onChange={(opt) => setSelectedEmployee(opt?.value?.toString() || '')}
-                            options={employeeOptions}
-                            placeholder="เลือกพนักงาน"
-                        />
+            <div className="bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 rounded-2xl p-6 shadow-lg shadow-emerald-200/50">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                            <User className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-bold text-white">Employee Work Report</h2>
+                            <p className="text-emerald-100">รายงานการทำงานรายบุคคล</p>
+                        </div>
                     </div>
 
-                    {/* Month Selector */}
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleMonthChange(-1)}>
-                            <ChevronLeft className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" className="h-7 px-3 text-sm font-medium">
-                            {format(selectedDate, 'MMMM yyyy')}
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleMonthChange(1)}>
-                            <ChevronRight className="w-4 h-4" />
-                        </Button>
+                    {/* Filters */}
+                    <div className="flex items-center gap-3">
+                        {/* Employee Selector */}
+                        <div className="w-64">
+                            <SmartCombobox
+                                value={employeeOptions.find(o => o.value === selectedEmployee)}
+                                onChange={(opt) => setSelectedEmployee(opt?.value?.toString() || '')}
+                                options={employeeOptions}
+                                placeholder="เลือกพนักงาน"
+                            />
+                        </div>
+
+                        {/* Month Selector */}
+                        <div className="flex items-center gap-1 bg-white/10 p-1 rounded-lg border border-white/20">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-white/20" onClick={() => handleMonthChange(-1)}>
+                                <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" className="h-7 px-3 text-sm font-medium text-white hover:bg-white/20">
+                                {format(selectedDate, 'MMMM yyyy')}
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-white/20" onClick={() => handleMonthChange(1)}>
+                                <ChevronRight className="w-4 h-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>

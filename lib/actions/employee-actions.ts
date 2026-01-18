@@ -417,13 +417,15 @@ export async function getActiveEmployees() {
           e.employee_code,
           e.first_name,
           e.last_name,
+          e.first_name_th,
+          e.last_name_th,
           e.nickname,
-          COALESCE(NULLIF(e.first_name, '') + ' ' + NULLIF(e.last_name, ''), e.nickname, e.employee_code) as full_name,
+          COALESCE(NULLIF(e.first_name_th, '') + ' ' + NULLIF(e.last_name_th, ''), NULLIF(e.first_name, '') + ' ' + NULLIF(e.last_name, ''), e.nickname, e.employee_code) as full_name,
           p.name as position
         FROM pms.employees e
         LEFT JOIN pms.positions p ON e.position_id = p.id
         WHERE e.is_active = 1
-        ORDER BY e.first_name, e.last_name, e.nickname
+        ORDER BY e.first_name_th, e.first_name, e.last_name, e.nickname
       `)
 
     return { success: true, data: result.recordset }
@@ -443,18 +445,20 @@ export async function getAssignableEmployees(dueDate?: string) {
     const request = pool.request()
 
     let query = `
-            SELECT 
+            SELECT
                 e.id,
                 e.employee_code,
                 e.first_name,
                 e.last_name,
+                e.first_name_th,
+                e.last_name_th,
                 e.nickname,
                 p.code as role_code,
                 p.name as role_name,
                 ISNULL((
                     SELECT SUM(t.estimated_hours)
                     FROM pms.tasks t
-                    WHERE t.assignee_id = e.id 
+                    WHERE t.assignee_id = e.id
                     ${dueDate ? 'AND t.due_date = @dueDate' : ''}
                     AND t.status NOT IN ('done', 'cancelled')
                     AND t.is_active = 1
@@ -463,7 +467,7 @@ export async function getAssignableEmployees(dueDate?: string) {
             FROM pms.employees e
             LEFT JOIN pms.positions p ON e.position_id = p.id
             WHERE e.is_active = 1
-            ORDER BY CASE WHEN p.code = 'PG' THEN 1 ELSE 2 END, e.first_name
+            ORDER BY CASE WHEN p.code = 'PG' THEN 1 ELSE 2 END, e.first_name_th, e.first_name
         `
 
     if (dueDate) {

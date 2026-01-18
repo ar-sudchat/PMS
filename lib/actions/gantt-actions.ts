@@ -73,6 +73,7 @@ export async function getGanttData(filters?: {
     statusId?: string
     milestoneIds?: string[]
     search?: string
+    assigneeId?: string
 }): Promise<{
     success: boolean
     data: { data: GanttTask[]; links: any[] } | null
@@ -97,6 +98,7 @@ export async function getGanttData(filters?: {
             .input('status_id', sql.UniqueIdentifier, filters?.statusId || null)
             .input('search', sql.NVarChar, filters?.search || null)
             .input('milestone_ids', sql.NVarChar, milestoneIdsStr)
+            .input('assignee_id', sql.UniqueIdentifier, filters?.assigneeId || null)
             .execute('pms.sp_get_gantt_data')
 
         const tasks: GanttTask[] = []

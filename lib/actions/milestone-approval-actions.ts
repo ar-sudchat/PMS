@@ -105,7 +105,7 @@ export async function getMilestoneApprovalStatus(milestoneId: string): Promise<M
       ISNULL(pm.is_approved, 0) AS is_approved,
       ISNULL(pm.is_locked, 0) AS is_locked,
       pm.approved_at,
-      e.first_name + ' ' + ISNULL(e.last_name, '') AS approved_by_name,
+      COALESCE(e.first_name_th + ' ' + ISNULL(e.last_name_th, ''), e.first_name + ' ' + ISNULL(e.last_name, '')) AS approved_by_name,
       pm.approval_notes,
       pm.due_date,
       pm.completed_date,
