@@ -1,14 +1,13 @@
-import { getDashboardData } from '@/lib/actions/dashboard-actions'
-import { DashboardContent } from '@/components/dashboard/DashboardContent'
 import { redirect } from 'next/navigation'
+import { getCurrentUser } from '@/lib/auth'
 
 export default async function DashboardPage() {
-  const result = await getDashboardData()
+  const user = await getCurrentUser()
 
-  if (!result.success || !result.data) {
-    // If not authenticated, redirect to login
+  if (!user) {
     redirect('/login')
   }
 
-  return <DashboardContent data={result.data} />
+  // Redirect to KPI Dashboard as main page
+  redirect('/kpi-dashboard')
 }
