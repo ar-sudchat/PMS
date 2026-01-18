@@ -104,11 +104,25 @@ export function NewTaskModal({
     // Set reviewer_id to currentUserId when employees loaded in create mode
     const employeesLoaded = employees.length > 0
     useEffect(() => {
-        if (isOpen && mode === 'create' && currentUserId && employeesLoaded) {
-            // ตั้งค่า reviewer_id เป็น currentUserId เสมอเมื่อ employees โหลดเสร็จ
-            setFormData(prev => ({ ...prev, reviewer_id: currentUserId }))
+        // Only set if not already set (or if we want to force default on load, but be careful of overwriting user input if they typed fast)
+        // But since this happens on open/load, typically user hasn't typed yet.
+        // We check if formData.reviewer_id is empty to avoid overwriting if re-triggered.
+        const shouldSetDefault = isOpen && mode === 'create' && currentUserId && employeesLoaded
+
+        if (shouldSetDefault) {
+            setFormData(prev => {
+                if (prev.reviewer_id) return prev // Don't overwrite if already set
+
+                // Check if user exists in employees (case insensitive)
+                const userExists = employees.some(e => String(e.id).toLowerCase() === String(currentUserId).toLowerCase())
+
+                if (userExists) {
+                    return { ...prev, reviewer_id: currentUserId }
+                }
+                return prev
+            })
         }
-    }, [isOpen, mode, currentUserId, employeesLoaded])
+    }, [isOpen, mode, currentUserId, employeesLoaded, employees])
 
     // สร้าง reviewerOptions ก่อน early return (React hooks rules)
     const reviewerOptions = useMemo(() => {
@@ -461,243 +475,243 @@ export function NewTaskModal({
 
                     {/* Details Tab Content */}
                     <div className={activeTab === 'details' ? 'block' : 'hidden'}>
-                    <form ref={formRef} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Left Column - Form Fields */}
-                        <div className="space-y-4">
-                            {/* Title - Full Width in Left Column */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Title <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    ref={titleInputRef}
-                                    type="text"
-                                    value={formData.title}
-                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                    onKeyDown={handleEnterKey}
-                                    placeholder="Enter task title"
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                    required
-                                    autoFocus={mode === 'create'}
-                                    disabled={isTaskCompleted}
-                                />
-                            </div>
-
-                            {/* Row 1: Task Type & Priority */}
-                            <div className="grid grid-cols-2 gap-4">
+                        <form ref={formRef} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left Column - Form Fields */}
+                            <div className="space-y-4">
+                                {/* Title - Full Width in Left Column */}
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Task Type <span className="text-red-500">*</span></label>
-                                    <SmartCombobox
-                                        options={taskTypeOptions}
-                                        value={taskTypeOptions.find((o: any) => o.value === formData.task_type) || null}
-                                        onChange={(val) => {
-                                            console.log('DEBUG - currentUserId:', currentUserId)
-                                            console.log('DEBUG - reviewerOptions[0]:', reviewerOptions[0])
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                task_type: val?.value?.toString() || '',
-                                                // Set reviewer_id ถ้ายังไม่มี
-                                                reviewer_id: prev.reviewer_id || currentUserId || ''
-                                            }))
-                                        }}
-                                        placeholder="Select Type"
-                                        required
-                                        disabled={isTaskCompleted}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Priority <span className="text-red-500">*</span></label>
-                                    <SmartCombobox
-                                        options={priorityOptions}
-                                        value={priorityOptions.find((o: any) => o.value === formData.priority) || null}
-                                        onChange={(val) => setFormData({ ...formData, priority: val?.value?.toString() || 'medium' })}
-                                        placeholder="Select Priority"
-                                        required
-                                        disabled={isTaskCompleted}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Row 2: Hours & Due Date */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Hours</label>
-                                    <div className="relative">
-                                        <Clock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                                        <input
-                                            type="number"
-                                            value={formData.estimated_hours}
-                                            onChange={(e) => setFormData({ ...formData, estimated_hours: e.target.value })}
-                                            onKeyDown={handleEnterKey}
-                                            placeholder="e.g. 8"
-                                            min="0"
-                                            step="0.5"
-                                            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                            disabled={isTaskCompleted}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-                                    <div className="relative">
-                                        <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                                        <input
-                                            type="date"
-                                            value={formData.due_date}
-                                            onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                                            onKeyDown={handleEnterKey}
-                                            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                            disabled={isTaskCompleted}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Row 3: Assignee & Created By */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1 flex justify-between">
-                                        Assignee
-                                        {!formData.due_date && !isTaskCompleted && <span className="text-[10px] text-amber-600 font-normal">Select Due Date first</span>}
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Title <span className="text-red-500">*</span>
                                     </label>
-                                    <SmartCombobox
-                                        options={assigneeOptions}
-                                        value={assigneeOptions.find((o: any) => o.value === formData.assignee_id) || null}
-                                        onChange={(val) => setFormData({ ...formData, assignee_id: val?.value?.toString() || '' })}
-                                        placeholder={!formData.due_date ? "Select Due Date first..." : "Select Assignee"}
-                                        disabled={isTaskCompleted || !formData.due_date}
-                                        isLoading={isLoadingAssignees}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Created By</label>
-                                    <SmartCombobox
-                                        options={reviewerOptions}
-                                        value={reviewerOptions.find((o: any) => String(o.value) === String(formData.reviewer_id || currentUserId)) || null}
-                                        onChange={(val) => setFormData({ ...formData, reviewer_id: val?.value?.toString() || '' })}
-                                        placeholder="Select Creator"
-                                        disabled={isTaskCompleted}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Status (Edit only) */}
-                            {mode === 'edit' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                                    <SmartCombobox
-                                        options={statusOptions}
-                                        value={statusOptions.find((o: any) => o.value === formData.status) || null}
-                                        onChange={(val) => setFormData({ ...formData, status: val?.value?.toString() || 'todo' })}
-                                        placeholder="Select Status"
-                                        disabled={isTaskCompleted}
-                                    />
-                                </div>
-                            )}
-
-                            {/* KPI Checkbox */}
-                            <div className={`flex items-center gap-3 p-3 rounded-lg border ${isTaskCompleted ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'}`}>
-                                <input
-                                    type="checkbox"
-                                    id="is_count_for_kpi"
-                                    checked={formData.is_count_for_kpi}
-                                    onChange={(e) => setFormData({ ...formData, is_count_for_kpi: e.target.checked })}
-                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
-                                    disabled={isTaskCompleted}
-                                />
-                                <label htmlFor="is_count_for_kpi" className={`flex-1 ${isTaskCompleted ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                                    <span className="text-sm font-medium text-slate-700">คิด KPI</span>
-                                    <p className="text-xs text-slate-500">ถ้าไม่ติ๊ก Task นี้จะไม่ถูกนำไปคำนวณ KPI</p>
-                                </label>
-                            </div>
-
-                            {/* Description */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                                <textarea
-                                    value={formData.description}
-                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    rows={6}
-                                    placeholder="Add task details..."
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm resize-none disabled:bg-slate-100 disabled:cursor-not-allowed"
-                                    disabled={isTaskCompleted}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Right Column - Checklist */}
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                                <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                                    <ListChecks className="w-4 h-4 text-emerald-500" />
-                                    Checklist
-                                </label>
-                                <span className="text-sm font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                    {checklistItems.length} items
-                                </span>
-                            </div>
-
-                            {/* Add Item Input - Moved to Top */}
-                            {!isTaskCompleted && (
-                                <div className="flex items-center gap-2">
                                     <input
+                                        ref={titleInputRef}
                                         type="text"
-                                        value={newChecklistItem}
-                                        onChange={(e) => setNewChecklistItem(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault()
-                                                handleAddChecklistItem()
-                                            }
-                                        }}
-                                        placeholder="Add item..."
-                                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        value={formData.title}
+                                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                        onKeyDown={handleEnterKey}
+                                        placeholder="Enter task title"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                        required
+                                        autoFocus={mode === 'create'}
+                                        disabled={isTaskCompleted}
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddChecklistItem}
-                                        disabled={!newChecklistItem.trim()}
-                                        className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Add
-                                    </button>
                                 </div>
-                            )}
 
-                            {/* Checklist Items Container */}
-                            <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
-                                {checklistItems.length === 0 ? (
-                                    <div className="p-8 text-center">
-                                        <ListChecks className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                                        <p className="text-sm text-slate-400">ยังไม่มี checklist</p>
-                                        <p className="text-xs text-slate-400 mt-1">เพิ่มรายการด้านบน</p>
+                                {/* Row 1: Task Type & Priority */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Task Type <span className="text-red-500">*</span></label>
+                                        <SmartCombobox
+                                            options={taskTypeOptions}
+                                            value={taskTypeOptions.find((o: any) => o.value === formData.task_type) || null}
+                                            onChange={(val) => {
+                                                console.log('DEBUG - currentUserId:', currentUserId)
+                                                console.log('DEBUG - reviewerOptions[0]:', reviewerOptions[0])
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    task_type: val?.value?.toString() || '',
+                                                    // Set reviewer_id ถ้ายังไม่มี
+                                                    reviewer_id: prev.reviewer_id || currentUserId || ''
+                                                }))
+                                            }}
+                                            placeholder="Select Type"
+                                            required
+                                            disabled={isTaskCompleted}
+                                        />
                                     </div>
-                                ) : (
-                                    checklistItems.map((item) => (
-                                        <div
-                                            key={item.id}
-                                            className="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors group"
-                                        >
-                                            <span className="flex-1 text-sm text-slate-700 font-medium">{item.title}</span>
-                                            {!isTaskCompleted && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveChecklistItem(item.id)}
-                                                    className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            )}
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Priority <span className="text-red-500">*</span></label>
+                                        <SmartCombobox
+                                            options={priorityOptions}
+                                            value={priorityOptions.find((o: any) => o.value === formData.priority) || null}
+                                            onChange={(val) => setFormData({ ...formData, priority: val?.value?.toString() || 'medium' })}
+                                            placeholder="Select Priority"
+                                            required
+                                            disabled={isTaskCompleted}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Row 2: Hours & Due Date */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Hours</label>
+                                        <div className="relative">
+                                            <Clock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                                            <input
+                                                type="number"
+                                                value={formData.estimated_hours}
+                                                onChange={(e) => setFormData({ ...formData, estimated_hours: e.target.value })}
+                                                onKeyDown={handleEnterKey}
+                                                placeholder="e.g. 8"
+                                                min="0"
+                                                step="0.5"
+                                                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                                disabled={isTaskCompleted}
+                                            />
                                         </div>
-                                    ))
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                                        <div className="relative">
+                                            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                                            <input
+                                                type="date"
+                                                value={formData.due_date}
+                                                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                                                onKeyDown={handleEnterKey}
+                                                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                                disabled={isTaskCompleted}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Row 3: Assignee & Created By */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1 flex justify-between">
+                                            Assignee
+                                            {!formData.due_date && !isTaskCompleted && <span className="text-[10px] text-amber-600 font-normal">Select Due Date first</span>}
+                                        </label>
+                                        <SmartCombobox
+                                            options={assigneeOptions}
+                                            value={assigneeOptions.find((o: any) => o.value === formData.assignee_id) || null}
+                                            onChange={(val) => setFormData({ ...formData, assignee_id: val?.value?.toString() || '' })}
+                                            placeholder={!formData.due_date ? "Select Due Date first..." : "Select Assignee"}
+                                            disabled={isTaskCompleted || !formData.due_date}
+                                            isLoading={isLoadingAssignees}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Created By</label>
+                                        <SmartCombobox
+                                            options={reviewerOptions}
+                                            value={reviewerOptions.find((o: any) => String(o.value).toLowerCase() === String(formData.reviewer_id || currentUserId).toLowerCase()) || null}
+                                            onChange={(val) => setFormData({ ...formData, reviewer_id: val?.value?.toString() || '' })}
+                                            placeholder="Select Creator"
+                                            disabled={isTaskCompleted}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Status (Edit only) */}
+                                {mode === 'edit' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                                        <SmartCombobox
+                                            options={statusOptions}
+                                            value={statusOptions.find((o: any) => o.value === formData.status) || null}
+                                            onChange={(val) => setFormData({ ...formData, status: val?.value?.toString() || 'todo' })}
+                                            placeholder="Select Status"
+                                            disabled={isTaskCompleted}
+                                        />
+                                    </div>
                                 )}
+
+                                {/* KPI Checkbox */}
+                                <div className={`flex items-center gap-3 p-3 rounded-lg border ${isTaskCompleted ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'}`}>
+                                    <input
+                                        type="checkbox"
+                                        id="is_count_for_kpi"
+                                        checked={formData.is_count_for_kpi}
+                                        onChange={(e) => setFormData({ ...formData, is_count_for_kpi: e.target.checked })}
+                                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                                        disabled={isTaskCompleted}
+                                    />
+                                    <label htmlFor="is_count_for_kpi" className={`flex-1 ${isTaskCompleted ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        <span className="text-sm font-medium text-slate-700">คิด KPI</span>
+                                        <p className="text-xs text-slate-500">ถ้าไม่ติ๊ก Task นี้จะไม่ถูกนำไปคำนวณ KPI</p>
+                                    </label>
+                                </div>
+
+                                {/* Description */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                    <textarea
+                                        value={formData.description}
+                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                        rows={6}
+                                        placeholder="Add task details..."
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm resize-none disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                        disabled={isTaskCompleted}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    </form>
+
+                            {/* Right Column - Checklist */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                        <ListChecks className="w-4 h-4 text-emerald-500" />
+                                        Checklist
+                                    </label>
+                                    <span className="text-sm font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                        {checklistItems.length} items
+                                    </span>
+                                </div>
+
+                                {/* Add Item Input - Moved to Top */}
+                                {!isTaskCompleted && (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={newChecklistItem}
+                                            onChange={(e) => setNewChecklistItem(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault()
+                                                    handleAddChecklistItem()
+                                                }
+                                            }}
+                                            placeholder="Add item..."
+                                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleAddChecklistItem}
+                                            disabled={!newChecklistItem.trim()}
+                                            className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Add
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Checklist Items Container */}
+                                <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+                                    {checklistItems.length === 0 ? (
+                                        <div className="p-8 text-center">
+                                            <ListChecks className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                            <p className="text-sm text-slate-400">ยังไม่มี checklist</p>
+                                            <p className="text-xs text-slate-400 mt-1">เพิ่มรายการด้านบน</p>
+                                        </div>
+                                    ) : (
+                                        checklistItems.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                className="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors group"
+                                            >
+                                                <span className="flex-1 text-sm text-slate-700 font-medium">{item.title}</span>
+                                                {!isTaskCompleted && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveChecklistItem(item.id)}
+                                                        className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </form>
                     </div>
 
                     {/* Attachments Tab Content */}

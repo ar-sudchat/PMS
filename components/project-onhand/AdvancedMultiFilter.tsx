@@ -1,10 +1,13 @@
 'use client'
 
-import { Search, RotateCcw } from "lucide-react"
+import { Search, RotateCcw, ListFilter, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
+import { MultiSelectCombobox } from "@/components/shared/MultiSelectCombobox"
 import { cn } from "@/lib/utils"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
 
 export interface OnHandFilters {
     year: number
@@ -15,6 +18,7 @@ export interface OnHandFilters {
     pmId: string
     ownerId: string
     projectTypeId: string
+    selectedTypes: string[]
 }
 
 interface AdvancedMultiFilterProps {
@@ -27,15 +31,17 @@ export function AdvancedMultiFilter({ filters, onFilterChange, options }: Advanc
 
     // Refresh / Reset Handler
     const handleRefresh = () => {
-        // Reset specific filters but keep year? Or reset mostly everything? 
-        // User said "Refresh Button: ปุ่มล้างค่าและดึงข้อมูลใหม่". 
-        // Let's reset to defaults (keep current year usually, but reset text/dropdowns)
+        // Find Active status ID to default to
+        const activeStatus = options.statuses?.find((s: any) => s.name?.toLowerCase() === 'active' || s.code?.toLowerCase() === 'active');
+        const defaultStatusId = activeStatus ? activeStatus.id : 'active';
+
         onFilterChange({
             ...filters,
             search: '',
-            statusId: '',
+            statusId: defaultStatusId,
             pmId: '',
-            ownerId: ''
+            ownerId: '',
+            selectedTypes: ['DEV', 'SUP']
         })
     }
 
@@ -82,9 +88,20 @@ export function AdvancedMultiFilter({ filters, onFilterChange, options }: Advanc
                             ...options.statuses.map((s: any) => ({ value: s.id, label: s.name }))
                         ]}
                         value={filters.statusId ?
-                            { value: filters.statusId, label: options.statuses.find((s: any) => s.id === filters.statusId)?.name || '' }
+                            { value: filters.statusId, label: options.statuses?.find((s: any) => s.id === filters.statusId)?.name || (filters.statusId === 'active' ? 'Active' : '') }
                             : { value: '', label: 'All Status' }}
                         onChange={(opt: any) => onFilterChange({ ...filters, statusId: opt?.value === '' ? '' : opt?.value || '' })}
+                    />
+                </div>
+
+                {/* Type Filter (Multi-Select Smart Combobox) */}
+                <div className="w-[160px] shrink-0">
+                    <MultiSelectCombobox
+                        placeholder="All Types"
+                        options={options.projectTypes?.map((t: any) => ({ value: t.code, label: t.code })) || []}
+                        selectedValues={filters.selectedTypes || []}
+                        onChange={(values) => onFilterChange({ ...filters, selectedTypes: values })}
+                        onClear={() => onFilterChange({ ...filters, selectedTypes: [] })}
                     />
                 </div>
 

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Menu, Transition } from "@headlessui/react"
 import { cn } from "@/lib/utils"
+import { Check } from "lucide-react"
 
 const DropdownMenu = Menu
 
@@ -82,10 +83,54 @@ const DropdownMenuSeparator = ({ className, ...props }: { className?: string }) 
     <div className={cn("-mx-1 my-1 h-px bg-slate-100", className)} {...props} />
 )
 
+const DropdownMenuLabel = ({ className, ...props }: { className?: string } & React.HTMLAttributes<HTMLDivElement>) => (
+    <div className={cn("px-2 py-1.5 text-sm font-semibold text-slate-900", className)} {...props} />
+)
+
+const DropdownMenuCheckboxItem = ({
+    className,
+    children,
+    checked,
+    onCheckedChange,
+    ...props
+}: {
+    className?: string
+    children: React.ReactNode
+    checked?: boolean
+    onCheckedChange?: (checked: boolean) => void
+}) => {
+    return (
+        <Menu.Item>
+            {({ active }) => (
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.preventDefault()
+                        onCheckedChange?.(!checked)
+                    }}
+                    className={cn(
+                        active ? "bg-slate-100 text-slate-900" : "text-slate-700",
+                        "group flex w-full items-center px-2 py-1.5 text-sm outline-none relative pl-8 select-none",
+                        className
+                    )}
+                    {...props}
+                >
+                    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                        {checked && <Check className="h-4 w-4" />}
+                    </span>
+                    {children}
+                </button>
+            )}
+        </Menu.Item>
+    )
+}
+
 export {
     DropdownMenu,
     DropdownMenuTrigger,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
+    DropdownMenuLabel,
+    DropdownMenuCheckboxItem,
 }

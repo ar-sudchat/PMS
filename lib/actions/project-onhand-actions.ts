@@ -33,8 +33,12 @@ export interface ProjectRow {
     projectId: string
     projectCode: string
     projectName: string
+    customerName: string
     pmName: string
     healthScore: number
+    soldMandays: number
+    projectTypeCode: string
+    projectTypeColor?: string
     milestones: MilestoneForecast[]
 }
 
@@ -140,8 +144,12 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     p.name as project_name,
                     p.status_id,
                     p.total_value,
+                    p.sold_mandays,
+                    pt.code as project_type_code,
+                    pt.color as project_type_color,
                     p.project_manager_id,
                     p.project_owner_id,
+                    c.name as customer_name,
                     
                     -- PM Info
                     e.first_name_th, e.last_name_th,
@@ -167,8 +175,11 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                 LEFT JOIN pms.employees e ON p.project_owner_id = e.id
                 LEFT JOIN pms.project_milestones pm ON p.id = pm.project_id
                 LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+                LEFT JOIN pms.customers c ON p.customer_id = c.id
                 
                 WHERE (p.project_year = @year OR YEAR(pm.due_date) = @year)
+                AND (pt.code IS NULL OR pt.code != 'MA')
             `
 
         const request = pool.request()
@@ -223,8 +234,12 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     projectId: row.project_id,
                     projectCode: row.project_code,
                     projectName: row.project_name,
+                    customerName: row.customer_name || '-',
                     pmName: `${row.first_name_th || ''} ${row.last_name_th || ''}`.trim() || 'Unassigned',
                     healthScore: 100, // Default, calc later
+                    soldMandays: row.sold_mandays || 0,
+                    projectTypeCode: row.project_type_code || '',
+                    projectTypeColor: row.project_type_color,
                     milestones: []
                 })
             }

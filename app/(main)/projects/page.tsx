@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, Building, Target, ChevronDown, Check, Briefcase } from 'lucide-react'
+import { Plus, Search, Building, Target, ChevronDown, Check, Briefcase, Settings } from 'lucide-react'
 import Link from 'next/link'
 import { getProjectFilterOptions, getProjects, ProjectFilters } from '@/lib/actions/project-actions'
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
@@ -49,7 +49,7 @@ export default function ProjectsPage() {
         customerId: '',
         managerId: '',
         ownerId: '',
-        statusId: '',
+        statusId: '', // Will be set in useEffect after options load
         projectTypeId: '',
         milestoneIds: [],
         search: ''
@@ -83,6 +83,15 @@ export default function ProjectsPage() {
         const result = await getProjectFilterOptions()
         if (result.success && result.data) {
             setFilterOptions(result.data)
+
+            // Set default status to 'Active' if found
+            const activeStatus = result.data.statuses.find((s: any) =>
+                s.code?.toLowerCase() === 'active' || s.name?.toLowerCase() === 'active'
+            )
+
+            if (activeStatus && !filters.statusId) {
+                setFilters(prev => ({ ...prev, statusId: activeStatus.id }))
+            }
         }
     }
 
@@ -296,7 +305,7 @@ export default function ProjectsPage() {
     ]
 
     return (
-        <div className="p-6 space-y-6">
+        <div className="px-6 pb-6 pt-2 space-y-6">
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-2xl p-6 shadow-lg shadow-blue-200/50">
                 <div className="flex items-center justify-between">
@@ -520,10 +529,17 @@ export default function ProjectsPage() {
                     </div>
 
                     {/* Create Project Button */}
-                    <div className="ml-auto">
+                    <div className="ml-auto flex items-center gap-2">
+                        <Link
+                            href="/projects/settings/project-types"
+                            className="px-4 py-2 border border-slate-300 text-slate-700 bg-white rounded-lg hover:bg-slate-50 flex items-center gap-2 text-sm font-medium transition-colors"
+                        >
+                            <Settings className="w-4 h-4" />
+                            Manage Types
+                        </Link>
                         <button
                             onClick={() => setIsCreateModalOpen(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-medium shadow-sm shadow-blue-200 transition-colors"
                         >
                             <Plus className="w-4 h-4" />
                             Create Project

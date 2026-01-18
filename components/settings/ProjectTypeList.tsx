@@ -95,7 +95,7 @@ export function ProjectTypeList({ types }: ProjectTypeListProps) {
                                 <th className="px-6 py-3 w-28 text-center">Milestones</th>
                                 <th className="px-6 py-3 w-28 text-center">Deliverables</th>
                                 <th className="px-6 py-3 w-24 text-center">Status</th>
-                                <th className="px-6 py-3 w-20 text-right">Actions</th>
+                                <th className="px-6 py-3 w-24 text-right">Manage</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -184,7 +184,7 @@ export function ProjectTypeList({ types }: ProjectTypeListProps) {
                                                 {isLoading ? (
                                                     <Loader2 className="w-4 h-4 animate-spin text-slate-400 ml-auto" />
                                                 ) : (
-                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex items-center justify-end gap-1">
                                                         {/* Edit Button */}
                                                         <Button
                                                             variant="ghost"
