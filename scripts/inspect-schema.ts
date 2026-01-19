@@ -4,7 +4,7 @@ import path from 'path'
 import sql from 'mssql'
 
 // Load env before anything else
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+dotenv.config({ path: path.resolve(process.cwd(), '.env.production') })
 
 if (!process.env.DB_SERVER) {
     console.error('DB_SERVER not found despite dotenv config.')
