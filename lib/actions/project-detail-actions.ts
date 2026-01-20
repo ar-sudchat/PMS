@@ -110,6 +110,177 @@ export interface TaskListItem {
     actual_hours: number | null
     due_date: string | null
     is_overdue: boolean
+    is_count_for_kpi: boolean
+    attachment_count: number
+}
+
+// ... (ProjectSummary interface remains unchanged)
+
+// ...
+
+// ============================================
+// NEW: GET PROJECT TASKS
+// ============================================
+
+export async function getProjectTasks(
+    projectId: string,
+    filters?: {
+        storyId?: string
+        milestoneId?: string
+        status?: string
+        priority?: string
+        assigneeId?: string
+        taskType?: string
+        search?: string
+    },
+    sort?: { field: string; order: 'asc' | 'desc' },
+    pagination?: { page: number; pageSize: number }
+): Promise<{ data: TaskListItem[]; total: number }> {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('projectId', sql.UniqueIdentifier, projectId)
+
+        // Base Query using JOINs instead of View
+        let query = `
+            SELECT 
+                t.id,
+                t.task_code,
+                t.title,
+                t.story_id,
+                s.story_code,
+                s.title AS story_title,
+                mc.code AS milestone_code,
+                mc.name AS milestone_name,
+                mc.color AS milestone_color,
+                t.task_type,
+                t.status,
+                t.priority,
+                t.assignee_id,
+                CONCAT(e.first_name_th, ' ', e.last_name_th) AS assignee_name,
+                e.nickname AS assignee_nickname,
+                NULL AS assignee_avatar, -- Placeholder if avatar logic exists
+                t.estimated_hours,
+                t.actual_hours,
+                t.due_date,
+                CASE WHEN t.due_date < CAST(GETDATE() AS DATE) AND t.status != 'done' THEN 1 ELSE 0 END AS is_overdue,
+                t.is_count_for_kpi,
+                t.attachments
+            FROM pms.tasks t
+            JOIN pms.stories s ON t.story_id = s.id
+            LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+            LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+            LEFT JOIN pms.employees e ON t.assignee_id = e.id
+            WHERE s.project_id = @projectId AND t.is_active = 1
+        `
+
+        // Filters
+        if (filters?.storyId) {
+            request.input('storyId', sql.UniqueIdentifier, filters.storyId)
+            query += ` AND t.story_id = @storyId`
+        }
+        if (filters?.milestoneId && filters.milestoneId !== 'all') {
+            request.input('milestoneId', sql.UniqueIdentifier, filters.milestoneId)
+            query += ` AND s.milestone_id = @milestoneId`
+        }
+        if (filters?.status && filters.status !== 'all') {
+            request.input('status', sql.VarChar, filters.status)
+            query += ` AND t.status = @status`
+        }
+        if (filters?.priority && filters.priority !== 'all') {
+            request.input('priority', sql.VarChar, filters.priority)
+            query += ` AND t.priority = @priority`
+        }
+        if (filters?.assigneeId && filters.assigneeId !== 'all') {
+            if (filters.assigneeId === 'unassigned') {
+                query += ` AND t.assignee_id IS NULL`
+            } else {
+                request.input('assigneeId', sql.UniqueIdentifier, filters.assigneeId)
+                query += ` AND t.assignee_id = @assigneeId`
+            }
+        }
+        if (filters?.taskType && filters.taskType !== 'all') {
+            request.input('taskType', sql.VarChar, filters.taskType)
+            query += ` AND t.task_type = @taskType`
+        }
+        if (filters?.search) {
+            request.input('search', sql.NVarChar, `%${filters.search}%`)
+            query += ` AND (t.title LIKE @search OR t.task_code LIKE @search OR s.story_code LIKE @search)`
+        }
+
+        // Count Total
+        const countQueryText = `SELECT COUNT(*) as total FROM (${query}) AS sub`
+        const countResult = await request.query(countQueryText)
+        const total = countResult.recordset[0].total
+
+        // Sorting
+        const sortField = sort?.field || 't.sort_order'
+        const sortOrder = sort?.order || 'asc'
+
+        // Map frontend sort fields to actual columns
+        let dbSortField = sortField
+        if (sortField === 'task_code') dbSortField = 't.task_code'
+        if (sortField === 'title') dbSortField = 't.title'
+        if (sortField === 'status') dbSortField = 't.status'
+        if (sortField === 'priority') dbSortField = 't.priority'
+        if (sortField === 'sort_order') dbSortField = 't.sort_order'
+
+        query += ` ORDER BY ${dbSortField} ${sortOrder}`
+
+        // Pagination
+        if (pagination) {
+            const offset = (pagination.page - 1) * pagination.pageSize
+            query += ` OFFSET ${offset} ROWS FETCH NEXT ${pagination.pageSize} ROWS ONLY`
+        }
+
+        const result = await request.query(query)
+
+        // Process attachments and other fields
+        const data: TaskListItem[] = result.recordset.map(row => {
+            let attachmentCount = 0
+            if (row.attachments) {
+                try {
+                    const parsed = JSON.parse(row.attachments)
+                    if (Array.isArray(parsed)) attachmentCount = parsed.length
+                } catch (e) {
+                    // Ignore parse error
+                }
+            }
+
+            return {
+                id: row.id,
+                task_code: row.task_code,
+                title: row.title,
+                story_id: row.story_id,
+                story_code: row.story_code,
+                story_title: row.story_title,
+                milestone_code: row.milestone_code,
+                milestone_name: row.milestone_name,
+                milestone_color: row.milestone_color,
+                task_type: row.task_type,
+                status: row.status,
+                priority: row.priority,
+                assignee_id: row.assignee_id,
+                assignee_name: row.assignee_name,
+                assignee_nickname: row.assignee_nickname,
+                assignee_avatar: row.assignee_avatar,
+                estimated_hours: row.estimated_hours,
+                actual_hours: row.actual_hours,
+                due_date: row.due_date,
+                is_overdue: !!row.is_overdue,
+                is_count_for_kpi: row.is_count_for_kpi === null ? true : !!row.is_count_for_kpi, // Default true if null
+                attachment_count: attachmentCount
+            }
+        })
+
+        return {
+            data,
+            total
+        }
+    } catch (error) {
+        console.error('getProjectTasks error:', error)
+        return { data: [], total: 0 }
+    }
 }
 
 export interface ProjectSummary {
@@ -452,88 +623,7 @@ export async function getProjectStories(
 // NEW: GET PROJECT TASKS
 // ============================================
 
-export async function getProjectTasks(
-    projectId: string,
-    filters?: {
-        storyId?: string
-        milestoneId?: string
-        status?: string
-        priority?: string
-        assigneeId?: string
-        taskType?: string
-        search?: string
-    },
-    sort?: { field: string; order: 'asc' | 'desc' },
-    pagination?: { page: number; pageSize: number }
-): Promise<{ data: TaskListItem[]; total: number }> {
-    try {
-        const pool = await getConnection()
-        const request = pool.request()
-        request.input('projectId', sql.UniqueIdentifier, projectId)
 
-        let query = `SELECT * FROM pms.vw_project_tasks_list WHERE project_id = @projectId`
-
-        // Filters
-        if (filters?.storyId) {
-            request.input('storyId', sql.UniqueIdentifier, filters.storyId)
-            query += ` AND story_id = @storyId`
-        }
-        if (filters?.milestoneId && filters.milestoneId !== 'all') {
-            request.input('milestoneId', sql.UniqueIdentifier, filters.milestoneId)
-            query += ` AND milestone_id = @milestoneId`
-        }
-        if (filters?.status && filters.status !== 'all') {
-            request.input('status', sql.VarChar, filters.status)
-            query += ` AND status = @status`
-        }
-        if (filters?.priority && filters.priority !== 'all') {
-            request.input('priority', sql.VarChar, filters.priority)
-            query += ` AND priority = @priority`
-        }
-        if (filters?.assigneeId && filters.assigneeId !== 'all') {
-            if (filters.assigneeId === 'unassigned') {
-                query += ` AND assignee_id IS NULL`
-            } else {
-                request.input('assigneeId', sql.UniqueIdentifier, filters.assigneeId)
-                query += ` AND assignee_id = @assigneeId`
-            }
-        }
-        if (filters?.taskType && filters.taskType !== 'all') {
-            request.input('taskType', sql.VarChar, filters.taskType)
-            query += ` AND task_type = @taskType`
-        }
-        if (filters?.search) {
-            request.input('search', sql.NVarChar, `%${filters.search}%`)
-            query += ` AND (title LIKE @search OR task_code LIKE @search OR story_code LIKE @search)`
-        }
-
-        // Count Total
-        const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total')
-        const countResult = await request.query(countQuery)
-        const total = countResult.recordset[0].total
-
-        // Sorting
-        const sortField = sort?.field || 'sort_order'
-        const sortOrder = sort?.order || 'asc'
-        query += ` ORDER BY ${sortField} ${sortOrder}`
-
-        // Pagination
-        if (pagination) {
-            const offset = (pagination.page - 1) * pagination.pageSize
-            query += ` OFFSET ${offset} ROWS FETCH NEXT ${pagination.pageSize} ROWS ONLY`
-        }
-
-        const result = await request.query(query)
-
-        return {
-            data: result.recordset as TaskListItem[],
-            total
-        }
-    } catch (error) {
-        console.error('getProjectTasks error:', error)
-        return { data: [], total: 0 }
-    }
-}
 
 // ============================================
 // NEW: INLINE UPDATES

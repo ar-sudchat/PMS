@@ -8,7 +8,7 @@ import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryModal'
 import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
 import { toast } from 'sonner'
-import { Pencil, Trash2, CheckCircle2, Circle, Clock, AlertCircle } from 'lucide-react'
+import { Pencil, Trash2, CheckCircle2, Circle, Clock, AlertCircle, Calendar, Paperclip, Check, X } from 'lucide-react'
 
 interface RightPanelProps {
     projectId: string
@@ -139,7 +139,75 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
                 if (p === 'medium') color = 'text-blue-500'
                 return <span className={`text-xs ${color} whitespace-nowrap`}>{p ? p.toUpperCase() : 'N/A'}</span>
             },
+            size: 100,
+            enableSorting: true
+        },
+        {
+            accessorKey: 'estimated_hours',
+            header: 'Est. Hours',
+            cell: ({ row }: any) => {
+                const est = row.original.estimated_hours
+                const act = row.original.actual_hours
+                return (
+                    <div className="flex flex-col text-xs">
+                        <span className="font-medium text-slate-700">{est ? `${est}h` : '-'}</span>
+                        {act ? <span className="text-slate-400 text-[10px]">Act: {act}h</span> : null}
+                    </div>
+                )
+            },
+            size: 100,
+            enableSorting: true
+        },
+        {
+            accessorKey: 'due_date',
+            header: 'Due Date',
+            cell: ({ row }: any) => {
+                const date = row.original.due_date
+                const isOverdue = row.original.is_overdue
+                if (!date) return <span className="text-slate-400 text-xs">-</span>
+
+                return (
+                    <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-600'}`}>
+                        <Calendar className="w-3 h-3" />
+                        {new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    </div>
+                )
+            },
             size: 120,
+            enableSorting: true
+        },
+        {
+            accessorKey: 'is_count_for_kpi',
+            header: 'KPI',
+            cell: ({ row }: any) => {
+                const isKpi = row.original.is_count_for_kpi
+                return (
+                    <div title={isKpi ? 'Counts for KPI' : 'Excluded from KPI'}>
+                        {isKpi ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                            <X className="w-4 h-4 text-slate-300" />
+                        )}
+                    </div>
+                )
+            },
+            size: 60,
+            enableSorting: true
+        },
+        {
+            accessorKey: 'attachment_count',
+            header: 'Att.',
+            cell: ({ row }: any) => {
+                const count = row.original.attachment_count || 0
+                if (count === 0) return null
+                return (
+                    <div className="flex items-center gap-1 text-slate-500" title={`${count} Attachment(s)`}>
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <span className="text-xs font-medium">{count}</span>
+                    </div>
+                )
+            },
+            size: 60,
             enableSorting: true
         },
         {
