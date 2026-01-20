@@ -14,13 +14,22 @@ const managerRoutes = ['/projects/create', '/projects/edit']
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl
 
+    // Get token first for root path check
+    const token = request.cookies.get('auth-token')?.value
+
+    // Handle root path redirect
+    if (pathname === '/') {
+        if (!token) {
+            return NextResponse.redirect(new URL('/login', request.url))
+        }
+        // If logged in, let the page component handle redirect to dashboard
+        return NextResponse.next()
+    }
+
     // Allow public routes
     if (publicRoutes.some(route => pathname.startsWith(route))) {
         return NextResponse.next()
     }
-
-    // Get token
-    const token = request.cookies.get('auth-token')?.value
 
     if (!token) {
         return NextResponse.redirect(new URL('/login', request.url))

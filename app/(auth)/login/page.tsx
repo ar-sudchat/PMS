@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Layers, ArrowRight, User } from "lucide-react"
@@ -46,25 +45,15 @@ export default function LoginPage() {
             {/* Grid Pattern Overlay */}
             <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay pointer-events-none" />
 
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="relative z-10 w-full max-w-[420px] p-6"
-            >
+            <div className="relative z-10 w-full max-w-[420px] p-6">
                 {/* Glass Card */}
                 <div className="relative backdrop-blur-2xl bg-white/5 border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5">
 
                     {/* Header */}
                     <div className="text-center mb-10 space-y-2">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: 0.2 }}
-                            className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 mb-4 shadow-lg shadow-indigo-500/30"
-                        >
+                        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 mb-4 shadow-lg shadow-indigo-500/30">
                             <Layers className="h-6 w-6 text-white" />
-                        </motion.div>
+                        </div>
                         <h1 className="text-2xl font-medium tracking-tight text-white">
                             Project Management
                         </h1>
@@ -76,13 +65,9 @@ export default function LoginPage() {
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {error && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                className="p-3 text-xs text-red-200 bg-red-500/10 border border-red-500/20 rounded-lg text-center"
-                            >
+                            <div className="p-3 text-xs text-red-200 bg-red-500/10 border border-red-500/20 rounded-lg text-center">
                                 {error}
-                            </motion.div>
+                            </div>
                         )}
 
                         <div className="space-y-4">
@@ -135,7 +120,7 @@ export default function LoginPage() {
                 <p className="mt-8 text-center text-xs text-zinc-600/60 font-medium tracking-widest uppercase">
                     © 2026 MacLab • Advanced Group
                 </p>
-            </motion.div>
+            </div>
         </div>
     )
 }

@@ -64,10 +64,10 @@ export async function getTrackingFilterOptions(): Promise<{
             pool.request().query(`SELECT id as value, name as label, color FROM pms.project_status_configs WHERE is_active = 1`),
             pool.request().query(`SELECT id as value, name as label FROM pms.customers WHERE is_active = 1 ORDER BY name`),
             pool.request().query(`
-                SELECT DISTINCT e.id as value, 
+                SELECT DISTINCT e.id as value,
                        CONCAT(e.nickname, ' (', e.first_name_th, ')') as label
                 FROM pms.employees e
-                INNER JOIN pms.projects p ON p.owner_id = e.id
+                INNER JOIN pms.projects p ON p.project_owner_id = e.id
                 WHERE e.is_active = 1
                 ORDER BY label
             `)
@@ -102,7 +102,7 @@ export async function getTrackingProjects(filters: TrackingFilters = {}): Promis
 
         // Main projects query
         const projectsResult = await request.query(`
-            SELECT 
+            SELECT
                 p.id as project_id,
                 p.project_code,
                 p.name as project_name,
@@ -116,18 +116,18 @@ export async function getTrackingProjects(filters: TrackingFilters = {}): Promis
                 ISNULL(CONCAT(pm.first_name_th, ' ', pm.last_name_th), '-') as pm_name,
                 ISNULL(pm.nickname, '-') as pm_nickname,
                 ISNULL(p.sold_mandays, 0) as sold_mandays,
-                (SELECT ISNULL(SUM(ISNULL(hours,0))/8.0, 0) FROM pms.time_entries te 
-                 INNER JOIN pms.tasks t ON te.task_id = t.id 
+                (SELECT ISNULL(SUM(ISNULL(hours,0))/8.0, 0) FROM pms.timesheet_entries te
+                 INNER JOIN pms.tasks t ON te.task_id = t.id
                  INNER JOIN pms.stories s ON t.story_id = s.id
                  INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
                  WHERE pm.project_id = p.id) as used_mandays,
-                ISNULL(p.progress_percent, 0) as progress_percent
+                0 as progress_percent
             FROM pms.projects p
             LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
             LEFT JOIN pms.customers c ON p.customer_id = c.id
             LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
-            LEFT JOIN pms.employees e ON p.owner_id = e.id
-            LEFT JOIN pms.employees pm ON p.pm_id = pm.id
+            LEFT JOIN pms.employees e ON p.project_owner_id = e.id
+            LEFT JOIN pms.employees pm ON p.project_manager_id = pm.id
             ${whereClause}
             ORDER BY p.project_code
         `)
@@ -155,7 +155,7 @@ export async function getTrackingProjects(filters: TrackingFilters = {}): Promis
                         END as status
                     FROM pms.project_milestones pm
                     INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
-                    WHERE pm.project_id = @projectId AND pm.is_active = 1
+                    WHERE pm.project_id = @projectId
                     ORDER BY pm.sort_order
                 `)
 
