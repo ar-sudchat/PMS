@@ -274,7 +274,7 @@ export async function createTask(data: {
             .input('description', sql.NVarChar, data.description || null)
             .input('taskType', sql.NVarChar, data.task_type)
             .input('assigneeId', sql.UniqueIdentifier, data.assignee_id || null)
-            .input('reviewerId', sql.UniqueIdentifier, data.reviewer_id || null)
+            .input('reviewerId', sql.UniqueIdentifier, user.id) // Enforce current user as reviewer/creator
             .input('priority', sql.NVarChar, data.priority)
             .input('estimatedHours', sql.Decimal(10, 2), data.estimated_hours || null)
             .input('dueDate', sql.Date, data.due_date ? new Date(data.due_date) : null)

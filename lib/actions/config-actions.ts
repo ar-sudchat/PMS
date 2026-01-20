@@ -310,7 +310,7 @@ export async function testFileStorageConnection(storagePath: string): Promise<{
             canRead = readContent === testContent
         } catch (readError: any) {
             // Clean up if possible
-            try { await fs.unlink(testFilePath) } catch {}
+            try { await fs.unlink(testFilePath) } catch { }
             return {
                 success: false,
                 message: `ไม่สามารถอ่านไฟล์ได้: ${readError.message}`,
@@ -349,5 +349,97 @@ export async function testFileStorageConnection(storagePath: string): Promise<{
             canWrite: false,
             error: error.message
         }
+    }
+}
+
+// ============================================
+// MS TEAMS CONFIG
+// ============================================
+
+export interface MSTeamsConfig {
+    clientId: string
+    tenantId: string
+    clientSecret: string
+}
+
+export async function getMSTeamsConfig(): Promise<{ success: boolean; data: MSTeamsConfig; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .query(`
+                SELECT config_key, config_value
+                FROM pms.system_configs
+                WHERE config_key IN (
+                    'MS_TEAMS_CLIENT_ID',
+                    'MS_TEAMS_TENANT_ID',
+                    'MS_TEAMS_CLIENT_SECRET'
+                )
+            `)
+
+        const configMap: Record<string, string> = {}
+        for (const row of result.recordset) {
+            configMap[row.config_key] = row.config_value
+        }
+
+        return {
+            success: true,
+            data: {
+                clientId: configMap['MS_TEAMS_CLIENT_ID'] || '',
+                tenantId: configMap['MS_TEAMS_TENANT_ID'] || '',
+                clientSecret: configMap['MS_TEAMS_CLIENT_SECRET'] || ''
+            }
+        }
+
+    } catch (error: any) {
+        console.error('getMSTeamsConfig error:', error)
+        return {
+            success: false,
+            error: error.message,
+            data: {
+                clientId: '',
+                tenantId: '',
+                clientSecret: ''
+            }
+        }
+    }
+}
+
+export async function updateMSTeamsConfig(config: MSTeamsConfig): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user || user.role !== 'admin') {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        const updates: { key: string; value: string }[] = [
+            { key: 'MS_TEAMS_CLIENT_ID', value: config.clientId },
+            { key: 'MS_TEAMS_TENANT_ID', value: config.tenantId },
+            { key: 'MS_TEAMS_CLIENT_SECRET', value: config.clientSecret }
+        ]
+
+        for (const update of updates) {
+            await pool.request()
+                .input('key', sql.NVarChar, update.key)
+                .input('value', sql.NVarChar, update.value)
+                .query(`
+                    IF EXISTS (SELECT 1 FROM pms.system_configs WHERE config_key = @key)
+                        UPDATE pms.system_configs
+                        SET config_value = @value, updated_at = GETDATE()
+                        WHERE config_key = @key
+                    ELSE
+                        INSERT INTO pms.system_configs (config_key, config_value, config_type, description)
+                        VALUES (@key, @value, 'string', 'MS Teams configuration')
+                `)
+        }
+
+        revalidatePath('/settings')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('updateMSTeamsConfig error:', error)
+        return { success: false, error: error.message }
     }
 }

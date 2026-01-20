@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { getWorkloadConfig, getFileStorageConfig } from '@/lib/actions/config-actions'
+import { getWorkloadConfig, getFileStorageConfig, getMSTeamsConfig } from '@/lib/actions/config-actions'
 import { SettingsForm } from '@/components/settings/SettingsForm'
 
 export default async function SettingsPage() {
@@ -12,9 +12,10 @@ export default async function SettingsPage() {
     }
     // Ideally, add role check here e.g. if (user.role !== 'admin') redirect('/')
 
-    const [configResult, fileStorageResult] = await Promise.all([
+    const [configResult, fileStorageResult, msTeamsResult] = await Promise.all([
         getWorkloadConfig(),
-        getFileStorageConfig()
+        getFileStorageConfig(),
+        getMSTeamsConfig()
     ])
 
     // Use defaults if fetch fails or returns partial data
@@ -33,11 +34,18 @@ export default async function SettingsPage() {
         currentPath: '\\\\10.8.8.88\\ftp\\pms'
     }
 
+    const initialMSTeamsConfig = msTeamsResult.success ? msTeamsResult.data : {
+        clientId: '',
+        tenantId: '',
+        clientSecret: ''
+    }
+
     return (
         <div className="container py-4 max-w-4xl mx-auto">
             <SettingsForm
                 initialWorkloadConfig={initialWorkloadConfig}
                 initialFileStorageConfig={initialFileStorageConfig}
+                initialMSTeamsConfig={initialMSTeamsConfig}
             />
         </div>
     )
