@@ -912,12 +912,13 @@ export const getProjectDetail = getProjectHealthDetail
  */
 export async function getProjectControlTowerData(projectId: string): Promise<{
     success: boolean
-    error?: string // Added error field
+    error?: string
     project?: any
     overallHealth?: { time: number | null; resource: number | null; docs: number | null; overall: number }
     milestones?: MilestoneHealth[]
     activeTasks?: any[]
     currentDeliverables?: any[]
+    recentActivities?: any[]
 }> {
     try {
         const healthResult = await getProjectHealthDetail(projectId)
@@ -930,7 +931,6 @@ export async function getProjectControlTowerData(projectId: string): Promise<{
         const milestones = healthResult.milestones || []
 
         // Identify Current Milestone
-        // Logic: First non-verified milestone, or last one if all verified
         const currentMilestoneIndex = milestones.findIndex(m => !m.is_verified)
         const currentMilestone = currentMilestoneIndex !== -1
             ? milestones[currentMilestoneIndex]
@@ -938,28 +938,15 @@ export async function getProjectControlTowerData(projectId: string): Promise<{
 
         const pool = await getConnection()
 
-        // 1. Fetch Active/Overdue Tasks (Top 10)
-        // Priorities: Overdue > Critical/High Priority > Active
+        // 1. Fetch Active/Overdue Tasks
         const tasksResult = await pool.request()
             .input('projectId', sql.UniqueIdentifier, projectId)
             .query(`
                 SELECT
-                    t.id, 
-                    t.task_code, 
-                    t.title, 
-                    t.description,
-                    t.status, 
-                    t.priority, 
-                    t.due_date, 
-                    t.estimated_hours,
-                    t.actual_hours,
-                    t.start_date, -- Added start_date for strict date logic
-                    e.first_name_th AS assignee_name,
-                    e.nickname AS assignee_nickname,
-                    mc.name AS milestone_name,
-                    pm.id AS milestone_id,
-                    s.id AS story_id,
-                    s.title AS story_title,
+                    t.id, t.task_code, t.title, t.description, t.status, t.priority, t.due_date, t.estimated_hours, t.actual_hours, t.start_date,
+                    e.first_name_th AS assignee_name, e.nickname AS assignee_nickname,
+                    mc.name AS milestone_name, pm.id AS milestone_id,
+                    s.id AS story_id, s.title AS story_title,
                     DATEDIFF(DAY, t.due_date, CAST(GETDATE() AS DATE)) AS days_overdue
                 FROM pms.tasks t
                 INNER JOIN pms.stories s ON t.story_id = s.id
@@ -969,37 +956,17 @@ export async function getProjectControlTowerData(projectId: string): Promise<{
                 WHERE s.project_id = @projectId 
                   AND t.is_active = 1
                   AND t.status NOT IN ('done', 'cancelled')
-                ORDER BY 
-                    -- Hierarchy Sorting
-                    ISNULL(pm.sort_order, 9999),
-                    ISNULL(s.sort_order, 9999),
-                    -- High priority
-                    CASE t.priority 
-                        WHEN 'critical' THEN 1 
-                        WHEN 'high' THEN 2 
-                        WHEN 'medium' THEN 3 
-                        ELSE 4 
-                    END,
-                    t.due_date
+                ORDER BY ISNULL(pm.sort_order, 9999), ISNULL(s.sort_order, 9999), t.due_date
             `)
 
-        // 2. Fetch Deliverables for Current Milestone (or all if none active?)
-        // Let's focus on the CURRENT milestone deliverables as per requirement
+        // 2. Fetch Deliverables for Current Milestone
         let deliverables: any[] = []
         if (currentMilestone) {
             const docsResult = await pool.request()
                 .input('milestoneId', sql.UniqueIdentifier, currentMilestone.id)
                 .query(`
                     SELECT 
-                        pd.id, 
-                        pdc.name, 
-                        pd.is_required, 
-                        pd.submitted_date, 
-                        -- pd.status removed
-                        pd.file_path,
-                        pd.is_verified, -- needed for frontend logic
-                        pdc.id as config_id 
-                        -- pdc.code removed as it does not exist
+                        pd.id, pdc.name, pd.is_required, pd.submitted_date, pd.file_path, pd.is_verified, pdc.id as config_id 
                     FROM pms.project_deliverables pd
                     INNER JOIN pms.deliverable_configs pdc ON pd.deliverable_config_id = pdc.id
                     WHERE pd.project_milestone_id = @milestoneId AND pd.is_active = 1
@@ -1007,10 +974,76 @@ export async function getProjectControlTowerData(projectId: string): Promise<{
                 `)
             deliverables = docsResult.recordset.map((d: any) => ({
                 ...d,
-                status: d.is_verified ? 'verified' : (d.submitted_date ? 'submitted' : 'pending'), // Derived status
+                status: d.is_verified ? 'verified' : (d.submitted_date ? 'submitted' : 'pending'),
                 verification_status: d.submitted_date ? 'submitted' : 'pending'
             }))
         }
+
+        // 3. Fetch Recent Activities (Top 20)
+        // Synthesizing log from tasks, deliverables, and milestones
+        const activityResult = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT TOP 20 * FROM (
+                    -- Task Completed (Activity)
+                    SELECT 
+                        'task_completed' as type,
+                        t.title as name,
+                        t.completed_date as date,
+                        e.first_name_th as actor,
+                        t.id as related_id
+                    FROM pms.tasks t
+                    JOIN pms.stories s ON t.story_id = s.id
+                    LEFT JOIN pms.employees e ON t.assignee_id = e.id
+                    WHERE s.project_id = @projectId 
+                      AND t.status = 'done' 
+                      AND t.completed_date IS NOT NULL
+                    
+                    UNION ALL
+
+                     -- Task Created (Activity)
+                    SELECT 
+                        'task_created' as type,
+                        t.title as name,
+                        t.created_at as date,
+                        e.first_name_th as actor,
+                        t.id as related_id
+                    FROM pms.tasks t
+                    JOIN pms.stories s ON t.story_id = s.id
+                    LEFT JOIN pms.employees e ON t.created_by = e.id
+                    WHERE s.project_id = @projectId 
+                      AND t.is_active = 1
+
+                    UNION ALL
+
+                    -- Deliverable Submitted
+                    SELECT 
+                        'deliverable_submitted' as type,
+                        pdc.name as name,
+                        pd.submitted_date as date,
+                        CAST(NULL AS NVARCHAR(100)) as actor,
+                        pd.id as related_id
+                    FROM pms.project_deliverables pd
+                    JOIN pms.deliverable_configs pdc ON pd.deliverable_config_id = pdc.id
+                    JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
+                    WHERE pm.project_id = @projectId AND pd.submitted_date IS NOT NULL
+
+                    UNION ALL
+
+                    -- Milestone Completed
+                    SELECT 
+                        'milestone_completed' as type,
+                        mc.name as name,
+                        m.completed_date as date,
+                        CAST(NULL AS NVARCHAR(100)) as actor,
+                        m.id as related_id
+                    FROM pms.project_milestones m
+                    JOIN pms.milestone_configs mc ON m.milestone_config_id = mc.id
+                    WHERE m.project_id = @projectId AND m.completed_date IS NOT NULL
+
+                ) AS CombinedLog
+                ORDER BY date DESC
+            `)
 
         return {
             success: true,
@@ -1018,7 +1051,8 @@ export async function getProjectControlTowerData(projectId: string): Promise<{
             overallHealth: healthResult.overallHealth,
             milestones: milestones,
             activeTasks: tasksResult.recordset,
-            currentDeliverables: deliverables
+            currentDeliverables: deliverables,
+            recentActivities: activityResult.recordset
         }
 
     } catch (error: any) {

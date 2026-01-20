@@ -129,6 +129,7 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
           { id: 'my-calendar', label: 'My Calendar', labelTh: 'ปฏิทินของฉัน', path: '/my-calendar', icon: Calendar },
+          { id: 'daily-standup', label: 'Daily Stand-up', labelTh: 'Daily Stand-up', path: '/standup', icon: Users },
         ]
       },
       {

@@ -2,21 +2,22 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { WorkloadConfig, FileStorageConfig, updateWorkloadConfig, updateFileStorageConfig, testFileStorageConnection } from '@/lib/actions/config-actions'
+import { WorkloadConfig, FileStorageConfig, MSTeamsConfig, updateWorkloadConfig, updateFileStorageConfig, updateMSTeamsConfig, testFileStorageConnection } from '@/lib/actions/config-actions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Loader2, Save, HardDrive, FolderOpen, Clock, Plug, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
+import { Loader2, Save, HardDrive, FolderOpen, Clock, Plug, CheckCircle2, XCircle, AlertCircle, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SettingsFormProps {
     initialWorkloadConfig: WorkloadConfig
     initialFileStorageConfig: FileStorageConfig
+    initialMSTeamsConfig: MSTeamsConfig
 }
 
-type TabType = 'workload' | 'storage'
+type TabType = 'workload' | 'storage' | 'msteams'
 
 interface TestResult {
     path: string
@@ -29,12 +30,14 @@ interface TestResult {
 const TABS: { id: TabType; label: string; icon: React.ReactNode }[] = [
     { id: 'workload', label: 'Workload Settings', icon: <Clock className="h-4 w-4" /> },
     { id: 'storage', label: 'File Storage Settings', icon: <HardDrive className="h-4 w-4" /> },
+    { id: 'msteams', label: 'MS Teams Integration', icon: <MessageSquare className="h-4 w-4" /> },
 ]
 
-export function SettingsForm({ initialWorkloadConfig, initialFileStorageConfig }: SettingsFormProps) {
+export function SettingsForm({ initialWorkloadConfig, initialFileStorageConfig, initialMSTeamsConfig }: SettingsFormProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [isSavingStorage, startStorageTransition] = useTransition()
+    const [isSavingTeams, startTeamsTransition] = useTransition()
     const [activeTab, setActiveTab] = useState<TabType>('workload')
 
     const [config, setConfig] = useState<WorkloadConfig>(initialWorkloadConfig)
@@ -42,6 +45,9 @@ export function SettingsForm({ initialWorkloadConfig, initialFileStorageConfig }
 
     const [storageConfig, setStorageConfig] = useState<FileStorageConfig>(initialFileStorageConfig)
     const [hasStorageChanges, setHasStorageChanges] = useState(false)
+
+    const [teamsConfig, setTeamsConfig] = useState<MSTeamsConfig>(initialMSTeamsConfig)
+    const [hasTeamsChanges, setHasTeamsChanges] = useState(false)
 
     // Test connection states
     const [testingProd, setTestingProd] = useState(false)
@@ -110,6 +116,30 @@ export function SettingsForm({ initialWorkloadConfig, initialFileStorageConfig }
                 router.refresh()
             } else {
                 alert(result.error || "Failed to update file storage configuration")
+            }
+        })
+    }
+
+    const handleTeamsChange = (key: keyof MSTeamsConfig, value: string) => {
+        setTeamsConfig(prev => {
+            const newConfig = { ...prev, [key]: value }
+            setHasTeamsChanges(true)
+            return newConfig
+        })
+    }
+
+    const handleTeamsSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+
+        startTeamsTransition(async () => {
+            const result = await updateMSTeamsConfig(teamsConfig)
+
+            if (result.success) {
+                alert("MS Teams configuration updated successfully")
+                setHasTeamsChanges(false)
+                router.refresh()
+            } else {
+                alert(result.error || "Failed to update MS Teams configuration")
             }
         })
     }
@@ -227,6 +257,9 @@ export function SettingsForm({ initialWorkloadConfig, initialFileStorageConfig }
                                 <span className="ml-1 h-2 w-2 rounded-full bg-orange-500" />
                             )}
                             {tab.id === 'storage' && hasStorageChanges && (
+                                <span className="ml-1 h-2 w-2 rounded-full bg-orange-500" />
+                            )}
+                            {tab.id === 'msteams' && hasTeamsChanges && (
                                 <span className="ml-1 h-2 w-2 rounded-full bg-orange-500" />
                             )}
                         </button>
@@ -459,6 +492,81 @@ export function SettingsForm({ initialWorkloadConfig, initialFileStorageConfig }
                                         <>
                                             <Save className="mr-2 h-4 w-4" />
                                             Save Storage Settings
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </form>
+            )}
+
+            {/* Tab Content: MS Teams */}
+            {activeTab === 'msteams' && (
+                <form onSubmit={handleTeamsSubmit} className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <MessageSquare className="h-5 w-5" />
+                                MS Teams Integration
+                            </CardTitle>
+                            <CardDescription>
+                                Configure Azure App Registration details for MS Teams integration.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="clientId">Client ID (Application ID)</Label>
+                                    <Input
+                                        id="clientId"
+                                        type="text"
+                                        value={teamsConfig.clientId}
+                                        onChange={(e) => handleTeamsChange('clientId', e.target.value)}
+                                        placeholder="Enter Client ID"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="tenantId">Tenant ID (Directory ID)</Label>
+                                    <Input
+                                        id="tenantId"
+                                        type="text"
+                                        value={teamsConfig.tenantId}
+                                        onChange={(e) => handleTeamsChange('tenantId', e.target.value)}
+                                        placeholder="Enter Tenant ID"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="clientSecret">Client Secret</Label>
+                                    <Input
+                                        id="clientSecret"
+                                        type="password"
+                                        value={teamsConfig.clientSecret}
+                                        onChange={(e) => handleTeamsChange('clientSecret', e.target.value)}
+                                        placeholder="Enter Client Secret"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3">
+                                <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                                <div className="text-sm text-blue-800">
+                                    <p className="font-semibold mb-1">Instruction</p>
+                                    <p>Please register an application in Azure Active Directory (App Registrations) and grant necessary API permissions for Microsoft Graph.</p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-4">
+                                <Button type="submit" disabled={!hasTeamsChanges || isSavingTeams}>
+                                    {isSavingTeams ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save className="mr-2 h-4 w-4" />
+                                            Save Teams Settings
                                         </>
                                     )}
                                 </Button>

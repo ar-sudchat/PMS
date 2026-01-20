@@ -1,6 +1,7 @@
 'use client'
 
-import { Search, RotateCcw, ListFilter, Check } from "lucide-react"
+import { Search, RotateCcw, ListFilter, Check, Download } from "lucide-react"
+import html2canvas from 'html2canvas'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
@@ -134,6 +135,37 @@ export function AdvancedMultiFilter({ filters, onFilterChange, options }: Advanc
                         onChange={(opt: any) => onFilterChange({ ...filters, ownerId: opt?.value === '' ? '' : opt?.value || '' })}
                     />
                 </div>
+
+                {/* Export Button */}
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200"
+                    onClick={async () => {
+                        const element = document.getElementById('project-roadmap-snapshot')
+                        if (!element) return
+
+                        // setIsExporting(true) // Local state if needed, or simple fire-and-forget for now
+                        try {
+                            const canvas = await html2canvas(element, {
+                                scale: 2,
+                                backgroundColor: '#F8FAFC',
+                                ignoreElements: (element) => element.classList.contains('no-export')
+                            })
+
+                            const image = canvas.toDataURL("image/png")
+                            const link = document.createElement("a")
+                            link.href = image
+                            link.download = `Project_Onhand_Roadmap_${new Date().toISOString().split('T')[0]}.png`
+                            link.click()
+                        } catch (error) {
+                            console.error("Export failed:", error)
+                        }
+                    }}
+                    title="Export Strategy Report"
+                >
+                    <Download className="w-4 h-4" />
+                </Button>
             </div>
 
             {/* 4. Refresh Button */}

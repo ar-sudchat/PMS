@@ -29,6 +29,7 @@ export default async function ControlTowerPage({ searchParams }: PageProps) {
             milestones={result.milestones || []}
             activeTasks={result.activeTasks || []}
             currentDeliverables={result.currentDeliverables || []}
+            recentActivities={result.recentActivities || []}
         />
     )
 }

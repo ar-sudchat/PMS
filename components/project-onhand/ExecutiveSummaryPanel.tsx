@@ -257,38 +257,84 @@ export function ExecutiveSummaryPanel({ data, metrics }: ExecutiveSummaryPanelPr
                 total={customerBreakdown.total}
             />
 
-            {/* Risks */}
-            <div className="bg-rose-50 border border-rose-100 rounded-xl p-4">
-                <div className="flex items-center gap-2 text-rose-700 font-bold text-sm mb-2">
-                    <AlertCircle className="w-4 h-4" /> Risks & Attention
-                </div>
-                <div className="space-y-2">
-                    {metrics.find(m => m.title === 'High-Priority Dues' && parseInt(m.value) > 0) && (
-                        <div className="text-xs text-rose-600 bg-white/50 p-2 rounded">
-                            • {metrics.find(m => m.title === 'High-Priority Dues')?.value} milestones due soon.
-                        </div>
-                    )}
-                    <div className="text-xs text-rose-600 bg-white/50 p-2 rounded">
-                        • Handover Confidence is {metrics.find(m => m.title === 'Handover Confidence')?.value}.
-                    </div>
-                </div>
-            </div>
+            {/* Portfolio Status (Mandays based) */}
+            <Card className="shadow-sm border-slate-200">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-blue-600" /> Portfolio Progress
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {(() => {
+                        // Calculate Totals based on Milestone Mandays to be accurate to execution
+                        // Or use Project Sold Mandays? Let's use Milestone Mandays for execution tracking.
+                        // Actually, user focused on 'soldMandays' in top 5.
+                        // But execution status comes from milestones.
+                        // Let's sum up all milestone mandays for execution view.
+
+                        let totalMD = 0
+                        let completedMD = 0
+                        let delayedMD = 0
+                        let pendingMD = 0
+
+                        data.forEach(p => {
+                            p.milestones.forEach(m => {
+                                const md = m.mandays || 0
+                                totalMD += md
+                                if (m.status === 'completed') completedMD += md
+                                else if (m.riskStatus === 'delayed') delayedMD += md
+                                else pendingMD += md
+                            })
+                        })
+
+                        const progress = totalMD > 0 ? Math.round((completedMD / totalMD) * 100) : 0
+
+                        return (
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-slate-500">Overall Completion</span>
+                                        <span className="font-bold text-slate-700">{progress}%</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                                            style={{ width: `${progress}%` }}
+                                        />
+                                    </div>
+                                    <div className="text-xs text-slate-400 text-right">
+                                        {completedMD as number} / {totalMD as number} Mandays Done
+                                    </div>
+                                </div>
+
+                                <Separator />
+
+                                <div className="grid grid-cols-3 gap-2 text-center">
+                                    <div className="bg-emerald-50 p-2 rounded border border-emerald-100">
+                                        <div className="text-lg font-bold text-emerald-600">{completedMD}</div>
+                                        <div className="text-[10px] text-emerald-700 font-medium">Completed</div>
+                                    </div>
+                                    <div className="bg-amber-50 p-2 rounded border border-amber-100">
+                                        <div className="text-lg font-bold text-amber-600">{pendingMD}</div>
+                                        <div className="text-[10px] text-amber-700 font-medium">Remaining</div>
+                                    </div>
+                                    <div className="bg-rose-50 p-2 rounded border border-rose-100">
+                                        <div className="text-lg font-bold text-rose-600">{delayedMD}</div>
+                                        <div className="text-[10px] text-rose-700 font-medium">At Risk</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })()}
+                </CardContent>
+            </Card>
 
             <div className="flex-1" />
 
-            {/* Actions */}
-            <Button
-                onClick={handleExport}
-                disabled={isExporting}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white gap-2"
-            >
-                {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                {isExporting ? 'Capturing...' : 'Export Strategy Report'}
-            </Button>
         </div>
     )
 }
 
-import html2canvas from 'html2canvas'
 import { useState } from "react"
-import { Loader2 } from "lucide-react"
+// import html2canvas from 'html2canvas' (removed)
+// import { Loader2 } from "lucide-react" (removed)

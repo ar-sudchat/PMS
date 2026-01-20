@@ -570,7 +570,7 @@ export function NewTaskModal({
                                 </div>
 
                                 {/* Row 3: Assignee & Created By */}
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-4">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1 flex justify-between">
                                             Assignee
@@ -586,7 +586,8 @@ export function NewTaskModal({
                                         />
                                     </div>
 
-                                    <div>
+                                    {/* Created By - Hidden as per request, automatically set to current user */}
+                                    {/* <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Created By</label>
                                         <SmartCombobox
                                             options={reviewerOptions}
@@ -595,7 +596,7 @@ export function NewTaskModal({
                                             placeholder="Select Creator"
                                             disabled={isTaskCompleted}
                                         />
-                                    </div>
+                                    </div> */}
                                 </div>
 
                                 {/* Status (Edit only) */}

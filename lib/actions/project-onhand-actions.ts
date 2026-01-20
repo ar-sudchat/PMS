@@ -20,6 +20,7 @@ export interface MilestoneForecast {
     projectName: string
     milestoneName: string
     amount: number
+    mandays: number
     dueDate: Date
     forecastDate: Date
     status: string
@@ -160,6 +161,7 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     pm.due_date,
                     pm.completed_date,
                     pm.weight_percent,
+                    pm.planned_mandays,
                     (p.total_value * ISNULL(pm.weight_percent, 0) / 100) as payment_amount,
                     
                     -- Calc Status
@@ -259,6 +261,7 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     projectName: row.project_name,
                     milestoneName: row.milestone_config_name || 'Milestone',
                     amount: row.payment_amount || 0,
+                    mandays: row.planned_mandays || 0,
                     dueDate: row.due_date,
                     forecastDate: row.due_date, // Use due date as forecast for now
                     status: row.computed_status,
