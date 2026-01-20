@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useEffect, useState } from "react"
@@ -15,7 +16,7 @@ export function TeamDashboard({ groupId }: { groupId: number }) {
             setLoading(true)
             const result = await getTeamStandupStatus(groupId)
             if (result.success) {
-                setTeamData(result.data)
+                setTeamData(result.data || [])
             }
             setLoading(false)
         }

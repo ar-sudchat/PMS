@@ -8,7 +8,7 @@ export default async function StandupPage() {
     if (!user) redirect('/auth/login')
 
     const groupsResult = await getUserGroups()
-    const groups = groupsResult.success ? groupsResult.data : []
+    const groups = groupsResult.success ? groupsResult.data ?? [] : []
 
     // Default to first group if exists, or require group creation
     const activeGroup = groups.length > 0 ? groups[0] : null
@@ -30,8 +30,8 @@ export default async function StandupPage() {
                 user={user}
                 groups={groups}
                 activeGroup={activeGroup}
-                todayStandup={todayStandup}
-                pendingTasks={pendingTasks}
+                todayStandup={todayStandup ?? null}
+                pendingTasks={pendingTasks ?? []}
             />
         </div>
     )
