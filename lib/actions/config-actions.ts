@@ -157,10 +157,10 @@ export async function updateWorkloadConfig(config: Partial<WorkloadConfig>): Pro
 // ============================================
 
 const DEFAULT_FILE_STORAGE: FileStorageConfig = {
-    prodPath: '\\\\10.8.8.88\\ftp\\pms',
-    devPath: '\\\\10.8.8.88\\ftp\\pms-non',
+    prodPath: '\\\\\\\\10.8.8.88\\\\ftp\\\\pms',
+    devPath: '\\\\\\\\10.8.8.88\\\\ftp\\\\pms-non',
     activePath: 'PROD',
-    currentPath: '\\\\10.8.8.88\\ftp\\pms'
+    currentPath: '\\\\\\\\10.8.8.88\\\\ftp\\\\pms'
 }
 
 export async function getFileStorageConfig(): Promise<{ success: boolean; data: FileStorageConfig; error?: string }> {
