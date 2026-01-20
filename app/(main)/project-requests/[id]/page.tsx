@@ -8,11 +8,17 @@ import {
     getProjectRequestById,
     getRequestHistory
 } from '@/lib/actions/project-request-actions'
-import { getApprovalInstanceByDocumentId } from '@/lib/services/approval-service'
+import {
+    getApprovalInstanceByDocumentId,
+    getApprovalInstance,
+    getFlowTemplate,
+    getFlowSteps
+} from '@/lib/services/approval-service'
 import { ProjectRequestDetail } from '@/components/project-requests/ProjectRequestDetail'
 import { ProjectRequestAttachments } from '@/components/project-requests/ProjectRequestAttachments'
 import { ProjectRequestHistory } from '@/components/project-requests/ProjectRequestHistory'
 import { ProjectRequestActions } from '@/components/project-requests/ProjectRequestActions'
+import { ApprovalFlowSteps } from '@/components/approval/ApprovalFlowSteps'
 
 interface PageProps {
     params: {
@@ -27,18 +33,30 @@ export default async function ProjectRequestDetailPage({ params }: PageProps) {
     }
 
     const { id } = await params
-    const [request, history, approvalInfo] = await Promise.all([
+    const [request, history, approvalInfoStatus] = await Promise.all([
         getProjectRequestById(id),
         getRequestHistory(id),
         getApprovalInstanceByDocumentId(id, 'PROJECT')
     ])
+
+    let approvalInstance = null
+    let flowSteps: any[] = []
+
+    if (approvalInfoStatus.instanceId) {
+        const [instance, steps] = await Promise.all([
+            getApprovalInstance(approvalInfoStatus.instanceId),
+            getFlowTemplate('PROJECT_REQUEST').then(t => t ? getFlowSteps(t.id) : [])
+        ])
+        approvalInstance = instance
+        flowSteps = steps
+    }
 
     if (!request) {
         notFound()
     }
 
     const canEdit = request.status === 'DRAFT' || request.status === 'REVISION'
-    const canApprove = approvalInfo.canApprove || false
+    const canApprove = approvalInfoStatus.canApprove || false
 
     return (
         <div className="space-y-6 pb-12">
@@ -68,12 +86,26 @@ export default async function ProjectRequestDetailPage({ params }: PageProps) {
                         <Link href={`/project-requests/${id}/edit`}>
                             <Button variant="outline">
                                 <Edit className="h-4 w-4 mr-2" />
+
                                 แก้ไข
                             </Button>
                         </Link>
                     )}
                 </div>
             </div>
+
+            {/* Approval Flow Steps */}
+            {approvalInstance && flowSteps.length > 0 && (
+                <div className="bg-white p-6 rounded-lg border shadow-sm">
+                    <h3 className="text-sm font-semibold text-gray-500 mb-2">Approval Status</h3>
+                    <ApprovalFlowSteps
+                        steps={flowSteps}
+                        currentStepOrder={approvalInstance.current_step_order}
+                        status={approvalInstance.status}
+                        currentApprovers={approvalInstance.current_approvers}
+                    />
+                </div>
+            )}
 
             {/* Details */}
             <ProjectRequestDetail request={request} />

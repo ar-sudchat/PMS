@@ -9,7 +9,12 @@ import {
     rejectRequest as rejectApprovalRequest,
     rollbackApproval
 } from './approval-actions'
-import { getApprovalInstanceByDocumentId } from '@/lib/services/approval-service'
+import {
+    getApprovalInstanceByDocumentId,
+    getApprovalInstance,
+    getFlowTemplate,
+    getFlowSteps
+} from '@/lib/services/approval-service'
 
 // ... (Keep Interfaces and CRUD Actions same until Workflow Actions)
 
@@ -44,7 +49,12 @@ export interface ProjectRequest {
     status: string
     status_name?: string
     status_color?: string
-    notes?: string
+
+    // notes?: string // Notes removed
+    customer_contact_date?: string
+    last_meeting_date?: string
+    quotation_date?: string
+    approval_date?: string // Manual approval date from form
     submitted_at?: string
     submitted_by?: string
     submitted_by_name?: string
@@ -78,7 +88,12 @@ export interface ProjectRequestFormData {
     estimated_mandays?: number
     expected_start_date?: string
     expected_end_date?: string
-    notes?: string
+
+    // notes?: string
+    customer_contact_date?: string
+    last_meeting_date?: string
+    quotation_date?: string
+    approval_date?: string
 }
 
 // ============================================
@@ -165,6 +180,37 @@ export async function getPendingProjectRequests(): Promise<ProjectRequest[]> {
     return result.recordset
 }
 
+// Get request details for sheet
+export async function getProjectRequestDetailForSheet(id: string) {
+    if (id === 'new') return null;
+
+    const [request, history, approvalInfoStatus] = await Promise.all([
+        getProjectRequestById(id),
+        getRequestHistory(id),
+        getApprovalInstanceByDocumentId(id, 'PROJECT')
+    ])
+
+    let approvalInstance = null
+    let flowSteps: any[] = []
+
+    if (approvalInfoStatus.instanceId) {
+        const [instance, steps] = await Promise.all([
+            getApprovalInstance(approvalInfoStatus.instanceId),
+            getFlowTemplate('PROJECT_REQUEST').then(t => t ? getFlowSteps(t.id) : [])
+        ])
+        approvalInstance = instance
+        flowSteps = steps
+    }
+
+    return {
+        request,
+        history,
+        approvalInfoStatus,
+        approvalInstance,
+        flowSteps
+    }
+}
+
 // Create new request
 export async function createProjectRequest(
     data: ProjectRequestFormData,
@@ -180,6 +226,10 @@ export async function createProjectRequest(
         const estimatedMandays = data.estimated_mandays ? data.estimated_mandays : null;
         const expectedStartDate = data.expected_start_date && data.expected_start_date.trim() !== '' ? data.expected_start_date : null;
         const expectedEndDate = data.expected_end_date && data.expected_end_date.trim() !== '' ? data.expected_end_date : null;
+        const customerContactDate = data.customer_contact_date && data.customer_contact_date.trim() !== '' ? data.customer_contact_date : null;
+        const lastMeetingDate = data.last_meeting_date && data.last_meeting_date.trim() !== '' ? data.last_meeting_date : null;
+        const quotationDate = data.quotation_date && data.quotation_date.trim() !== '' ? data.quotation_date : null;
+        const approvalDate = data.approval_date && data.approval_date.trim() !== '' ? data.approval_date : null;
 
         const result = await pool.request()
             .input('request_code', sql.NVarChar, requestCode)
@@ -195,21 +245,28 @@ export async function createProjectRequest(
             .input('estimated_mandays', sql.Int, estimatedMandays)
             .input('expected_start_date', sql.Date, expectedStartDate)
             .input('expected_end_date', sql.Date, expectedEndDate)
-            .input('notes', sql.NVarChar, data.notes || null)
+            .input('customer_contact_date', sql.Date, customerContactDate)
+            .input('last_meeting_date', sql.Date, lastMeetingDate)
+            .input('quotation_date', sql.Date, quotationDate)
+            .input('approval_date', sql.Date, approvalDate)
             .input('created_by', sql.UniqueIdentifier, createdBy)
             .query(`
         INSERT INTO pms.project_requests (
           request_code, title, description, customer_id,
           contact_person, contact_email, contact_phone,
           project_type, priority, estimated_budget, estimated_mandays,
-          expected_start_date, expected_end_date, notes, created_by
+          expected_start_date, expected_end_date,
+          customer_contact_date, last_meeting_date, quotation_date, approval_date,
+          created_by, created_at, status
         )
         OUTPUT INSERTED.id, INSERTED.request_code
         VALUES (
           @request_code, @title, @description, @customer_id,
           @contact_person, @contact_email, @contact_phone,
           @project_type, @priority, @estimated_budget, @estimated_mandays,
-          @expected_start_date, @expected_end_date, @notes, @created_by
+          @expected_start_date, @expected_end_date,
+          @customer_contact_date, @last_meeting_date, @quotation_date, @approval_date,
+          @created_by, GETDATE(), 'DRAFT'
         )
       `)
 
@@ -236,6 +293,12 @@ export async function updateProjectRequest(
         const estimatedMandays = data.estimated_mandays ? data.estimated_mandays : null;
         const expectedStartDate = data.expected_start_date && data.expected_start_date.trim() !== '' ? data.expected_start_date : null;
         const expectedEndDate = data.expected_end_date && data.expected_end_date.trim() !== '' ? data.expected_end_date : null;
+        const customerContactDate = data.customer_contact_date && data.customer_contact_date.trim() !== '' ? data.customer_contact_date : null;
+
+
+        const lastMeetingDate = data.last_meeting_date && data.last_meeting_date.trim() !== '' ? data.last_meeting_date : null;
+        const quotationDate = data.quotation_date && data.quotation_date.trim() !== '' ? data.quotation_date : null;
+        const approvalDate = data.approval_date && data.approval_date.trim() !== '' ? data.approval_date : null;
 
         await pool.request()
             .input('id', sql.UniqueIdentifier, id)
@@ -251,7 +314,10 @@ export async function updateProjectRequest(
             .input('estimated_mandays', sql.Int, estimatedMandays)
             .input('expected_start_date', sql.Date, expectedStartDate)
             .input('expected_end_date', sql.Date, expectedEndDate)
-            .input('notes', sql.NVarChar, data.notes || null)
+            .input('customer_contact_date', sql.Date, customerContactDate)
+            .input('last_meeting_date', sql.Date, lastMeetingDate)
+            .input('quotation_date', sql.Date, quotationDate)
+            .input('approval_date', sql.Date, approvalDate)
             .input('updated_by', sql.UniqueIdentifier, updatedBy)
             .query(`
         UPDATE pms.project_requests SET
@@ -267,14 +333,18 @@ export async function updateProjectRequest(
           estimated_mandays = @estimated_mandays,
           expected_start_date = @expected_start_date,
           expected_end_date = @expected_end_date,
-          notes = @notes,
-          updated_by = @updated_by,
-          updated_at = GETDATE()
+          customer_contact_date = @customer_contact_date,
+          last_meeting_date = @last_meeting_date,
+          quotation_date = @quotation_date,
+          approval_date = @approval_date,
+          updated_at = GETDATE(),
+          updated_by = @updated_by
         WHERE id = @id
       `)
 
+
         revalidatePath('/project-requests')
-        revalidatePath(`/project-requests/${id}`)
+        revalidatePath(`/ project - requests / ${id} `)
         return { success: true }
     } catch (error: any) {
         console.error('Update project request error:', error)
@@ -336,18 +406,18 @@ export async function submitProjectRequest(
             .input('submitted_by', sql.UniqueIdentifier, submittedBy)
             .query(`
         UPDATE pms.project_requests SET
-          status = 'PENDING',
-          submitted_at = GETDATE(),
-          submitted_by = @submitted_by,
-          updated_at = GETDATE()
-        WHERE id = @id AND status IN ('DRAFT', 'REVISION')
-      `)
+        status = 'PENDING',
+            submitted_at = GETDATE(),
+            submitted_by = @submitted_by,
+            updated_at = GETDATE()
+        WHERE id = @id AND status IN('DRAFT', 'REVISION')
+            `)
 
         // Add history (local history helps with quick view, but Approval System has detailed history)
         await addRequestHistory(id, 'submit', submittedBy, 'DRAFT', 'PENDING', 'ส่งคำขอเพื่ออนุมัติ (Approval Flow Started)')
 
         revalidatePath('/project-requests')
-        revalidatePath(`/project-requests/${id}`)
+        revalidatePath(`/ project - requests / ${id} `)
         return { success: true }
     } catch (error: any) {
         console.error('Submit project request error:', error)
@@ -362,40 +432,51 @@ export async function approveProjectRequest(
     comments?: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
+        console.log('[approveProjectRequest] Starting approval for:', id)
+
         // 1. Get Approval Instance
         const instanceInfo = await getApprovalInstanceByDocumentId(id, MODULE_CODE)
+        console.log('[approveProjectRequest] Instance info:', instanceInfo)
+
         if (!instanceInfo.instanceId) {
+            console.log('[approveProjectRequest] No approval instance found')
             return { success: false, error: 'Approval instance not found' }
         }
 
         // 2. Process Approval in System
         const result = await approveApprovalRequest(instanceInfo.instanceId, comments)
+        console.log('[approveProjectRequest] Approval result:', result)
+
         if (!result.success) {
             return { success: false, error: result.error || 'Approval failed' }
         }
 
         // 3. Update Request Status based on Result
         if (result.status === 'APPROVED') {
+            console.log('[approveProjectRequest] Fully approved, updating status')
             const pool = await getConnection()
             await pool.request()
                 .input('id', sql.UniqueIdentifier, id)
                 .input('approved_by', sql.UniqueIdentifier, approvedBy)
                 .query(`
             UPDATE pms.project_requests SET
-              status = 'APPROVED',
-              approved_at = GETDATE(),
-              approved_by = @approved_by,
-              updated_at = GETDATE()
+        status = 'APPROVED',
+            approved_at = GETDATE(),
+            approved_by = @approved_by,
+            approval_date = GETDATE(),
+            updated_at = GETDATE()
             WHERE id = @id
-          `)
+            `)
             await addRequestHistory(id, 'approve', approvedBy, 'PENDING', 'APPROVED', comments || 'อนุมัติเรียบร้อย')
         } else {
             // Still in progress (multi-step)
-            await addRequestHistory(id, 'approve_step', approvedBy, 'PENDING', 'PENDING', `อนุมัติขั้นตอน (Next: ${result.current_step?.step_name})`)
+            console.log('[approveProjectRequest] Multi-step approval, still pending')
+            await addRequestHistory(id, 'approve_step', approvedBy, 'PENDING', 'PENDING', `อนุมัติขั้นตอน(Next: ${result.current_step?.step_name})`)
         }
 
         revalidatePath('/project-requests')
         revalidatePath(`/project-requests/${id}`)
+        console.log('[approveProjectRequest] Success!')
         return { success: true }
     } catch (error: any) {
         console.error('Approve project request error:', error)
@@ -428,18 +509,18 @@ export async function rejectProjectRequest(
             .input('reason', sql.NVarChar, reason)
             .query(`
         UPDATE pms.project_requests SET
-          status = 'REJECTED',
-          rejected_at = GETDATE(),
-          rejected_by = @rejected_by,
-          rejection_reason = @reason,
-          updated_at = GETDATE()
+        status = 'REJECTED',
+            rejected_at = GETDATE(),
+            rejected_by = @rejected_by,
+            rejection_reason = @reason,
+            updated_at = GETDATE()
         WHERE id = @id
-      `)
+            `)
 
         await addRequestHistory(id, 'reject', rejectedBy, 'PENDING', 'REJECTED', reason)
 
         revalidatePath('/project-requests')
-        revalidatePath(`/project-requests/${id}`)
+        revalidatePath(`/ project - requests / ${id} `)
         return { success: true }
     } catch (error: any) {
         console.error('Reject project request error:', error)
@@ -472,18 +553,18 @@ export async function requestRevision(
             .input('reason', sql.NVarChar, reason)
             .query(`
         UPDATE pms.project_requests SET
-          status = 'REVISION',
-          revision_requested_at = GETDATE(),
-          revision_requested_by = @requested_by,
-          revision_reason = @reason,
-          updated_at = GETDATE()
+        status = 'REVISION',
+            revision_requested_at = GETDATE(),
+            revision_requested_by = @requested_by,
+            revision_reason = @reason,
+            updated_at = GETDATE()
         WHERE id = @id
-      `)
+            `)
 
         await addRequestHistory(id, 'revision', requestedBy, 'PENDING', 'REVISION', reason)
 
         revalidatePath('/project-requests')
-        revalidatePath(`/project-requests/${id}`)
+        revalidatePath(`/ project - requests / ${id} `)
         return { success: true }
     } catch (error: any) {
         console.error('Request revision error:', error)
@@ -495,7 +576,7 @@ export async function requestRevision(
 export async function convertToProject(
     requestId: string,
     convertedBy: string
-): Promise<{ success: boolean; projectId?: string; error?: string }> {
+): Promise<{ success: boolean; projectId?: string; projectCode?: string; projectName?: string; error?: string }> {
     try {
         const pool = await getConnection()
 
@@ -509,14 +590,24 @@ export async function convertToProject(
             return { success: false, error: 'Request must be approved before converting' }
         }
 
-        // Generate project code (assuming a simplified logic for now or we might need another helper) of just using first 5 chars of title if no pattern
-        // Actually, projects table has project_code UNIQUE. We should generate a code. 
-        // Let's assume standard format PRJ-YYYY-SEQ or similar, but for now let's try to generate one based on date.
+        // Generate project code (4-digit number starting from 2000)
         const date = new Date();
         const year = date.getFullYear();
         const countResult = await pool.request().query('SELECT COUNT(*) as count FROM pms.projects WHERE project_year = ' + year);
-        const count = countResult.recordset[0].count + 1;
-        const projectCode = `PRJ-${year}-${count.toString().padStart(3, '0')}`;
+        const count = countResult.recordset[0].count + 2000; // Start from 2000
+
+        const projectCode = count.toString(); // Just 4-digit number like "2000"
+
+        // Find project_type_id based on request.project_type code
+        let projectTypeId = null;
+        if (request.project_type) {
+            const typeResult = await pool.request()
+                .input('code', sql.NVarChar, request.project_type)
+                .query(`SELECT id FROM pms.project_types WHERE code = @code`);
+            if (typeResult.recordset.length > 0) {
+                projectTypeId = typeResult.recordset[0].id;
+            }
+        }
 
         // Create project from request
         const projectResult = await pool.request()
@@ -539,22 +630,23 @@ export async function convertToProject(
             // The snippet in the prompt used `planned_mandays` and `planned_budget`, which might be incorrect against the schema `00_full_schema.sql`.
             // I need to map correctly.
             .input('sold_mandays', sql.Decimal(10, 2), request.estimated_mandays || 0)
-            .input('start_date', sql.Date, request.expected_start_date)
-            .input('end_date', sql.Date, request.expected_end_date)
+            .input('start_date', sql.Date, request.created_at || null)
+            .input('end_date', sql.Date, null) // Will be set later when project actually ends
             .input('created_by', sql.UniqueIdentifier, convertedBy)
+            .input('project_type_id', sql.UniqueIdentifier, projectTypeId)
             .query(`
-        INSERT INTO pms.projects (
-          project_code, project_year, name, description, customer_id,
-          project_manager_id, sold_mandays, start_date, end_date,
-          is_active, created_at
-        )
+        INSERT INTO pms.projects(
+                project_code, project_year, name, description, customer_id,
+                project_manager_id, sold_mandays, start_date, end_date,
+                is_active, created_at, project_type_id
+            )
         OUTPUT INSERTED.id
-        VALUES (
-          @project_code, @project_year, @name, @description, @customer_id,
-          @project_manager_id, @sold_mandays, @start_date, @end_date,
-          1, GETDATE()
+        VALUES(
+            @project_code, @project_year, @name, @description, @customer_id,
+            @project_manager_id, @sold_mandays, @start_date, @end_date,
+            1, GETDATE(), @project_type_id
         )
-      `)
+            `)
 
         const projectId = projectResult.recordset[0].id
 
@@ -565,20 +657,20 @@ export async function convertToProject(
             .input('project_id', sql.UniqueIdentifier, projectId)
             .query(`
         UPDATE pms.project_requests SET
-          status = 'CONVERTED',
-          converted_at = GETDATE(),
-          converted_by = @converted_by,
-          converted_project_id = @project_id,
-          updated_at = GETDATE()
+        status = 'CONVERTED',
+            converted_at = GETDATE(),
+            converted_by = @converted_by,
+            converted_project_id = @project_id,
+            updated_at = GETDATE()
         WHERE id = @id
-      `)
+            `)
 
-        await addRequestHistory(requestId, 'convert', convertedBy, 'APPROVED', 'CONVERTED', `สร้าง Project ID: ${projectId}`)
+        await addRequestHistory(requestId, 'convert', convertedBy, 'APPROVED', 'CONVERTED', `สร้าง Project: ${projectCode}`)
 
         revalidatePath('/project-requests')
         revalidatePath('/projects')
         revalidatePath(`/project-requests/${requestId}`)
-        return { success: true, projectId }
+        return { success: true, projectId, projectCode, projectName: request.title }
     } catch (error: any) {
         console.error('Convert to project error:', error)
         return { success: false, error: error.message }
@@ -607,11 +699,11 @@ async function addRequestHistory(
         .input('to_status', sql.NVarChar, toStatus)
         .input('comments', sql.NVarChar, comments)
         .query(`
-      INSERT INTO pms.project_request_history 
-        (request_id, action, action_by, from_status, to_status, comments)
-      VALUES 
-        (@request_id, @action, @action_by, @from_status, @to_status, @comments)
-    `)
+      INSERT INTO pms.project_request_history
+            (request_id, action, action_by, from_status, to_status, comments)
+        VALUES
+            (@request_id, @action, @action_by, @from_status, @to_status, @comments)
+            `)
 }
 
 export async function getRequestHistory(requestId: string) {
@@ -620,14 +712,14 @@ export async function getRequestHistory(requestId: string) {
     const result = await pool.request()
         .input('request_id', sql.UniqueIdentifier, requestId)
         .query(`
-      SELECT 
+        SELECT
         h.*,
-        e.first_name + ' ' + e.last_name AS action_by_name
+            e.first_name + ' ' + e.last_name AS action_by_name
       FROM pms.project_request_history h
       LEFT JOIN pms.employees e ON h.action_by = e.id
       WHERE h.request_id = @request_id
       ORDER BY h.action_at DESC
-    `)
+            `)
 
     return result.recordset
 }
@@ -642,14 +734,14 @@ export async function getRequestAttachments(requestId: string) {
     const result = await pool.request()
         .input('request_id', sql.UniqueIdentifier, requestId)
         .query(`
-      SELECT 
+        SELECT
         a.*,
-        e.first_name + ' ' + e.last_name AS uploaded_by_name
+            e.first_name + ' ' + e.last_name AS uploaded_by_name
       FROM pms.project_request_attachments a
       LEFT JOIN pms.employees e ON a.uploaded_by = e.id
       WHERE a.request_id = @request_id
       ORDER BY a.created_at DESC
-    `)
+            `)
 
     return result.recordset
 }
@@ -673,14 +765,14 @@ export async function addRequestAttachment(data: {
             .input('file_type', sql.NVarChar, data.fileType)
             .input('uploaded_by', sql.UniqueIdentifier, data.uploadedBy)
             .query(`
-        INSERT INTO pms.project_request_attachments 
-          (request_id, file_name, file_path, file_size, file_type, uploaded_by)
-        VALUES 
-          (@request_id, @file_name, @file_path, @file_size, @file_type, @uploaded_by)
-      `)
+        INSERT INTO pms.project_request_attachments
+            (request_id, file_name, file_path, file_size, file_type, uploaded_by)
+        VALUES
+            (@request_id, @file_name, @file_path, @file_size, @file_type, @uploaded_by)
+            `)
 
         revalidatePath('/project-requests')
-        revalidatePath(`/project-requests/${data.requestId}`)
+        revalidatePath(`/ project - requests / ${data.requestId} `)
         return { success: true }
     } catch (error: any) {
         return { success: false, error: error.message }
@@ -721,7 +813,7 @@ export async function getMonthlyRequestStatistics(year: number) {
     const result = await pool.request()
         .input('year', sql.Int, year)
         .query(`
-      SELECT * FROM pms.vw_project_request_monthly_stats 
+        SELECT * FROM pms.vw_project_request_monthly_stats 
       WHERE year = @year 
       ORDER BY month
     `)

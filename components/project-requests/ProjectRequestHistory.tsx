@@ -23,42 +23,49 @@ export function ProjectRequestHistory({ history }: ProjectRequestHistoryProps) {
     if (!history || history.length === 0) return null
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>ประวัติการดำเนินการ</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    {history.map((log) => {
-                        const badge = actionBadges[log.action] || { label: log.action, color: 'bg-gray-100 text-gray-700' }
+        <div className="relative pl-8 space-y-8 before:absolute before:inset-0 before:left-4 before:h-full before:w-0.5 before:bg-slate-200">
+            {history.map((log) => {
+                const badge = actionBadges[log.action] || { label: log.action, color: 'bg-slate-100 text-slate-700' }
 
-                        return (
-                            <div key={log.id} className="flex gap-4 pb-4 border-b last:border-0 last:pb-0">
-                                <div className="flex-none pt-1">
-                                    <Badge className={badge.color}>{badge.label}</Badge>
+                return (
+                    <div key={log.id} className="relative">
+                        {/* Timeline Dot */}
+                        <div className="absolute -left-10 top-1 h-4 w-4 rounded-full border-2 border-white ring-4 ring-slate-50 bg-slate-300 shadow-sm" />
+
+                        <div className="flex flex-col gap-2">
+                            {/* Header: User & Action */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-sm text-slate-900">{log.action_by_name}</span>
+                                    <span className="text-slate-400 text-xs">•</span>
+                                    <span className="text-slate-500 text-xs">
+                                        {format(new Date(log.action_at), 'dd MMM yyyy HH:mm', { locale: th })}
+                                    </span>
                                 </div>
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                                        <span className="font-medium text-gray-900">{log.action_by_name}</span>
-                                        <span>•</span>
-                                        <span>{format(new Date(log.action_at), 'dd MMM yyyy HH:mm', { locale: th })}</span>
-                                    </div>
-                                    {log.comments && (
-                                        <p className="text-sm bg-gray-50 p-2 rounded text-gray-600">
-                                            {log.comments}
-                                        </p>
-                                    )}
-                                    {log.from_status && log.to_status && (
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            {log.from_status} ➔ {log.to_status}
-                                        </div>
-                                    )}
-                                </div>
+                                <Badge variant="secondary" className={`${badge.color} border-0 font-normal`}>
+                                    {badge.label}
+                                </Badge>
                             </div>
-                        )
-                    })}
-                </div>
-            </CardContent>
-        </Card>
+
+                            {/* Status Change Info */}
+                            {log.from_status && log.to_status && (
+                                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1.5 rounded-md w-fit">
+                                    <span>{log.from_status}</span>
+                                    <span className="text-slate-300">➜</span>
+                                    <span>{log.to_status}</span>
+                                </div>
+                            )}
+
+                            {/* Comment Bubble */}
+                            {log.comments && (
+                                <div className="relative mt-1 bg-white border border-slate-200 p-3 rounded-lg rounded-tl-none shadow-sm text-sm text-slate-700">
+                                    {log.comments}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )
+            })}
+        </div>
     )
 }

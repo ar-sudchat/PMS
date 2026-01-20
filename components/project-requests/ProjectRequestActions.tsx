@@ -37,15 +37,22 @@ export function ProjectRequestActions({
     const [comments, setComments] = useState('')
 
     const handleApprove = async () => {
+        console.log('[handleApprove] Starting approval for request:', request.id)
         setIsLoading(true)
         const result = await approveProjectRequest(request.id, currentUserId, comments)
+        console.log('[handleApprove] Result:', result)
 
         if (result.success) {
             toast.success('อนุมัติคำขอเรียบร้อย')
             setShowApproveDialog(false)
             router.refresh()
         } else {
-            toast.error(result.error)
+            // Show error and keep dialog open
+            toast.error(result.error || 'เกิดข้อผิดพลาดในการอนุมัติ', {
+                duration: 5000,
+                position: 'top-center'
+            })
+            alert(`ไม่สามารถอนุมัติได้\n\nสาเหตุ: ${result.error}`)
         }
         setIsLoading(false)
     }
@@ -93,9 +100,9 @@ export function ProjectRequestActions({
         const result = await convertToProject(request.id, currentUserId)
 
         if (result.success) {
-            toast.success('สร้าง Project เรียบร้อย')
+            toast.success(`สร้าง Project เรียบร้อย: ${result.projectCode || ''}`)
             setShowConvertDialog(false)
-            router.push(`/projects/${result.projectId}`)
+            router.refresh() // Refresh current page to show updated status
         } else {
             toast.error(result.error)
         }

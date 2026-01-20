@@ -341,6 +341,14 @@ export async function processApprovalAction(input: ApprovalActionInput): Promise
         }
 
         // Check if user is authorized to approve
+        console.log('[processApprovalAction] Checking authorization:', {
+            instanceId: input.instance_id,
+            currentStepOrder: instance.current_step_order,
+            userId: user.id,
+            userName: user.name,
+            userRoles: user.role || 'No role'
+        })
+
         const approverResult = await pool.request()
             .input('instanceId', sql.UniqueIdentifier, input.instance_id)
             .input('stepOrder', sql.Int, instance.current_step_order)
@@ -350,14 +358,37 @@ export async function processApprovalAction(input: ApprovalActionInput): Promise
                 WHERE instance_id = @instanceId AND step_order = @stepOrder AND approver_id = @approverId
             `)
 
+        console.log('[processApprovalAction] Approver query result:', approverResult.recordset)
+
         if (approverResult.recordset.length === 0) {
-            console.error('Authorization failed:', {
+            // Check who ARE the approvers for this step
+            const allApproversResult = await pool.request()
+                .input('instanceId', sql.UniqueIdentifier, input.instance_id)
+                .input('stepOrder', sql.Int, instance.current_step_order)
+                .query(`
+                    SELECT aia.*, e.first_name, e.last_name, e.email
+                    FROM pms.approval_instance_approvers aia
+                    LEFT JOIN pms.employees e ON aia.approver_id = e.id
+                    WHERE instance_id = @instanceId AND step_order = @stepOrder
+                `)
+
+            console.error('Authorization failed. Current approvers for this step:', allApproversResult.recordset)
+            console.error('Your user info:', {
                 instanceId: input.instance_id,
                 stepOrder: instance.current_step_order,
                 userId: user.id,
                 userName: user.name
             })
-            return { success: false, error: 'You are not authorized to approve this request' }
+
+            // Return detailed error message  
+            const approverNames = allApproversResult.recordset
+                .map((a: any) => `${a.first_name || ''} ${a.last_name || ''} (${a.email || 'no email'})`.trim())
+                .join(', ') || 'ไม่มี'
+
+            return {
+                success: false,
+                error: `คุณไม่มีสิทธิ์อนุมัติ\n\nผู้อนุมัติในขั้นตอนนี้: ${approverNames}\n\nUser ID ของคุณ: ${user.id}\nชื่อ: ${user.name}`
+            }
         }
 
         const approverRecord = approverResult.recordset[0]

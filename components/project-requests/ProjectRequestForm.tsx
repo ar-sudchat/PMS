@@ -23,6 +23,7 @@ interface ProjectRequestFormProps {
     requestTypes: any[]
     priorities: any[]
     currentUserId: string
+    onSuccess?: () => void
 }
 
 export function ProjectRequestForm({
@@ -30,14 +31,15 @@ export function ProjectRequestForm({
     customers,
     requestTypes,
     priorities,
-    currentUserId
+    currentUserId,
+    onSuccess
 }: ProjectRequestFormProps) {
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
 
     const isEdit = !!request
-    const canEdit = !request || request.status === 'DRAFT' || request.status === 'REVISION'
+    const canEdit = !request || request.status === 'DRAFT' || request.status === 'REVISION' || request.status === 'PENDING'
 
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
         defaultValues: {
@@ -51,9 +53,12 @@ export function ProjectRequestForm({
             priority: request?.priority || 'MEDIUM',
             estimated_budget: request?.estimated_budget || '',
             estimated_mandays: request?.estimated_mandays || '',
-            expected_start_date: request?.expected_start_date ? new Date(request.expected_start_date).toISOString().split('T')[0] : '',
-            expected_end_date: request?.expected_end_date ? new Date(request.expected_end_date).toISOString().split('T')[0] : '',
-            notes: request?.notes || ''
+            created_at: request?.created_at ? new Date(request.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            submitted_at: request?.submitted_at ? new Date(request.submitted_at).toISOString().split('T')[0] : '',
+            approval_date: request?.approval_date ? new Date(request.approval_date).toISOString().split('T')[0] : '',
+            customer_contact_date: request?.customer_contact_date ? new Date(request.customer_contact_date).toISOString().split('T')[0] : '',
+            last_meeting_date: request?.last_meeting_date ? new Date(request.last_meeting_date).toISOString().split('T')[0] : '',
+            quotation_date: request?.quotation_date ? new Date(request.quotation_date).toISOString().split('T')[0] : '',
         }
     })
 
@@ -71,7 +76,10 @@ export function ProjectRequestForm({
 
             if (result.success) {
                 toast.success('บันทึกสำเร็จ')
-                if (!isEdit && result.request) {
+                if (onSuccess) {
+                    onSuccess()
+                    router.refresh()
+                } else if (!isEdit && result.request) {
                     router.push(`/project-requests/${result.request.id}`)
                 } else {
                     router.refresh();
@@ -110,7 +118,12 @@ export function ProjectRequestForm({
 
             if (submitResult.success) {
                 toast.success('ส่งคำขอเรียบร้อย')
-                router.push('/project-requests')
+                if (onSuccess) {
+                    onSuccess()
+                    router.refresh()
+                } else {
+                    router.push('/project-requests')
+                }
             } else {
                 toast.error(submitResult.error || 'เกิดข้อผิดพลาด')
             }
@@ -123,207 +136,238 @@ export function ProjectRequestForm({
 
     return (
         <form className="space-y-6">
-            {/* Basic Info */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>ข้อมูลคำขอ</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                            <Label>ชื่อโครงการ *</Label>
-                            <Input
-                                {...register('title', { required: 'กรุณากรอกชื่อโครงการ' })}
-                                placeholder="ชื่อโครงการ"
-                                disabled={!canEdit}
-                            />
-                            {errors.title && (
-                                <p className="text-red-500 text-sm mt-1">{errors.title.message as string}</p>
-                            )}
-                        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left Column: Project Info */}
+                <div className="space-y-6">
+                    <div>
 
-                        <div>
-                            <Label>ประเภทโครงการ *</Label>
-                            <Select
-                                value={watch('project_type')}
-                                onValueChange={(v) => setValue('project_type', v)}
-                                disabled={!canEdit}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกประเภท" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {requestTypes.map((type) => (
-                                        <SelectItem key={type.code} value={type.code}>
-                                            {type.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="col-span-2">
+                                <Label>ชื่อโครงการ <span className="text-red-500">*</span></Label>
+                                <Input
+                                    {...register('title', { required: 'กรุณากรอกชื่อโครงการ' })}
+                                    placeholder="ชื่อโครงการ"
+                                    disabled={!canEdit}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                                {errors.title && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.title.message as string}</p>
+                                )}
+                            </div>
 
-                        <div>
-                            <Label>ความสำคัญ *</Label>
-                            <Select
-                                value={watch('priority')}
-                                onValueChange={(v) => setValue('priority', v)}
-                                disabled={!canEdit}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกความสำคัญ" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {priorities.map((p) => (
-                                        <SelectItem key={p.code} value={p.code}>
-                                            {p.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                            <div>
+                                <Label>ประเภทโครงการ <span className="text-red-500">*</span></Label>
+                                <Select
+                                    value={watch('project_type')}
+                                    onValueChange={(v) => setValue('project_type', v)}
+                                    disabled={!canEdit}
+                                >
+                                    <SelectTrigger className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white">
+                                        <SelectValue placeholder="เลือกประเภท" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {requestTypes.map((type) => (
+                                            <SelectItem key={type.code} value={type.code}>
+                                                {type.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-                        <div className="md:col-span-2">
-                            <Label>รายละเอียด</Label>
-                            <Textarea
-                                {...register('description')}
-                                placeholder="รายละเอียดโครงการ"
-                                rows={4}
-                                disabled={!canEdit}
-                            />
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+                            <div>
+                                <Label>ความสำคัญ <span className="text-red-500">*</span></Label>
+                                <Select
+                                    value={watch('priority')}
+                                    onValueChange={(v) => setValue('priority', v)}
+                                    disabled={!canEdit}
+                                >
+                                    <SelectTrigger className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white">
+                                        <SelectValue placeholder="เลือกความสำคัญ" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {priorities.map((p) => (
+                                            <SelectItem key={p.code} value={p.code}>
+                                                {p.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
 
-            {/* Customer Info */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>ข้อมูลลูกค้า</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <Label>ลูกค้า</Label>
-                            <Select
-                                value={watch('customer_id') || ''}
-                                onValueChange={(v) => setValue('customer_id', v)}
-                                disabled={!canEdit}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกลูกค้า" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {customers.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>
-                                            {c.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label>ผู้ติดต่อ</Label>
-                            <Input
-                                {...register('contact_person')}
-                                placeholder="ชื่อผู้ติดต่อ"
-                                disabled={!canEdit}
-                            />
-                        </div>
-
-                        <div>
-                            <Label>Email</Label>
-                            <Input
-                                {...register('contact_email')}
-                                type="email"
-                                placeholder="email@example.com"
-                                disabled={!canEdit}
-                            />
-                        </div>
-
-                        <div>
-                            <Label>เบอร์โทร</Label>
-                            <Input
-                                {...register('contact_phone')}
-                                placeholder="0xx-xxx-xxxx"
-                                disabled={!canEdit}
-                            />
+                            <div className="col-span-2">
+                                <Label>รายละเอียด</Label>
+                                <Textarea
+                                    {...register('description')}
+                                    placeholder="รายละเอียดโครงการ"
+                                    rows={4}
+                                    disabled={!canEdit}
+                                    className="mt-1 resize-none disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                            </div>
                         </div>
                     </div>
-                </CardContent>
-            </Card>
 
-            {/* Estimates */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>ประมาณการ</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <Label>งบประมาณ (บาท)</Label>
-                            <Input
-                                {...register('estimated_budget')}
-                                type="number"
-                                placeholder="0.00"
-                                disabled={!canEdit}
-                            />
-                        </div>
+                    <div>
 
-                        <div>
-                            <Label>Man-day</Label>
-                            <Input
-                                {...register('estimated_mandays')}
-                                type="number"
-                                placeholder="0"
-                                disabled={!canEdit}
-                            />
-                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>งบประมาณ (บาท)</Label>
+                                <Input
+                                    {...register('estimated_budget')}
+                                    type="number"
+                                    placeholder="0.00"
+                                    disabled={!canEdit}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                            </div>
 
-                        <div>
-                            <Label>วันที่เริ่มต้น (คาดการณ์)</Label>
-                            <Input
-                                {...register('expected_start_date')}
-                                type="date"
-                                disabled={!canEdit}
-                            />
-                        </div>
+                            <div>
+                                <Label>Man-day</Label>
+                                <Input
+                                    {...register('estimated_mandays')}
+                                    type="number"
+                                    placeholder="0"
+                                    disabled={!canEdit}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                            </div>
 
-                        <div>
-                            <Label>วันที่สิ้นสุด (คาดการณ์)</Label>
-                            <Input
-                                {...register('expected_end_date')}
-                                type="date"
-                                disabled={!canEdit}
-                            />
+
+                            <div>
+                                <Label>วันที่สร้างเอกสาร</Label>
+                                <Input
+                                    {...register('created_at')}
+                                    type="date"
+                                    disabled={true}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-slate-50"
+                                />
+                            </div>
+
+                            <div>
+                                <Label>วันที่ส่งอนุมัติ</Label>
+                                <Input
+                                    {...register('submitted_at')}
+                                    type="date"
+                                    disabled={true}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-slate-50"
+                                />
+                            </div>
                         </div>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
 
-            {/* Notes */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>หมายเหตุ</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Textarea
-                        {...register('notes')}
-                        placeholder="หมายเหตุเพิ่มเติม"
-                        rows={3}
-                        disabled={!canEdit}
-                    />
-                </CardContent>
-            </Card>
+                {/* Right Column: Customer Info & Notes */}
+                <div className="space-y-6">
+                    <div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <Label>ลูกค้า</Label>
+                                <Select
+                                    value={watch('customer_id') || ''}
+                                    onValueChange={(v) => setValue('customer_id', v)}
+                                    disabled={!canEdit}
+                                >
+                                    <SelectTrigger className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white">
+                                        <SelectValue placeholder="เลือกลูกค้า" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {customers.map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {c.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <Label>ผู้ติดต่อ</Label>
+                                    <Input
+                                        {...register('contact_person')}
+                                        placeholder="ชื่อผู้ติดต่อ"
+                                        disabled={!canEdit}
+                                        className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>Email</Label>
+                                    <Input
+                                        {...register('contact_email')}
+                                        type="email"
+                                        placeholder="Email"
+                                        disabled={!canEdit}
+                                        className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>เบอร์โทร</Label>
+                                    <Input
+                                        {...register('contact_phone')}
+                                        placeholder="เบอร์โทร"
+                                        disabled={!canEdit}
+                                        className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>วันที่อนุมัติ</Label>
+                                <Input
+                                    {...register('approval_date')}
+                                    type="date"
+                                    disabled={true}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-slate-50"
+                                />
+                            </div>
+                            <div>
+                                <Label>วันที่ติดต่อลูกค้า</Label>
+                                <Input
+                                    {...register('customer_contact_date')}
+                                    type="date"
+                                    disabled={!canEdit}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                            </div>
+                            <div>
+                                <Label>ประชุมครั้งสุดท้าย</Label>
+                                <Input
+                                    {...register('last_meeting_date')}
+                                    type="date"
+                                    disabled={!canEdit}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                            </div>
+                            <div>
+                                <Label>วันที่ประเมินราคา</Label>
+                                <Input
+                                    {...register('quotation_date')}
+                                    type="date"
+                                    disabled={!canEdit}
+                                    className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* Actions */}
             {canEdit && (
-                <div className="flex justify-end gap-3">
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
                     <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         onClick={handleSubmit(handleSave)}
                         disabled={isSaving || isSubmitting}
+                        className="text-muted-foreground hover:text-foreground"
                     >
                         {isSaving ? (
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -337,6 +381,7 @@ export function ProjectRequestForm({
                         type="button"
                         onClick={handleSubmit(handleSaveAndSubmit)}
                         disabled={isSaving || isSubmitting}
+                        className="min-w-[120px]"
                     >
                         {isSubmitting ? (
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

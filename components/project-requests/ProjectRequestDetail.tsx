@@ -1,6 +1,7 @@
 
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -8,161 +9,184 @@ interface ProjectRequestDetailProps {
     request: any
 }
 
-const statusColors: Record<string, string> = {
-    DRAFT: 'bg-gray-100 text-gray-700',
-    PENDING: 'bg-yellow-100 text-yellow-700',
-    APPROVED: 'bg-green-100 text-green-700',
-    REJECTED: 'bg-red-100 text-red-700',
-    REVISION: 'bg-orange-100 text-orange-700',
-    CONVERTED: 'bg-blue-100 text-blue-700'
-}
-
-const priorityColors: Record<string, string> = {
-    LOW: 'bg-gray-100 text-gray-700',
-    MEDIUM: 'bg-blue-100 text-blue-700',
-    HIGH: 'bg-orange-100 text-orange-700',
-    URGENT: 'bg-red-100 text-red-700'
-}
-
 export function ProjectRequestDetail({ request }: ProjectRequestDetailProps) {
     if (!request) return null
 
     return (
         <div className="space-y-6">
-            {/* Header Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>ข้อมูลโครงการ</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div className="font-medium text-gray-500">รหัสคำขอ</div>
-                            <div className="col-span-2 font-mono">{request.request_code}</div>
-
-                            <div className="font-medium text-gray-500">ชื่อโครงการ</div>
-                            <div className="col-span-2 font-medium">{request.title}</div>
-
-                            <div className="font-medium text-gray-500">ประเภท</div>
-                            <div className="col-span-2">{request.project_type_name}</div>
-
-                            <div className="font-medium text-gray-500">ความสำคัญ</div>
+                {/* Left Column: Project Info */}
+                <div className="space-y-6">
+                    <div>
+                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                            <div className="w-1 h-5 bg-blue-500 rounded-full"></div>
+                            ข้อมูลคำขอ
+                        </h3>
+                        <div className="grid grid-cols-2 gap-3">
                             <div className="col-span-2">
-                                <Badge className={priorityColors[request.priority]}>
-                                    {request.priority_name || request.priority}
-                                </Badge>
+                                <Label>ชื่อโครงการ</Label>
+                                <Input
+                                    value={request.title}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
                             </div>
 
-                            <div className="font-medium text-gray-500">สถานะ</div>
+                            <div>
+                                <Label>ประเภทโครงการ</Label>
+                                <Input
+                                    value={request.project_type_name || request.project_type}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
+
+                            <div>
+                                <Label>ความสำคัญ</Label>
+                                <Input
+                                    value={request.priority_name || request.priority}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
+
                             <div className="col-span-2">
-                                <Badge className={statusColors[request.status]}>
-                                    {request.status_name || request.status}
-                                </Badge>
-                            </div>
-                        </div>
-
-                        <div className="pt-4 border-t">
-                            <div className="font-medium text-gray-500 mb-2">รายละเอียด</div>
-                            <div className="bg-gray-50 p-3 rounded-md text-sm whitespace-pre-wrap">
-                                {request.description || '-'}
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle>ข้อมูลลูกค้า</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div className="font-medium text-gray-500">ลูกค้า</div>
-                            <div className="col-span-2">{request.customer_name || '-'}</div>
-
-                            <div className="font-medium text-gray-500">ผู้ติดต่อ</div>
-                            <div className="col-span-2">{request.contact_person || '-'}</div>
-
-                            <div className="font-medium text-gray-500">Email</div>
-                            <div className="col-span-2">{request.contact_email || '-'}</div>
-
-                            <div className="font-medium text-gray-500">เบอร์โทร</div>
-                            <div className="col-span-2">{request.contact_phone || '-'}</div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Estimates & Dates */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>ประมาณการและกำหนดการ</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                            <div className="font-medium text-gray-500 mb-1">งบประมาณ</div>
-                            <div className="text-lg font-semibold">
-                                {request.estimated_budget ? request.estimated_budget.toLocaleString() : '-'} บาท
-                            </div>
-                        </div>
-
-                        <div>
-                            <div className="font-medium text-gray-500 mb-1">Man-day</div>
-                            <div className="text-lg font-semibold">
-                                {request.estimated_mandays || '-'} วัน
-                            </div>
-                        </div>
-
-                        <div>
-                            <div className="font-medium text-gray-500 mb-1">วันที่เริ่มต้น (คาดการณ์)</div>
-                            <div>
-                                {request.expected_start_date ? format(new Date(request.expected_start_date), 'dd MMM yyyy', { locale: th }) : '-'}
-                            </div>
-                        </div>
-
-                        <div>
-                            <div className="font-medium text-gray-500 mb-1">วันที่สิ้นสุด (คาดการณ์)</div>
-                            <div>
-                                {request.expected_end_date ? format(new Date(request.expected_end_date), 'dd MMM yyyy', { locale: th }) : '-'}
+                                <Label>รายละเอียด</Label>
+                                <Textarea
+                                    value={request.description || '-'}
+                                    rows={4}
+                                    disabled
+                                    className="mt-1 resize-none bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
                             </div>
                         </div>
                     </div>
-                </CardContent>
-            </Card>
 
-            {/* Notes */}
-            {request.notes && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>หมายเหตุ</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-sm whitespace-pre-wrap">{request.notes}</p>
-                    </CardContent>
-                </Card>
-            )}
+                    <div>
+                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                            <div className="w-1 h-5 bg-orange-500 rounded-full"></div>
+                            ประมาณการ
+                        </h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label>งบประมาณ (บาท)</Label>
+                                <Input
+                                    value={request.estimated_budget ? request.estimated_budget.toLocaleString() : '-'}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
 
-            {/* Rejection / Revision Reason */}
-            {(request.rejection_reason || request.revision_reason) && (
-                <Card className={`border-l-4 ${request.status === 'REJECTED' ? 'border-l-red-500' : 'border-l-orange-500'}`}>
-                    <CardHeader>
-                        <CardTitle className={request.status === 'REJECTED' ? 'text-red-700' : 'text-orange-700'}>
-                            {request.status === 'REJECTED' ? 'เหตุผลที่ปฏิเสธ' : 'สิ่งที่ต้องแก้ไข'}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-sm whitespace-pre-wrap">
-                            {request.status === 'REJECTED' ? request.rejection_reason : request.revision_reason}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-2">
-                            โดย: {request.status === 'REJECTED' ? request.rejected_by_name : request.revision_requested_by_name} •
-                            วันที่: {request.status === 'REJECTED'
-                                ? format(new Date(request.rejected_at), 'dd/MM/yyyy HH:mm', { locale: th })
-                                : format(new Date(request.revision_requested_at), 'dd/MM/yyyy HH:mm', { locale: th })}
-                        </p>
-                    </CardContent>
-                </Card>
-            )}
+                            <div>
+                                <Label>Man-day</Label>
+                                <Input
+                                    value={request.estimated_mandays || '-'}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
+
+                            <div>
+                                <Label>เริ่ม (คาดการณ์)</Label>
+                                <Input
+                                    value={request.expected_start_date ? format(new Date(request.expected_start_date), 'dd/MM/yyyy', { locale: th }) : '-'}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
+
+                            <div>
+                                <Label>สิ้นสุด (คาดการณ์)</Label>
+                                <Input
+                                    value={request.expected_end_date ? format(new Date(request.expected_end_date), 'dd/MM/yyyy', { locale: th }) : '-'}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Column: Customer Info & Notes */}
+                <div className="space-y-6">
+                    <div>
+                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                            <div className="w-1 h-5 bg-green-500 rounded-full"></div>
+                            ข้อมูลลูกค้า
+                        </h3>
+                        <div className="space-y-3">
+                            <div>
+                                <Label>ลูกค้า</Label>
+                                <Input
+                                    value={request.customer_name || '-'}
+                                    disabled
+                                    className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <Label>ผู้ติดต่อ</Label>
+                                    <Input
+                                        value={request.contact_person || '-'}
+                                        disabled
+                                        className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>Email</Label>
+                                    <Input
+                                        value={request.contact_email || '-'}
+                                        disabled
+                                        className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>เบอร์โทร</Label>
+                                    <Input
+                                        value={request.contact_phone || '-'}
+                                        disabled
+                                        className="mt-1 bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                            <div className="w-1 h-5 bg-slate-500 rounded-full"></div>
+                            หมายเหตุ
+                        </h3>
+                        <Textarea
+                            value={request.notes || '-'}
+                            rows={3}
+                            disabled
+                            className="mt-1 resize-none bg-slate-50 text-slate-900 opacity-100 border-slate-200"
+                        />
+                    </div>
+
+                    {/* Rejection / Revision Reason Block (Kept as special alert-like box as it has no equivalent in Create Form) */}
+                    {(request.rejection_reason || request.revision_reason) && (
+                        <div className={`p-4 rounded-lg border border-l-4 ${request.status === 'REJECTED' ? 'bg-red-50 border-red-200 border-l-red-500' : 'bg-orange-50 border-orange-200 border-l-orange-500'}`}>
+                            <h4 className={`font-semibold mb-2 ${request.status === 'REJECTED' ? 'text-red-700' : 'text-orange-700'}`}>
+                                {request.status === 'REJECTED' ? 'เหตุผลที่ปฏิเสธ' : 'สิ่งที่ต้องแก้ไข'}
+                            </h4>
+                            <p className="text-sm whitespace-pre-wrap text-slate-800">
+                                {request.status === 'REJECTED' ? request.rejection_reason : request.revision_reason}
+                            </p>
+                            <div className="mt-3 pt-3 border-t border-slate-200/50 flex items-center gap-2 text-xs text-slate-500">
+                                <span className="font-medium">โดย: {request.status === 'REJECTED' ? request.rejected_by_name : request.revision_requested_by_name}</span>
+                                <span>•</span>
+                                <span>{request.status === 'REJECTED'
+                                    ? format(new Date(request.rejected_at), 'dd/MM/yyyy HH:mm', { locale: th })
+                                    : format(new Date(request.revision_requested_at), 'dd/MM/yyyy HH:mm', { locale: th })}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     )
 }

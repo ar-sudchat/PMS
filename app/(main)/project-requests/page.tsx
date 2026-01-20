@@ -1,12 +1,16 @@
-
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
+import { getCurrentUser } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import {
     getProjectRequests,
-    getRequestStatistics
+    getRequestStatistics,
+    getProjectRequestTypes,
+    getProjectRequestPriorities
 } from '@/lib/actions/project-request-actions'
+import { getCustomers } from '@/lib/actions/customer-actions'
 import { ProjectRequestList } from '@/components/project-requests/ProjectRequestList'
 import { ProjectRequestStats } from '@/components/project-requests/ProjectRequestStats'
 
@@ -15,41 +19,47 @@ export const metadata = {
 }
 
 interface PageProps {
-    searchParams: {
+    searchParams: Promise<{
         status?: string
         search?: string
-    }
+    }>
 }
 
-export default async function ProjectRequestsPage({ searchParams }: PageProps) {
-    // Fetch data in parallel
-    const statsPromise = getRequestStatistics()
-    const requestsPromise = getProjectRequests({
-        status: searchParams.status,
-        search: searchParams.search
-    })
+export default async function ProjectRequestsPage(props: PageProps) {
+    const searchParams = await props.searchParams
+    const user = await getCurrentUser()
+    if (!user) {
+        redirect('/login')
+    }
 
-    const [stats, requests] = await Promise.all([
-        statsPromise,
-        requestsPromise
+    // Fetch data in parallel
+    const [stats, requests, customers, requestTypes, priorities] = await Promise.all([
+        getRequestStatistics(),
+        getProjectRequests({
+            status: searchParams.status,
+            search: searchParams.search
+        }),
+        getCustomers(),
+        getProjectRequestTypes(),
+        getProjectRequestPriorities()
     ])
 
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold tracking-tight">Project Requests</h1>
-                <Link href="/project-requests/new">
-                    <Button>
-                        <Plus className="h-4 w-4 mr-2" />
-                        สร้างคำขอใหม่
-                    </Button>
-                </Link>
             </div>
 
             <ProjectRequestStats stats={stats} />
 
             <Suspense fallback={<div>Loading...</div>}>
-                <ProjectRequestList requests={requests} />
+                <ProjectRequestList
+                    requests={requests}
+                    customers={customers}
+                    requestTypes={requestTypes}
+                    priorities={priorities}
+                    currentUserId={user.id}
+                />
             </Suspense>
         </div>
     )
