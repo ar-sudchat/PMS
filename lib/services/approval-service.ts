@@ -1366,3 +1366,95 @@ async function getUser(pool: sql.ConnectionPool, userId: string): Promise<any> {
 
     return result.recordset[0] || null
 }
+
+// ============================================
+// EXPORTED HELPERS
+// ============================================
+
+export async function checkCanApproveDocument(
+    instanceId: string
+): Promise<{ canApprove: boolean; instanceId?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { canApprove: false }
+
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('instanceId', sql.UniqueIdentifier, instanceId)
+            .input('userId', sql.UniqueIdentifier, user.id)
+            .query(`
+                SELECT ai.id AS instance_id
+                FROM pms.approval_instances ai
+                JOIN pms.approval_instance_approvers aia
+                    ON ai.id = aia.instance_id
+                    AND ai.current_step_order = aia.step_order
+                WHERE ai.id = @instanceId
+                  AND ai.status IN ('PENDING', 'IN_PROGRESS')
+                  AND aia.status = 'PENDING'
+                  AND aia.approver_id = @userId
+            `)
+
+        if (result.recordset.length > 0) {
+            return { canApprove: true, instanceId: result.recordset[0].instance_id }
+        }
+
+        return { canApprove: false }
+
+    } catch (error) {
+        console.error('checkCanApproveDocument error:', error)
+        return { canApprove: false }
+    }
+}
+
+export async function getApprovalInstanceByDocumentId(
+    documentId: string,
+    moduleCode: string
+): Promise<{ instanceId?: string; status?: string; canApprove?: boolean }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return {}
+
+        const pool = await getConnection()
+
+        const instanceResult = await pool.request()
+            .input('documentId', sql.VarChar(100), documentId)
+            .input('moduleCode', sql.VarChar(50), moduleCode)
+            .query(`
+                SELECT TOP 1 id, status, current_step_order
+                FROM pms.approval_instances
+                WHERE document_id = @documentId AND module_code = @moduleCode
+                ORDER BY request_date DESC
+            `)
+
+        if (instanceResult.recordset.length === 0) {
+            return {}
+        }
+
+        const instance = instanceResult.recordset[0]
+
+        // Check if user can approve
+        const approverResult = await pool.request()
+            .input('instanceId', sql.UniqueIdentifier, instance.id)
+            .input('stepOrder', sql.Int, instance.current_step_order)
+            .input('userId', sql.UniqueIdentifier, user.id)
+            .query(`
+                SELECT id FROM pms.approval_instance_approvers
+                WHERE instance_id = @instanceId
+                  AND step_order = @stepOrder
+                  AND approver_id = @userId
+                  AND status = 'PENDING'
+            `)
+
+        return {
+            instanceId: instance.id,
+            status: instance.status,
+            canApprove: approverResult.recordset.length > 0 &&
+                (instance.status === 'PENDING' || instance.status === 'IN_PROGRESS')
+        }
+
+    } catch (error) {
+        console.error('getApprovalInstanceByDocumentId error:', error)
+        return {}
+    }
+}

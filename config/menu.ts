@@ -38,6 +38,7 @@ import {
   Timer,
   Calculator,
   Bug,
+  FilePlus,
   type LucideIcon
 } from 'lucide-react'
 
@@ -99,6 +100,14 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
           { id: 'resource-planning', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
+        ]
+      },
+      {
+        id: 'requests',
+        title: 'Requests',
+        titleTh: 'คำขอโครงการ',
+        children: [
+          { id: 'project-requests', label: 'Project Requests', labelTh: 'รายการคำขอ', path: '/project-requests', icon: FilePlus },
         ]
       },
       {
