@@ -158,6 +158,7 @@ export function ProjectRequestList({
                                 <TableHead>ประเภท</TableHead>
                                 <TableHead>ความสำคัญ</TableHead>
                                 <TableHead>สถานะ</TableHead>
+                                <TableHead>เลขที่โครงการ</TableHead>
                                 <TableHead>วันที่สร้าง</TableHead>
                                 <TableHead>ผู้สร้าง</TableHead>
                                 <TableHead className="w-[50px]"></TableHead>
@@ -166,7 +167,7 @@ export function ProjectRequestList({
                         <TableBody>
                             {requests.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                                         ไม่พบข้อมูล
                                     </TableCell>
                                 </TableRow>
@@ -194,6 +195,15 @@ export function ProjectRequestList({
                                             <Badge className={statusColors[request.status] || statusColors.DRAFT}>
                                                 {request.status_name || request.status}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {request.converted_project_code ? (
+                                                <span className="font-mono font-medium text-green-600">
+                                                    {request.converted_project_code}
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {request.created_at ? format(new Date(request.created_at), 'dd MMM yyyy', { locale: th }) : '-'}

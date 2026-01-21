@@ -99,32 +99,19 @@ export function ProjectRequestDetailDialog({
 
                             {/* Converted Project Link */}
                             {request?.converted_project_id && (
-                                <div className="mt-2 flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-md border border-green-100 w-fit">
-                                    <span className="font-medium">แปลงเป็นโครงการแล้ว:</span>
+                                <div className="mt-3 flex items-center gap-3 text-sm bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-2.5 rounded-lg border border-green-200 w-fit shadow-sm">
+                                    <span className="font-medium text-slate-600">แปลงเป็นโครงการแล้ว:</span>
                                     <Link
-                                        href={`/projects`} // Ideally this would go to the specific project, but user might not have access or route might differ. 
-                                        // For now, let's assume we can link to the project list or specific if we have ID.
-                                        // But wait, converted_project_code is available?
-                                        // Let's just link to project list or show the code.
-                                        // Actually I have project_id_ref from the view! 
-                                        // Wait, the view defines `prj.id as project_id_ref`.
-                                        // But the `ProjectRequest` interface doesn't have `project_id_ref` explicitly mapped?
-                                        // Let's check `ProjectRequest` interface in actions.ts.
-                                        // I added `converted_project_id` and `converted_project_code`.
-                                        // If I updated the view, the interface should match.
-                                        // In `getProjectRequestById` (which likely uses `SELECT * FROM vw_project_requests`), it returns what's in the view.
-                                        // So `project_id_ref` should be available if I mapped it in the VIEW.
-                                        // But `ProjectRequest` interface uses `converted_project_id`.
-                                        // The VIEW maps `prj.id as project_id_ref`... wait.
-                                        // `pr.converted_project_id` is the FK.
-                                        // `prj.id` is the joined PK. They are the same.
-                                        // So `converted_project_id` is sufficient.
-                                        // I will link to `/projects?search=${request.converted_project_code}` or similar.
-                                        // Or better, just a visual indicator for now until Project Detail page is confirmed ready for deep linking.
-                                        // User just said "Show Link".
-                                        className="font-bold underline hover:text-green-800 flex items-center gap-1"
+                                        href={`/projects?search=${request.converted_project_code}`}
+                                        className="font-bold text-green-700 hover:text-green-900 flex items-center gap-2 transition-colors"
                                     >
-                                        [{request.converted_project_code}] {request.converted_project_name} <ExternalLink className="h-3 w-3" />
+                                        <span className="font-mono text-base bg-white px-2 py-0.5 rounded border border-green-300">
+                                            {request.converted_project_code}
+                                        </span>
+                                        <span className="max-w-[300px] truncate">
+                                            {request.converted_project_name}
+                                        </span>
+                                        <ExternalLink className="h-4 w-4 flex-shrink-0" />
                                     </Link>
                                 </div>
                             )}
