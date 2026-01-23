@@ -19,7 +19,7 @@ import {
     WeeklyTaskEntry
 } from '@/lib/actions/daily-workload-actions'
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
-import { cn } from '@/lib/utils'
+import { cn, stringToColor } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format, startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -172,7 +172,16 @@ export function WeeklyWorkloadTable() {
         return (
             <div className="relative space-y-1.5 pt-5">
                 {/* Indicator - Top Left */}
-                <div className="absolute top-1 left-1 z-10">
+                <div className="absolute top-1 left-1 z-10 flex gap-1">
+                    {/* SA Color Dots */}
+                    {tasks.map((t, i) => {
+                        if (!t.reviewer_id) return null
+                        // Deduplicate: only show dot for unique reviewers? Or for each task?
+                        // Let's show small dot for each task to indicate density?
+                        // Or better: Use the border color of the task block below.
+                        return null
+                    })}
+
                     {isFull ? (
                         <div
                             className="bg-emerald-100 border border-emerald-300 rounded-full p-0.5"
@@ -202,6 +211,16 @@ export function WeeklyWorkloadTable() {
                                     </div>
                                     <div className="text-[10px] text-slate-500 truncate max-w-[100px]" title={projectName}>
                                         {projectName}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {projectTasks.map((t, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="w-2 h-2 rounded-full"
+                                                style={{ backgroundColor: t.reviewer_id ? stringToColor(t.reviewer_id) : '#e2e8f0' }}
+                                                title={t.task_title + (t.reviewer_id ? ' (SA Assigned)' : '')}
+                                            />
+                                        ))}
                                     </div>
                                 </div>
                                 <span className="text-slate-700 shrink-0 font-bold text-base">
@@ -297,8 +316,6 @@ export function WeeklyWorkloadTable() {
                             value={selectedProject}
                             onChange={setSelectedProject}
                             placeholder="เลือกโครงการ..."
-                            searchPlaceholder="ค้นหาโครงการ..."
-                            emptyMessage="ไม่พบโครงการ"
                             isClearable
                         />
                     </div>

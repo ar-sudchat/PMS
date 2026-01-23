@@ -188,6 +188,38 @@ export function ResourcePlanningView() {
         }
     }, [employees])
 
+    const summary = useMemo(() => {
+        if (!employees || employees.length === 0) return null
+
+        let totalCapacity = 0
+        let totalAllocated = 0
+        let overloadedCount = 0
+
+        employees.forEach(emp => {
+            // Calculate capacity for this employee for the selected range
+            const wCap = emp.daily_workload.reduce((sum, d) => sum + d.capacity_hours, 0)
+            const wAlloc = emp.total_assigned_hours
+
+            totalCapacity += wCap
+            totalAllocated += wAlloc
+
+            if (emp.average_workload_percent > 100) {
+                overloadedCount++
+            }
+        })
+
+        const totalAvailable = Math.max(0, totalCapacity - totalAllocated)
+        const allocatedPercent = totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0
+
+        return {
+            totalCapacity,
+            totalAllocated,
+            totalAvailable,
+            allocatedPercent,
+            overloadedCount
+        }
+    }, [employees])
+
     // Edit Modal State
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [editingTask, setEditingTask] = useState<any>(null) // Using any for now to map between different task types

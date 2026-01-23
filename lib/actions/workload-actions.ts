@@ -30,6 +30,7 @@ export interface DailyWorkload {
         project_name: string
         milestone_locked: boolean
         reviewer_id?: string
+        reviewer_name?: string
     }[]
 }
 
@@ -182,6 +183,7 @@ export async function getTeamWorkloadForDateRange(
                     t.priority,
                     t.assignee_id,
                     t.reviewer_id,
+                    ISNULL(NULLIF(CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th), ' '), CONCAT(reviewer.first_name, ' ', reviewer.last_name)) as reviewer_name,
                     p.project_code,
                     p.name as project_name,
                     ISNULL(pm.is_locked, 0) as milestone_locked
@@ -189,6 +191,7 @@ export async function getTeamWorkloadForDateRange(
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.projects p ON s.project_id = p.id
                 LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+                LEFT JOIN pms.employees reviewer ON t.reviewer_id = reviewer.id
                 WHERE t.assignee_id IN (${employeeIds})
                   AND t.due_date BETWEEN @startDate AND @endDate
                   AND t.status NOT IN ('done', 'cancelled')
@@ -232,7 +235,8 @@ export async function getTeamWorkloadForDateRange(
                     project_code: t.project_code,
                     project_name: t.project_name,
                     milestone_locked: !!t.milestone_locked,
-                    reviewer_id: t.reviewer_id
+                    reviewer_id: t.reviewer_id,
+                    reviewer_name: t.reviewer_name
                 }))
 
                 const assignedHours = dayTasks.reduce((sum: number, t: any) => sum + t.estimated_hours, 0)

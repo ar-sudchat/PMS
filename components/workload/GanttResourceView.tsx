@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, RefreshCw, Maximize2, Minimize2 } from 'lucide-react'
 import { getTeamWorkloadForDateRange, EmployeeWorkload, unassignTask } from '@/lib/actions/workload-actions'
 import { getWorkloadConfig, WorkloadConfig } from '@/lib/actions/config-actions'
-import { cn } from '@/lib/utils'
+import { cn, stringToColor } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ResourceDemandPanel } from './ResourceDemandPanel'
 import { ResizablePanelLayout } from './ResizablePanelLayout'
@@ -50,6 +50,8 @@ interface TaskBlock {
     date: string
     startHour?: number // Optional: for future time-based positioning
     reviewerId?: string
+    reviewerName?: string
+    projectName?: string
 }
 
 type PositionFilter = 'all' | 'SA' | 'BA' | 'PG'
@@ -130,6 +132,21 @@ function TaskBar({
     const barWidth = Math.max(task.hours * HOUR_WIDTH - 4, 50) // Min 50px
     const barHeight = ROW_HEIGHT - 10 // Leave some padding
 
+    // Dynamic Color based on SA (Reviewer)
+    const bgColor = task.reviewerId ? stringToColor(task.reviewerId) : null
+
+    // Base classes
+    let colorClasses = ""
+    if (!bgColor) {
+        if (task.status === 'done' || task.status === 'done_not_planned') {
+            colorClasses = "bg-emerald-100 text-emerald-700 border-emerald-200"
+        } else if (task.status === 'in_progress') {
+            colorClasses = "bg-blue-100 text-blue-700 border-blue-200"
+        } else {
+            colorClasses = "bg-white text-slate-600 border-slate-200"
+        }
+    }
+
     return (
         <div
             onClick={(e) => {
@@ -137,17 +154,35 @@ function TaskBar({
                 onClick?.(task)
             }}
             className={cn(
-                "rounded-md border-2 flex flex-col justify-center px-2 py-1 text-white text-xs font-medium shadow-sm transition-all group overflow-hidden relative cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-100",
-                priorityColors[task.priority] || priorityColors.medium,
+                "rounded-md border flex flex-col justify-center px-2 py-1 text-xs font-medium shadow-sm transition-all group overflow-hidden relative cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-100",
+                !bgColor && (priorityColors[task.priority] || priorityColors.medium), // Fallback if we were using priority colors, but code below overrides it usually contextually? 
+                // Wait, previous code used priorityColors OR ... actually it put priorityColors in className which might clash. 
+                // The original code used priorityColors[task.priority]. Let's check original.
+                // Original: priorityColors[task.priority] || priorityColors.medium
+                // But wait, my previous read showed it using status colors in `baseClasses` logic? 
+                // Actually, looking at the file read: 
+                // line 141: priorityColors[task.priority] || priorityColors.medium
+                // So it was using priority colors (red/amber/blue) for background? 
+                // User asked for "Color by SA". 
+                // So if SA exists, use SA color. If not, use Priority color.
+                !bgColor && (priorityColors[task.priority] || priorityColors.medium),
                 task.isLocked && "opacity-60 cursor-not-allowed"
             )}
-            style={{ width: barWidth, height: barHeight }}
+            style={{
+                width: barWidth,
+                height: barHeight,
+                backgroundColor: bgColor || undefined,
+                borderColor: bgColor ? bgColor.replace('85%)', '75%)') : undefined,
+                color: bgColor ? '#334155' : undefined
+            }}
             title={`${task.projectCode} - ${task.title} (${task.hours}h)`}
         >
             {/* Top row: Project code + hours */}
             <div className="flex items-center justify-between">
-                <span className="font-bold text-[11px]">{task.projectCode}</span>
-                <span className="bg-white/20 px-1 rounded text-[10px]">
+                <span className="font-bold text-[11px] truncate flex-1 mr-1" title={task.projectName}>
+                    {task.projectCode} {task.projectName ? `- ${task.projectName}` : ''}
+                </span>
+                <span className="bg-white/20 px-1 rounded text-[10px] shrink-0">
                     {task.hours}h
                 </span>
             </div>
@@ -195,7 +230,7 @@ export function GanttResourceView() {
     const [employees, setEmployees] = useState<EmployeeWorkload[]>([])
     const [config, setConfig] = useState<WorkloadConfig | null>(null)
     const [isLoading, setIsLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState<PositionFilter>('all')
+    const [activeTab, setActiveTab] = useState<PositionFilter>('PG')
     const [activeDragTask, setActiveDragTask] = useState<TaskBlock | null>(null)
 
     const sensors = useSensors(
@@ -303,9 +338,36 @@ export function GanttResourceView() {
             isLocked: t.milestone_locked,
             employeeId: employee.employee_id,
             date: dateStr,
-            reviewerId: t.reviewer_id
+            reviewerId: t.reviewer_id,
+            reviewerName: t.reviewer_name,
+            projectName: t.project_name
         }))
     }
+
+    // Generate Legend Data
+    const saLegend = useMemo(() => {
+        const uniqueReviewers = new Map<string, string>()
+        employees.forEach(emp => {
+            emp.daily_workload.forEach(day => {
+                day.tasks.forEach(t => {
+                    if (t.reviewer_id && t.reviewer_id.toLowerCase() !== 'null') { // Check for string 'null' just in case
+                        // We might not have reviewer name directly in task if it wasn't joined well, but daily-workload-actions does join it.
+                        // Let's rely on what we have. 
+                        // Wait, daily-workload-actions.ts `getTeamWorkloadForDateRange` DOES NOT fetch reviewer_name!
+                        // It only fetches reviewer_id.
+                        // I need to update backend to fetch reviewer_name if I want to show names.
+                        // For now I will show reviewer_id if name missing, but I should fix backend.
+                        uniqueReviewers.set(t.reviewer_id, t.reviewer_name || t.reviewer_id)
+                    }
+                })
+            })
+        })
+        return Array.from(uniqueReviewers.entries()).map(([id, name]) => ({
+            id,
+            name,
+            color: stringToColor(id)
+        }))
+    }, [employees])
 
     // Unassign handler - no confirmation, just unassign with toast notification
     const handleUnassignTask = async (taskId: string) => {
@@ -334,7 +396,8 @@ export function GanttResourceView() {
                 start: task.date,
                 end: task.date,
                 employeeId: task.employeeId,
-                reviewerId: task.reviewerId
+                reviewerId: task.reviewerId,
+                projectName: task.projectName
             }
         } else {
             // UnassignedTask from Resource Demand
@@ -651,6 +714,27 @@ export function GanttResourceView() {
                         </div>
                     )}
                 </div>
+
+                {/* Legend Bar */}
+                {saLegend.length > 0 && (
+                    <div className="border-t bg-white px-4 py-2 flex items-center gap-4 shrink-0 overflow-x-auto">
+                        <span className="text-xs font-semibold text-slate-500 shrink-0">SA Legend:</span>
+                        <div className="flex items-center gap-3">
+                            {saLegend.map(sa => (
+                                <div key={sa.id} className="flex items-center gap-1.5">
+                                    <div
+                                        className="w-3 h-3 rounded-full border shadow-sm"
+                                        style={{ backgroundColor: sa.color, borderColor: sa.color.replace('0.2)', '1)') }}
+                                    />
+                                    <span className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                                        {sa.name || 'SA'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <DragOverlay>
                     {activeDragTask ? (
                         <div style={{ transform: 'none' }}>

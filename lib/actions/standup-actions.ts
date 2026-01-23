@@ -577,11 +577,43 @@ export async function getTeamStandupStatus(groupId: number, dateString?: string)
 
         const members = membersResult.recordset
 
-        if (members.length === 0) return { success: true, data: [] }
+        // If groupId is 0, we want ALL active employees (SA, BA, PG)
+        if (groupId === 0) {
+            const allMembersResult = await pool.request().query(`
+                SELECT e.id, e.first_name_th, e.last_name_th, e.nickname, e.avatar_url
+                FROM pms.employees e
+                JOIN pms.positions p ON e.position_id = p.id
+                WHERE e.is_active = 1
+                AND (p.name LIKE '%Programmer%' OR p.name LIKE '%Analyst%' OR p.name LIKE '%Developer%')
+                ORDER BY e.first_name_th
+            `)
+            // Overwrite members list
+            // Note: const members above is a const reference to array, but we reassigned variable in similar scope? logic error in thought.
+            // Let's change variable declaration or return fresh.
+            // Actually, we can just branch logic
+        }
+
+        let targetMembers = members
+        let targetGroupName = groupName
+
+        if (groupId === 0) {
+            targetGroupName = 'All Teams'
+            const allActiveResult = await pool.request().query(`
+                SELECT e.id, e.first_name_th, e.last_name_th, e.nickname, e.avatar_url
+                FROM pms.employees e
+                JOIN pms.positions p ON e.position_id = p.id
+                WHERE e.is_active = 1
+                AND (p.name LIKE '%Programmer%' OR p.name LIKE '%Analyst%' OR p.name LIKE '%Developer%')
+                ORDER BY e.first_name_th
+            `)
+            targetMembers = allActiveResult.recordset
+        }
+
+        if (targetMembers.length === 0) return { success: true, data: [] }
 
         // 2. Fetch Tasks for ALL members involved
         // We can do this efficiently by fetching ALL tasks for these users for today in one query
-        const memberIds = members.map((m: any) => `'${m.id}'`).join(',')
+        const memberIds = targetMembers.map((m: any) => `'${m.id}'`).join(',')
 
         // Safety check for empty group
         if (!memberIds) return { success: true, data: [] }
@@ -629,7 +661,7 @@ export async function getTeamStandupStatus(groupId: number, dateString?: string)
         const standups = standupsResult.recordset
 
         // 4. Merge Data
-        const teamStatus = members.map((member: any) => {
+        const teamStatus = targetMembers.map((member: any) => {
             const memberTasks = allTasks.filter((t: any) => t.assignee_id === member.id)
             const standup = standups.find((s: any) => s.user_id === member.id)
 
@@ -661,7 +693,7 @@ export async function getTeamStandupStatus(groupId: number, dateString?: string)
             }
         })
 
-        return { success: true, data: teamStatus, groupName }
+        return { success: true, data: teamStatus, groupName: targetGroupName }
 
     } catch (error) {
         console.error('getTeamStandupStatus error:', error)
@@ -774,17 +806,17 @@ export async function generateTeamSummaryAction(groupId: number, dateString?: st
             const completed = member.tasks.filter((t: any) => t.status === 'COMPLETED')
             const pending = member.tasks.filter((t: any) => t.status === 'PENDING')
 
+            // Logic for "Not as Planned": Tasks due today but not completed
+            // Frontend passes 'PENDING'.
+            // Simple logic: If status is PENDING, show as "In Progress" or "Not as Planned"??
+            // User requested "Status: Done, Not as Planned".
+            // "Not as Planned" usually means something went wrong. For now let's list them.
+
             if (completed.length > 0) {
-                summary += `**Completed**:\n`
-                completed.forEach((t: any) => {
-                    summary += `- [x] ${t.taskTitle} ${t.remark ? `(${t.remark})` : ''}\n`
-                })
+                summary += `✅ **Done**: ${completed.length} tasks\n`
             }
             if (pending.length > 0) {
-                summary += `**Working On**:\n`
-                pending.forEach((t: any) => {
-                    summary += `- [ ] ${t.taskTitle} ${t.remark ? `(${t.remark})` : ''}\n`
-                })
+                summary += `⚠️ **Not as Planned / In Progress**: ${pending.length} tasks\n`
             }
         }
         summary += `\n`
