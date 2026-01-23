@@ -234,16 +234,38 @@ export function GanttResourceView() {
         }
     }
 
-    const handleTaskClick = (task: TaskBlock) => {
-        setEditingTask({
-            id: task.id,
-            title: task.title,
-            projectCode: task.projectCode,
-            hours: task.hours,
-            start: task.date, // Approx, as we don't have full start/end in block
-            end: task.date,   // Default to same day
-            employeeId: task.employeeId
-        })
+    const handleTaskClick = (task: TaskBlock | any) => {
+        // Handle both TaskBlock (from Gantt) and UnassignedTask (from Resource Demand)
+        let mappedTask
+
+        if ('employeeId' in task && 'date' in task) {
+            // TaskBlock from Gantt
+            mappedTask = {
+                id: task.id,
+                title: task.title,
+                projectCode: task.projectCode,
+                hours: task.hours,
+                start: task.date,
+                end: task.date,
+                employeeId: task.employeeId
+            }
+        } else {
+            // UnassignedTask from Resource Demand
+            mappedTask = {
+                id: task.id,
+                title: task.title,
+                projectCode: task.project_code || task.projectCode,
+                projectName: task.project_name || task.projectName,
+                hours: task.estimated_hours || task.hours || 0,
+                start: task.start_date || task.start || '',
+                end: task.due_date || task.end || '',
+                employeeId: task.assignee_id || task.employeeId,
+                reviewerId: task.reviewer_id || task.reviewerId,
+                position: task.position
+            }
+        }
+
+        setEditingTask(mappedTask)
         setIsEditModalOpen(true)
     }
 
@@ -270,6 +292,7 @@ export function GanttResourceView() {
             startDate={startDate}
             endDate={endDate}
             dates={dates}
+            onTaskClick={handleTaskClick}
         />
     )
 

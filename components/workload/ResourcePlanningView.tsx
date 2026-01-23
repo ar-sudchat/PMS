@@ -194,9 +194,20 @@ export function ResourcePlanningView() {
 
     const handleTaskClick = (task: any) => {
         // Map incoming task to TaskEditModal format
-        // TaskEditModal expects: { id, assignee_id, reviewer_id, start_date, due_date } + display info
-        // We might need to ensure we have reviewer_id (SA) and assignee_id (PG)
-        setEditingTask(task)
+        // TaskEditModal expects: { id, title, projectCode, projectName, hours, start, end, employeeId, reviewerId }
+        const mappedTask = {
+            id: task.id,
+            title: task.title,
+            projectCode: task.project_code || task.projectCode,
+            projectName: task.project_name || task.projectName,
+            hours: task.estimated_hours || task.hours || 0,
+            start: task.start_date || task.start || '',
+            end: task.due_date || task.end || '',
+            employeeId: task.assignee_id || task.employeeId,
+            reviewerId: task.reviewer_id || task.reviewerId,
+            position: task.position
+        }
+        setEditingTask(mappedTask)
         setIsEditModalOpen(true)
     }
 
@@ -381,12 +392,7 @@ export function ResourcePlanningView() {
     )
 
     return (
-        <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-        >
+        <>
             <ResizablePanelLayout
                 leftPanel={leftPanel}
                 rightPanel={rightPanel}
@@ -395,28 +401,12 @@ export function ResourcePlanningView() {
                 maxLeftWidth={40}
             />
 
-            <DragOverlay dropAnimation={null}>
-                {activeId && dragData ? (
-                    <div className="cursor-grabbing shadow-xl">
-                        <TaskCard
-                            id={activeId}
-                            title={dragData.title}
-                            hours={dragData.hours}
-                            priority={dragData.priority}
-                            status="Dragging"
-                            projectCode={dragData.projectCode}
-                            isLocked={dragData.isLocked}
-                        />
-                    </div>
-                ) : null}
-            </DragOverlay>
-
             <TaskEditModal
                 open={isEditModalOpen}
                 onOpenChange={setIsEditModalOpen}
                 task={editingTask}
                 onSaved={handleTaskUpdate}
             />
-        </DndContext>
+        </>
     )
 }

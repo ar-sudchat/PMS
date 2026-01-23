@@ -8,7 +8,8 @@ import {
     Calendar,
     Users,
     Filter,
-    Briefcase
+    Briefcase,
+    CheckCircle2
 } from 'lucide-react'
 import {
     getWeeklyWorkloadByEmployee,
@@ -135,8 +136,28 @@ export function WeeklyWorkloadTable() {
     }
 
     const renderTasksCell = (tasks: WeeklyTaskEntry[], totalHours: number) => {
+        const remainingHours = 7 - totalHours
+        const isFull = totalHours >= 7
+
         if (tasks.length === 0) {
-            return <span className="text-slate-300">-</span>
+            return (
+                <div className="relative min-h-[60px] pt-5">
+                    {/* Indicator - Top Left */}
+                    {remainingHours > 0 && (
+                        <div className="absolute top-1 left-1">
+                            <span
+                                className="text-[9px] px-1 py-0.5 bg-amber-50 text-amber-600 rounded font-medium border border-amber-200"
+                                title={`เหลือ ${remainingHours.toFixed(1)} ชั่วโมง`}
+                            >
+                                -{remainingHours.toFixed(1)}h
+                            </span>
+                        </div>
+                    )}
+                    <div className="flex items-center justify-center h-full">
+                        <span className="text-slate-300">-</span>
+                    </div>
+                </div>
+            )
         }
 
         // Group by project and get project name
@@ -149,7 +170,27 @@ export function WeeklyWorkloadTable() {
         })
 
         return (
-            <div className="space-y-1.5">
+            <div className="relative space-y-1.5 pt-5">
+                {/* Indicator - Top Left */}
+                <div className="absolute top-1 left-1 z-10">
+                    {isFull ? (
+                        <div
+                            className="bg-emerald-100 border border-emerald-300 rounded-full p-0.5"
+                            title={`เต็มแล้ว (${totalHours.toFixed(1)}h)`}
+                        >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        </div>
+                    ) : remainingHours > 0 ? (
+                        <span
+                            className="text-[9px] px-1 py-0.5 bg-amber-50 text-amber-600 rounded font-medium border border-amber-200"
+                            title={`เหลือ ${remainingHours.toFixed(1)} ชั่วโมง`}
+                        >
+                            -{remainingHours.toFixed(1)}h
+                        </span>
+                    ) : null}
+                </div>
+
+                {/* Tasks List */}
                 {Object.entries(byProject).map(([projectCode, { tasks: projectTasks, projectName }]) => {
                     const projectHours = projectTasks.reduce((sum, t) => sum + t.estimated_hours, 0)
                     return (

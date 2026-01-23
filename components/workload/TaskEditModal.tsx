@@ -17,6 +17,7 @@ interface TaskEditModalProps {
         id: string
         title: string
         projectCode: string
+        projectName?: string
         hours: number
         start: string // YYYY-MM-DD
         end: string // YYYY-MM-DD
@@ -104,7 +105,10 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Edit Planning: {task.projectCode}</DialogTitle>
+                    <DialogTitle>
+                        Edit Planning: {task.projectCode}
+                        {task.projectName && <span className="text-sm font-normal text-slate-500 ml-2">({task.projectName})</span>}
+                    </DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
