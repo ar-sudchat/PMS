@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -44,6 +44,7 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
 
     useEffect(() => {
         if (open) {
+            console.log("TaskEditModal Opened:", task)
             loadEmployees()
             if (task) {
                 setStartDate(task.start)
@@ -108,6 +109,9 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
                         Edit Planning: {task.projectCode}
                         {task.projectName && <span className="text-sm font-normal text-slate-500 ml-2">({task.projectName})</span>}
                     </DialogTitle>
+                    <DialogDescription>
+                        Modify assignment details, planning dates, and reviewers for this task.
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
@@ -115,21 +119,18 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
                         {task.title}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
+                        {/* Start Date is hidden (synced with Due Date) */}
                         <div className="space-y-2">
-                            <Label>Start Date</Label>
-                            <Input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Due Date</Label>
+                            <Label>Planning Date (Start & Due)</Label>
                             <Input
                                 type="date"
                                 value={dueDate}
-                                onChange={(e) => setDueDate(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value
+                                    setDueDate(val)
+                                    setStartDate(val) // Sync Start with Due
+                                }}
                             />
                         </div>
                     </div>

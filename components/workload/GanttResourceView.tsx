@@ -9,6 +9,19 @@ import { toast } from 'sonner'
 import { ResourceDemandPanel } from './ResourceDemandPanel'
 import { ResizablePanelLayout } from './ResizablePanelLayout'
 import { TaskEditModal } from './TaskEditModal'
+import {
+    DndContext,
+    DragEndEvent,
+    DragOverlay,
+    MouseSensor,
+    TouchSensor,
+    useSensor,
+    useSensors,
+    useDraggable,
+    useDroppable,
+    DragStartEvent
+} from '@dnd-kit/core'
+import { reassignTask } from '@/lib/actions/workload-actions'
 
 // ============================================
 // CONSTANTS
@@ -36,9 +49,63 @@ interface TaskBlock {
     employeeId: string
     date: string
     startHour?: number // Optional: for future time-based positioning
+    reviewerId?: string
 }
 
 type PositionFilter = 'all' | 'SA' | 'BA' | 'PG'
+
+// ============================================
+// DRAG & DROP COMPONENTS
+// ============================================
+
+function DraggableTask({ task, children }: { task: TaskBlock, children: React.ReactNode }) {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+        id: `task-${task.id}`,
+        data: task,
+        disabled: task.isLocked
+    })
+
+    return (
+        <div
+            ref={setNodeRef}
+            {...listeners}
+            {...attributes}
+            className={cn("touch-none", isDragging && "opacity-50")}
+            style={{ cursor: task.isLocked ? 'not-allowed' : 'grab' }}
+        >
+            {children}
+        </div>
+    )
+}
+
+function DroppableCell({
+    date,
+    employeeId,
+    children,
+    className,
+    style
+}: {
+    date: string
+    employeeId: string
+    children: React.ReactNode
+    className?: string
+    style?: React.CSSProperties
+}) {
+    const { setNodeRef, isOver } = useDroppable({
+        id: `cell-${employeeId}-${date}`,
+        data: { date, employeeId }
+    })
+
+    return (
+        <div
+            ref={setNodeRef}
+            className={cn(className, isOver && "bg-blue-100 ring-2 ring-blue-400 ring-inset")}
+            style={style}
+        >
+            {children}
+        </div>
+    )
+}
 
 // ============================================
 // TASK BAR
@@ -128,7 +195,22 @@ export function GanttResourceView() {
     const [employees, setEmployees] = useState<EmployeeWorkload[]>([])
     const [config, setConfig] = useState<WorkloadConfig | null>(null)
     const [isLoading, setIsLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState<PositionFilter>('PG')
+    const [activeTab, setActiveTab] = useState<PositionFilter>('all')
+    const [activeDragTask, setActiveDragTask] = useState<TaskBlock | null>(null)
+
+    const sensors = useSensors(
+        useSensor(MouseSensor, {
+            activationConstraint: {
+                distance: 10,
+            },
+        }),
+        useSensor(TouchSensor, {
+            activationConstraint: {
+                delay: 250,
+                tolerance: 5,
+            },
+        })
+    )
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [demandRefreshKey, setDemandRefreshKey] = useState(0)
 
@@ -220,7 +302,8 @@ export function GanttResourceView() {
             status: t.status,
             isLocked: t.milestone_locked,
             employeeId: employee.employee_id,
-            date: dateStr
+            date: dateStr,
+            reviewerId: t.reviewer_id
         }))
     }
 
@@ -250,7 +333,8 @@ export function GanttResourceView() {
                 hours: task.hours,
                 start: task.date,
                 end: task.date,
-                employeeId: task.employeeId
+                employeeId: task.employeeId,
+                reviewerId: task.reviewerId
             }
         } else {
             // UnassignedTask from Resource Demand
@@ -299,220 +383,286 @@ export function GanttResourceView() {
         />
     )
 
+    // Drag End Handler
+    const handleDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event
+        setActiveDragTask(null)
+
+        if (!over) return
+
+        const activeTask = active.data.current as TaskBlock
+        const overData = over.data.current as { date: string, employeeId: string }
+
+        if (!activeTask || !overData) return
+
+        // Check if changed
+        if (activeTask.employeeId === overData.employeeId && activeTask.date === overData.date) {
+            return
+        }
+
+        const toastId = toast.loading("Saving changes...")
+
+        try {
+            // Optimistic update could go here, but for now we wait for server
+            const result = await reassignTask(
+                activeTask.id,
+                overData.employeeId,
+                overData.date, // This becomes the new Due Date (and Start Date due to sync logic)
+                "Drag and Drop",
+                "Moved via Gantt"
+            )
+
+            if (result.success) {
+                toast.success("Task moved successfully", { id: toastId })
+                if (result.warning) toast.warning(result.warning)
+                loadData(true) // Silent reload
+                setDemandRefreshKey(k => k + 1)
+            } else {
+                toast.error(result.error || "Failed to move task", { id: toastId })
+            }
+        } catch (error) {
+            toast.error("An error occurred", { id: toastId })
+        }
+    }
+
+    const handleDragStart = (event: DragStartEvent) => {
+        setActiveDragTask(event.active.data.current as TaskBlock)
+    }
+
     // Right Panel - Gantt Chart
     const rightPanel = (
-        <div className={cn(
-            "h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden",
-            isFullscreen && "fixed inset-0 z-50 rounded-none w-screen h-screen"
-        )}>
-            {/* Header */}
-            <div className="px-4 py-3 border-b flex items-center justify-between shrink-0 bg-slate-50">
-                <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
-                        <Calendar className="w-4 h-4" />
-                    </div>
-                    <div>
-                        <h2 className="text-base font-bold text-slate-800">Resource Gantt</h2>
-                        <p className="text-xs text-slate-500">
-                            {new Date(startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - {new Date(endDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    {/* Position Filter */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg mr-2">
-                        {(['all', 'SA', 'BA', 'PG'] as PositionFilter[]).map((tab) => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={cn(
-                                    "px-2.5 py-1 rounded-md text-xs font-medium transition-all",
-                                    activeTab === tab
-                                        ? "bg-white text-slate-800 shadow-sm"
-                                        : "text-slate-500 hover:text-slate-700"
-                                )}
-                            >
-                                {tab === 'all' ? 'All' : tab}
-                                <span className="ml-1 bg-slate-200 px-1.5 py-0.5 rounded-full text-[10px]">
-                                    {positionCounts[tab]}
-                                </span>
-                            </button>
-                        ))}
+        <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+        >
+            <div className={cn(
+                "h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden",
+                isFullscreen && "fixed inset-0 z-50 rounded-none w-screen h-screen"
+            )}>
+                {/* Header */}
+                <div className="px-4 py-3 border-b flex items-center justify-between shrink-0 bg-slate-50">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                            <Calendar className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <h2 className="text-base font-bold text-slate-800">Resource Gantt</h2>
+                            <p className="text-xs text-slate-500">
+                                {new Date(startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - {new Date(endDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                        </div>
                     </div>
 
-                    {/* Week Navigation */}
-                    <div className="flex items-center border rounded-lg overflow-hidden bg-white">
-                        <button onClick={() => navigateWeek('prev')} className="p-1.5 hover:bg-slate-50 border-r">
-                            <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => {
-                            const today = new Date()
-                            const day = today.getDay()
-                            const diff = today.getDate() - day + (day === 0 ? -6 : 1)
-                            const monday = new Date(today)
-                            monday.setDate(diff)
-                            setStartDate(monday.toISOString().split('T')[0])
-                        }} className="px-2 hover:bg-slate-50 text-xs font-medium text-slate-600 h-full">
-                            To Week
-                        </button>
-                        <button onClick={() => navigateWeek('next')} className="p-1.5 hover:bg-slate-50 border-l">
-                            <ChevronRight className="w-4 h-4" />
-                        </button>
-                    </div>
-
-                    <button onClick={() => loadData(false)} className="p-1.5 hover:bg-slate-100 rounded-lg border text-slate-500 bg-white">
-                        <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-                    </button>
-
-                    <button
-                        onClick={() => setIsFullscreen(!isFullscreen)}
-                        className="p-1.5 hover:bg-slate-100 rounded-lg border text-slate-500 bg-white"
-                    >
-                        {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                    </button>
-                </div>
-            </div>
-
-            {/* Gantt Content */}
-            <div className="flex-1 overflow-auto bg-slate-50/50" ref={containerRef}>
-                {isLoading && employees.length === 0 ? (
-                    <div className="flex items-center justify-center h-full">
-                        <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
-                    </div>
-                ) : (
-                    <div className="min-w-max pb-4">
-                        {/* Header Row */}
-                        <div className="flex border-b bg-white sticky top-0 z-20 shadow-sm" style={{ height: HEADER_HEIGHT }}>
-                            {/* Employee Column Header */}
-                            <div className="sticky left-0 z-30 bg-white border-r flex items-center px-3" style={{ width: EMPLOYEE_COL_WIDTH }}>
-                                <span className="font-semibold text-sm text-slate-600">Employee</span>
-                            </div>
-
-                            {/* Day Headers */}
-                            <div className="flex">
-                                {dates.map(date => {
-                                    const dateStr = date.toISOString().split('T')[0]
-                                    const isToday = dateStr === new Date().toISOString().split('T')[0]
-
-                                    return (
-                                        <div
-                                            key={dateStr}
-                                            className={cn(
-                                                "border-r flex items-center justify-center font-medium text-sm transition-colors",
-                                                isToday ? "bg-blue-600 text-white" : "text-slate-700 bg-slate-50"
-                                            )}
-                                            style={{ width: totalDayWidth, height: HEADER_HEIGHT }}
-                                        >
-                                            {date.toLocaleDateString('th-TH', { weekday: 'short' })} {date.getDate()}
-                                        </div>
-                                    )
-                                })}
-                            </div>
+                    <div className="flex items-center gap-2">
+                        {/* Position Filter */}
+                        <div className="flex bg-slate-100 p-1 rounded-lg mr-2">
+                            {(['all', 'SA', 'BA', 'PG'] as PositionFilter[]).map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-md text-xs font-medium transition-all",
+                                        activeTab === tab
+                                            ? "bg-white text-slate-800 shadow-sm"
+                                            : "text-slate-500 hover:text-slate-700"
+                                    )}
+                                >
+                                    {tab === 'all' ? 'All' : tab}
+                                    <span className="ml-1 bg-slate-200 px-1.5 py-0.5 rounded-full text-[10px]">
+                                        {positionCounts[tab]}
+                                    </span>
+                                </button>
+                            ))}
                         </div>
 
-                        {/* Employee Rows */}
-                        {filteredEmployees.map(emp => (
-                            <div key={emp.employee_id} className="flex border-b bg-white hover:bg-slate-50/30 transition-colors group/row">
-                                {/* Employee Info - Fixed */}
-                                <div
-                                    className="sticky left-0 z-10 bg-white border-r group-hover/row:bg-slate-50/30 flex items-center gap-3 px-3 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                                    style={{ width: EMPLOYEE_COL_WIDTH, height: ROW_HEIGHT }}
-                                >
-                                    <div className={cn(
-                                        "w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm border-2 border-white",
-                                        emp.position_code === 'SA' ? 'bg-green-500' :
-                                            emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
-                                    )}>
-                                        {(emp.nickname || emp.employee_name || '?').charAt(0)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-semibold text-sm text-slate-800 truncate">
-                                            {emp.nickname || emp.employee_name}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 mt-0.5">
-                                            <span className={cn(
-                                                "px-1.5 py-0 rounded text-[9px] font-bold text-white shadow-sm",
-                                                emp.position_code === 'SA' ? 'bg-green-500' :
-                                                    emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
-                                            )}>
-                                                {emp.position_code}
-                                            </span>
-                                            <span className={cn(
-                                                "text-[10px] font-medium px-1.5 py-0 rounded-full border",
-                                                emp.average_workload_percent > 100 ? "text-red-600 bg-red-50 border-red-100" :
-                                                    emp.average_workload_percent > 80 ? "text-amber-600 bg-amber-50 border-amber-100" : "text-green-600 bg-green-50 border-green-100"
-                                            )}>
-                                                {emp.average_workload_percent}%
-                                            </span>
-                                        </div>
-                                    </div>
+                        {/* Week Navigation */}
+                        <div className="flex items-center border rounded-lg overflow-hidden bg-white">
+                            <button onClick={() => navigateWeek('prev')} className="p-1.5 hover:bg-slate-50 border-r">
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => {
+                                const today = new Date()
+                                const day = today.getDay()
+                                const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+                                const monday = new Date(today)
+                                monday.setDate(diff)
+                                setStartDate(monday.toISOString().split('T')[0])
+                            }} className="px-2 hover:bg-slate-50 text-xs font-medium text-slate-600 h-full">
+                                To Week
+                            </button>
+                            <button onClick={() => navigateWeek('next')} className="p-1.5 hover:bg-slate-50 border-l">
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <button onClick={() => loadData(false)} className="p-1.5 hover:bg-slate-100 rounded-lg border text-slate-500 bg-white">
+                            <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
+                        </button>
+
+                        <button
+                            onClick={() => setIsFullscreen(!isFullscreen)}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg border text-slate-500 bg-white"
+                        >
+                            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Gantt Content */}
+                <div className="flex-1 overflow-auto bg-slate-50/50" ref={containerRef}>
+                    {isLoading && employees.length === 0 ? (
+                        <div className="flex items-center justify-center h-full">
+                            <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
+                        </div>
+                    ) : (
+                        <div className="min-w-max pb-4">
+                            {/* Header Row */}
+                            <div className="flex border-b bg-white sticky top-0 z-20 shadow-sm" style={{ height: HEADER_HEIGHT }}>
+                                {/* Employee Column Header */}
+                                <div className="sticky left-0 z-30 bg-white border-r flex items-center px-3" style={{ width: EMPLOYEE_COL_WIDTH }}>
+                                    <span className="font-semibold text-sm text-slate-600">Employee</span>
                                 </div>
 
-                                {/* Timeline for this employee */}
+                                {/* Day Headers */}
                                 <div className="flex">
                                     {dates.map(date => {
                                         const dateStr = date.toISOString().split('T')[0]
-                                        const tasks = getTasksForEmployeeDate(emp, dateStr)
                                         const isToday = dateStr === new Date().toISOString().split('T')[0]
 
                                         return (
                                             <div
                                                 key={dateStr}
                                                 className={cn(
-                                                    "relative border-r box-content",
-                                                    isToday ? "bg-blue-50/20" : ""
+                                                    "border-r flex items-center justify-center font-medium text-sm transition-colors",
+                                                    isToday ? "bg-blue-600 text-white" : "text-slate-700 bg-slate-50"
                                                 )}
-                                                style={{ width: totalDayWidth, height: ROW_HEIGHT }}
+                                                style={{ width: totalDayWidth, height: HEADER_HEIGHT }}
                                             >
-                                                {/* Hour reference lines */}
-                                                <div className="absolute inset-0 flex pointer-events-none z-[1]">
-                                                    {hours.map((hour, idx) => (
-                                                        <div
-                                                            key={hour}
-                                                            className={cn(
-                                                                "h-full border-r border-slate-100",
-                                                                idx === hours.length - 1 && "border-r-0"
-                                                            )}
-                                                            style={{ width: HOUR_WIDTH }}
-                                                        />
-                                                    ))}
-                                                </div>
-
-                                                {/* Task bars */}
-                                                <div className="absolute inset-0 flex items-center px-1 z-10 pointer-events-none">
-                                                    {tasks.map((task, idx) => {
-                                                        // Calculate horizontal position - stack tasks horizontally
-                                                        let leftOffset = 0
-                                                        for (let i = 0; i < idx; i++) {
-                                                            leftOffset += tasks[i].hours * HOUR_WIDTH
-                                                        }
-
-                                                        return (
-                                                            <div
-                                                                key={task.id}
-                                                                className="absolute pointer-events-auto"
-                                                                style={{ left: leftOffset }}
-                                                            >
-                                                                <TaskBar
-                                                                    task={task}
-                                                                    onUnassign={handleUnassignTask}
-                                                                    onClick={handleTaskClick}
-                                                                />
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
+                                                {date.toLocaleDateString('th-TH', { weekday: 'short' })} {date.getDate()}
                                             </div>
                                         )
                                     })}
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )}
+
+                            {/* Employee Rows */}
+                            {filteredEmployees.map(emp => (
+                                <div key={emp.employee_id} className="flex border-b bg-white hover:bg-slate-50/30 transition-colors group/row">
+                                    {/* Employee Info - Fixed */}
+                                    <div
+                                        className="sticky left-0 z-10 bg-white border-r group-hover/row:bg-slate-50/30 flex items-center gap-3 px-3 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                                        style={{ width: EMPLOYEE_COL_WIDTH, height: ROW_HEIGHT }}
+                                    >
+                                        <div className={cn(
+                                            "w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm border-2 border-white",
+                                            emp.position_code === 'SA' ? 'bg-green-500' :
+                                                emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
+                                        )}>
+                                            {(emp.nickname || emp.employee_name || '?').charAt(0)}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-semibold text-sm text-slate-800 truncate">
+                                                {emp.nickname || emp.employee_name}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <span className={cn(
+                                                    "px-1.5 py-0 rounded text-[9px] font-bold text-white shadow-sm",
+                                                    emp.position_code === 'SA' ? 'bg-green-500' :
+                                                        emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
+                                                )}>
+                                                    {emp.position_code}
+                                                </span>
+                                                <span className={cn(
+                                                    "text-[10px] font-medium px-1.5 py-0 rounded-full border",
+                                                    emp.average_workload_percent > 100 ? "text-red-600 bg-red-50 border-red-100" :
+                                                        emp.average_workload_percent > 80 ? "text-amber-600 bg-amber-50 border-amber-100" : "text-green-600 bg-green-50 border-green-100"
+                                                )}>
+                                                    {emp.average_workload_percent}%
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Timeline for this employee */}
+                                    <div className="flex">
+                                        {dates.map(date => {
+                                            const dateStr = date.toISOString().split('T')[0]
+                                            const tasks = getTasksForEmployeeDate(emp, dateStr)
+                                            const isToday = dateStr === new Date().toISOString().split('T')[0]
+
+                                            return (
+                                                <DroppableCell
+                                                    key={dateStr}
+                                                    date={dateStr}
+                                                    employeeId={emp.employee_id}
+                                                    className={cn(
+                                                        "relative border-r box-content transition-colors",
+                                                        isToday ? "bg-blue-50/20" : ""
+                                                    )}
+                                                    style={{ width: totalDayWidth, height: ROW_HEIGHT }}
+                                                >
+                                                    {/* Hour reference lines */}
+                                                    <div className="absolute inset-0 flex pointer-events-none z-[1]">
+                                                        {hours.map((hour, idx) => (
+                                                            <div
+                                                                key={hour}
+                                                                className={cn(
+                                                                    "h-full border-r border-slate-100",
+                                                                    idx === hours.length - 1 && "border-r-0"
+                                                                )}
+                                                                style={{ width: HOUR_WIDTH }}
+                                                            />
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Task bars */}
+                                                    <div className="absolute inset-0 flex items-center px-1 z-10 pointer-events-none">
+                                                        {tasks.map((task, idx) => {
+                                                            // Calculate horizontal position - stack tasks horizontally
+                                                            let leftOffset = 0
+                                                            for (let i = 0; i < idx; i++) {
+                                                                leftOffset += tasks[i].hours * HOUR_WIDTH
+                                                            }
+
+                                                            return (
+                                                                <div
+                                                                    key={task.id}
+                                                                    className="absolute pointer-events-auto"
+                                                                    style={{ left: leftOffset }}
+                                                                >
+                                                                    <DraggableTask task={task}>
+                                                                        <TaskBar
+                                                                            task={task}
+                                                                            onUnassign={handleUnassignTask}
+                                                                            onClick={handleTaskClick}
+                                                                        />
+                                                                    </DraggableTask>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </DroppableCell>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <DragOverlay>
+                    {activeDragTask ? (
+                        <div style={{ transform: 'none' }}>
+                            <TaskBar
+                                task={activeDragTask}
+                            // No interactivity while dragging overlay
+                            />
+                        </div>
+                    ) : null}
+                </DragOverlay>
             </div>
-        </div>
+        </DndContext>
     )
 
     return (

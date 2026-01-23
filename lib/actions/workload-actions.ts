@@ -29,6 +29,7 @@ export interface DailyWorkload {
         project_code: string
         project_name: string
         milestone_locked: boolean
+        reviewer_id?: string
     }[]
 }
 
@@ -158,6 +159,11 @@ export async function getTeamWorkloadForDateRange(
         const employeeResult = await pool.request().query(employeeQuery)
         const employeesRaw = employeeResult.recordset
 
+        console.log(`[getTeamWorkloadForDateRange] Found ${employeesRaw.length} employees`, {
+            filters,
+            firstFew: employeesRaw.slice(0, 3).map(e => ({ name: e.employee_name, pos: e.position_code, rawPos: e.position_name }))
+        })
+
         // 2. Get Tasks for these employees in date range
         let tasks: any[] = []
 
@@ -175,6 +181,7 @@ export async function getTeamWorkloadForDateRange(
                     t.status,
                     t.priority,
                     t.assignee_id,
+                    t.reviewer_id,
                     p.project_code,
                     p.name as project_name,
                     ISNULL(pm.is_locked, 0) as milestone_locked
@@ -224,7 +231,8 @@ export async function getTeamWorkloadForDateRange(
                     status: t.status,
                     project_code: t.project_code,
                     project_name: t.project_name,
-                    milestone_locked: !!t.milestone_locked
+                    milestone_locked: !!t.milestone_locked,
+                    reviewer_id: t.reviewer_id
                 }))
 
                 const assignedHours = dayTasks.reduce((sum: number, t: any) => sum + t.estimated_hours, 0)
