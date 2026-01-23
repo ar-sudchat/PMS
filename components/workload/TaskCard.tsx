@@ -16,6 +16,7 @@ interface TaskCardProps {
     draggable?: boolean  // Default: false - only Resource Demand panel cards are draggable
     showUnassign?: boolean  // Show unassign button (for Team Workload)
     onUnassign?: (taskId: string) => void  // Callback when unassign is clicked
+    onTaskClick?: () => void
 }
 
 export function TaskCard({
@@ -28,7 +29,8 @@ export function TaskCard({
     isLocked,
     draggable = false,
     showUnassign = false,
-    onUnassign
+    onUnassign,
+    onTaskClick
 }: TaskCardProps) {
     const [isHovered, setIsHovered] = useState(false)
 
@@ -51,6 +53,12 @@ export function TaskCard({
         }
     }
 
+    const handleClick = (e: React.MouseEvent) => {
+        if (onTaskClick) {
+            onTaskClick()
+        }
+    }
+
     return (
         <div
             ref={draggable ? setNodeRef : undefined}
@@ -61,10 +69,12 @@ export function TaskCard({
                 draggable && !isLocked && "cursor-grab active:cursor-grabbing",
                 draggable && isDragging && "opacity-30",
                 isLocked && "bg-slate-50 opacity-80 cursor-not-allowed border-slate-200",
-                !draggable && !isLocked && "cursor-default hover:border-slate-300"
+                !draggable && !isLocked && "cursor-default hover:border-slate-300",
+                onTaskClick && "cursor-pointer hover:ring-2 hover:ring-blue-500 hover:ring-offset-1"
             )}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            onClick={handleClick}
         >
             {/* Unassign Button - Show on hover */}
             {showUnassign && !isLocked && isHovered && (

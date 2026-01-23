@@ -12,9 +12,10 @@ interface EmployeeWorkloadCardProps {
     config: WorkloadConfig | null
     dates: Date[]
     onUnassignTask?: (taskId: string) => void  // Callback when unassign button is clicked
+    onTaskClick?: (task: any) => void
 }
 
-export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, dates, onUnassignTask }: EmployeeWorkloadCardProps) {
+export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, dates, onUnassignTask, onTaskClick }: EmployeeWorkloadCardProps) {
     // Helper to determine role colors
     const getRoleColor = (roleParams: string) => {
         const role = roleParams || ''
@@ -120,6 +121,7 @@ export function EmployeeWorkloadCard({ employee, isSelected, onSelect, config, d
                                             isLocked={task.milestone_locked}
                                             showUnassign={!!onUnassignTask}
                                             onUnassign={onUnassignTask}
+                                            onTaskClick={() => onTaskClick?.(task)}
                                         />
                                     ))}
                                     {/* Placeholder for empty drop zone if needed, or handled by css */}

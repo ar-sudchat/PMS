@@ -1,16 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, Calendar as CalendarIcon, Loader2 } from 'lucide-react'
-import { createMandayAssessmentRecord } from '@/lib/actions/presale-kpi-actions'
+import { Search, Plus, Calendar as CalendarIcon, Loader2, Paperclip, Pencil, Trash2 } from 'lucide-react'
+import { createMandayAssessmentRecord, updateMandayAssessmentRecord, deleteMandayAssessmentRecord, getPresaleProjects, Attachment } from '@/lib/actions/presale-kpi-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import { SmartCombobox } from '@/components/ui/smart-combobox'
+import FileUpload from '@/components/ui/FileUpload'
 
 interface Record {
     id: string
@@ -21,6 +23,7 @@ interface Record {
     is_pass?: boolean
     remark?: string
     created_at: string
+    attachments?: Attachment[]
 }
 
 interface Props {
@@ -33,18 +36,71 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
     const [searchTerm, setSearchTerm] = useState('')
     const [open, setOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [projectOptions, setProjectOptions] = useState<any[]>([])
+    const [loadingProjects, setLoadingProjects] = useState(false)
+
+    // Edit/Delete State
+    const [editingId, setEditingId] = useState<string | null>(null)
+    const [deleteId, setDeleteId] = useState<string | null>(null)
 
     // Form State
     const [formData, setFormData] = useState({
         project_name: '',
         final_meeting_date: '',
         manday_submit_date: '',
-        remark: ''
+        remark: '',
+        attachments: [] as any[]
     })
+
+    useEffect(() => {
+        if (open) {
+            setLoadingProjects(true)
+            getPresaleProjects().then(res => {
+                setProjectOptions(res)
+                setLoadingProjects(false)
+            })
+        }
+    }, [open])
 
     const filteredData = initialData.filter(d =>
         d.project_name.toLowerCase().includes(searchTerm.toLowerCase())
     )
+
+    const resetForm = () => {
+        setFormData({ project_name: '', final_meeting_date: '', manday_submit_date: '', remark: '', attachments: [] })
+        setEditingId(null)
+        setOpen(false)
+    }
+
+    const handleEdit = (record: Record) => {
+        setEditingId(record.id)
+        setFormData({
+            project_name: record.project_name,
+            final_meeting_date: new Date(record.final_meeting_date).toISOString().split('T')[0],
+            manday_submit_date: new Date(record.manday_submit_date).toISOString().split('T')[0],
+            remark: record.remark || '',
+            attachments: record.attachments || []
+        })
+        setOpen(true)
+    }
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this record? This cannot be undone.')) {
+            return
+        }
+
+        try {
+            const res = await deleteMandayAssessmentRecord(id)
+            if (res.success) {
+                toast.success('Record deleted')
+                router.refresh()
+            } else {
+                toast.error('Failed to delete')
+            }
+        } catch (error) {
+            toast.error('Error deleting record')
+        }
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -55,20 +111,31 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
 
         setIsSubmitting(true)
         try {
-            const res = await createMandayAssessmentRecord({
-                project_name: formData.project_name,
-                final_meeting_date: formData.final_meeting_date,
-                manday_submit_date: formData.manday_submit_date,
-                remark: formData.remark
-            })
+            let res
+            if (editingId) {
+                res = await updateMandayAssessmentRecord(editingId, {
+                    project_name: formData.project_name,
+                    final_meeting_date: formData.final_meeting_date,
+                    manday_submit_date: formData.manday_submit_date,
+                    remark: formData.remark,
+                    attachments: formData.attachments
+                })
+            } else {
+                res = await createMandayAssessmentRecord({
+                    project_name: formData.project_name,
+                    final_meeting_date: formData.final_meeting_date,
+                    manday_submit_date: formData.manday_submit_date,
+                    remark: formData.remark,
+                    attachments: formData.attachments
+                })
+            }
 
             if (res.success) {
-                toast.success('Record created successfully')
-                setOpen(false)
-                setFormData({ project_name: '', final_meeting_date: '', manday_submit_date: '', remark: '' })
+                toast.success(editingId ? 'Record updated' : 'Record created')
+                resetForm()
                 router.refresh()
             } else {
-                toast.error('Failed to create record')
+                toast.error('Operation failed')
             }
         } catch (error) {
             toast.error('An error occurred')
@@ -86,7 +153,7 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                         Track response time for submitting Manday (Target: within 3 days after final meeting)
                     </p>
                 </div>
-                <Button onClick={() => setOpen(true)}>
+                <Button onClick={() => { resetForm(); setOpen(true); }}>
                     <Plus className="mr-2 h-4 w-4" /> Add Record
                 </Button>
             </div>
@@ -116,12 +183,14 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                                 <TableHead>Days Taken</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Remark</TableHead>
+                                <TableHead>Attachments</TableHead>
+                                <TableHead className="w-[100px]">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                         No records found
                                     </TableCell>
                                 </TableRow>
@@ -140,6 +209,33 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                                             )}
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">{record.remark || '-'}</TableCell>
+                                        <TableCell>
+                                            {record.attachments && record.attachments.length > 0 ? (
+                                                <div className="flex gap-1">
+                                                    {record.attachments.map((file, i) => (
+                                                        <a
+                                                            href={`/api/files/${file.path}`}
+                                                            key={i}
+                                                            target="_blank"
+                                                            className="text-purple-600 hover:text-purple-800"
+                                                            title={file.name}
+                                                        >
+                                                            <Paperclip className="h-4 w-4" />
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            ) : '-'}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" onClick={() => handleEdit(record)}>
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => handleDelete(record.id)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
                                     </TableRow>
                                 ))
                             )}
@@ -148,10 +244,10 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                 </CardContent>
             </Card>
 
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent>
+            <Dialog open={open} onOpenChange={(val: boolean) => { if (!val) resetForm(); else setOpen(true); }}>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Add Manday Assessment Record</DialogTitle>
+                        <DialogTitle>{editingId ? 'Edit Record' : 'Add Manday Assessment Record'}</DialogTitle>
                         <DialogDescription>
                             Record the date of final meeting and when you submitted the manday.
                         </DialogDescription>
@@ -159,11 +255,13 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Project Name</label>
-                            <Input
-                                placeholder="e.g. Mobile App Revamp"
+                            <SmartCombobox
+                                options={projectOptions}
                                 value={formData.project_name}
-                                onChange={e => setFormData({ ...formData, project_name: e.target.value })}
-                                required
+                                onChange={(val) => setFormData({ ...formData, project_name: val })}
+                                placeholder="Select Project..."
+                                searchPlaceholder="Search Project..."
+                                isLoading={loadingProjects}
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -196,11 +294,23 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                                 onChange={e => setFormData({ ...formData, remark: e.target.value })}
                             />
                         </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Attachments</label>
+                            <FileUpload
+                                value={formData.attachments}
+                                onChange={(files) => setFormData({ ...formData, attachments: files })}
+                                maxFiles={3}
+                                maxSizeMB={10}
+                                subFolder="kpi-records"
+                            />
+                        </div>
+
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>
                             <Button type="submit" disabled={isSubmitting}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Save Record
+                                {editingId ? 'Update' : 'Save'} Record
                             </Button>
                         </DialogFooter>
                     </form>

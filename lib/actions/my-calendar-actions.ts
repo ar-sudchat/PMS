@@ -197,13 +197,15 @@ export async function getMyCalendarEvents(
             pm.is_completed
           FROM pms.project_milestones pm
           JOIN pms.projects p ON pm.project_id = p.id
+          LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
           JOIN pms.project_members pmem ON p.id = pmem.project_id
           WHERE pmem.employee_id = @employeeId
           AND pm.is_completed = 0
+          AND (ps.code IS NULL OR ps.code <> 'cancelled')
           AND pm.target_date >= @startDate
           AND pm.target_date <= @endDate
           ORDER BY pm.target_date
-        `)
+          `)
 
       for (const milestone of milestonesResult.recordset) {
         events.push({
@@ -241,9 +243,11 @@ export async function getMyCalendarEvents(
           p.name as project_name
         FROM pms.meeting_minutes_records m
         LEFT JOIN pms.projects p ON m.project_id = p.id
+        LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
         WHERE m.organized_by = @employeeId
         AND CAST(m.meeting_date AS DATE) >= @startDate
         AND CAST(m.meeting_date AS DATE) <= @endDate
+        AND (p.id IS NULL OR ps.code IS NULL OR ps.code <> 'cancelled')
         ORDER BY m.meeting_date
       `)
 
@@ -258,7 +262,7 @@ export async function getMyCalendarEvents(
       }
 
       events.push({
-        id: `meeting-${meeting.id}`,
+        id: `meeting - ${meeting.id}`,
         type: 'meeting',
         title: `📅 ${meeting.meeting_title}`,
         start,
@@ -292,7 +296,7 @@ export async function getMyCalendarEvents(
         AND te.entry_date <= @endDate
         AND te.is_active = 1
         ORDER BY te.entry_date
-      `)
+          `)
 
     // Group timesheet by date
     const timesheetByDate = new Map<string, { hours: number; tasks: string[] }>()
@@ -308,7 +312,7 @@ export async function getMyCalendarEvents(
 
     for (const [dateKey, data] of timesheetByDate) {
       events.push({
-        id: `timesheet-${dateKey}`,
+        id: `timesheet - ${dateKey}`,
         type: 'task',
         title: `⏱️ ทำงาน ${data.hours}h`,
         description: data.tasks.join('\n'),
@@ -374,7 +378,7 @@ function convertMSTeamsEvent(msEvent: MSTeamsCalendarEvent): PMSCalendarEvent {
   const isAllDay = msEvent.start.dateTime.includes('T00:00:00')
 
   return {
-    id: `ms-teams-${msEvent.id}`,
+    id: `ms - teams - ${msEvent.id}`,
     type: 'ms_teams',
     title: `📞 ${msEvent.subject}`,
     description: msEvent.bodyPreview,
@@ -464,30 +468,30 @@ export async function getCalendarSummary(): Promise<{
       .input('weekEndStr', sql.Date, weekEnd.toISOString().split('T')[0])
       .input('next7DaysStr', sql.Date, next7Days.toISOString().split('T')[0])
       .query(`
-        -- Today's meetings
+        --Today's meetings
         SELECT
-          (SELECT COUNT(*) FROM pms.meeting_minutes_records m
+            (SELECT COUNT(*) FROM pms.meeting_minutes_records m
            WHERE m.organized_by = @employeeId
            AND CAST(m.meeting_date AS DATE) = @todayStr) as today_events,
 
-          -- Upcoming deadlines
-          (SELECT COUNT(*) FROM pms.tasks t
+          --Upcoming deadlines
+            (SELECT COUNT(*) FROM pms.tasks t
            WHERE t.assignee_id = @employeeId
-           AND t.status NOT IN ('done', 'done_not_planned', 'cancelled')
+           AND t.status NOT IN('done', 'done_not_planned', 'cancelled')
            AND t.is_active = 1
            AND t.due_date >= @todayStr
            AND t.due_date <= @next7DaysStr) as upcoming_deadlines,
 
-          -- This week meetings
-          (SELECT COUNT(*) FROM pms.meeting_minutes_records m
+          --This week meetings
+            (SELECT COUNT(*) FROM pms.meeting_minutes_records m
            WHERE m.organized_by = @employeeId
            AND m.meeting_date >= @weekStartStr
            AND m.meeting_date <= @weekEndStr) as this_week_meetings,
 
-          -- Pending tasks
-          (SELECT COUNT(*) FROM pms.tasks t
+          --Pending tasks
+            (SELECT COUNT(*) FROM pms.tasks t
            WHERE t.assignee_id = @employeeId
-           AND t.status NOT IN ('done', 'done_not_planned', 'cancelled')
+           AND t.status NOT IN('done', 'done_not_planned', 'cancelled')
            AND t.is_active = 1) as pending_tasks
       `)
 

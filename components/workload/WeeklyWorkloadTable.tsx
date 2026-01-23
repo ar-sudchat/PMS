@@ -39,7 +39,7 @@ export function WeeklyWorkloadTable() {
     const [workloadData, setWorkloadData] = useState<WeeklyWorkloadData | null>(null)
     const [projects, setProjects] = useState<{ id: string; project_code: string; name: string }[]>([])
     const [isLoading, setIsLoading] = useState(true)
-    const [positionFilter, setPositionFilter] = useState<PositionFilter>('all')
+    const [positionFilter, setPositionFilter] = useState<PositionFilter>('PG')
     const [selectedProject, setSelectedProject] = useState<Option | null>(null)
 
     useEffect(() => {
@@ -124,7 +124,7 @@ export function WeeklyWorkloadTable() {
         return grouped
     }, [workloadData])
 
-    const positionOrder = ['SA', 'BA', 'PG']
+    const positionOrder = ['PG', 'SA', 'BA']
 
     // Format date for display
     const formatDateRange = () => {
@@ -163,7 +163,7 @@ export function WeeklyWorkloadTable() {
                                         {projectName}
                                     </div>
                                 </div>
-                                <span className="text-slate-600 shrink-0 font-medium">
+                                <span className="text-slate-700 shrink-0 font-bold text-base">
                                     {projectHours}h
                                 </span>
                             </div>
@@ -338,7 +338,9 @@ export function WeeklyWorkloadTable() {
                                                     key={day.date}
                                                     className={cn(
                                                         "px-3 py-2 align-top",
-                                                        dayIdx < emp.days.length - 1 && "border-r"
+                                                        dayIdx < emp.days.length - 1 && "border-r",
+                                                        // Yellow background if no tasks
+                                                        day.tasks.length === 0 && "bg-yellow-50/50"
                                                     )}
                                                 >
                                                     {renderTasksCell(day.tasks, day.total_hours)}

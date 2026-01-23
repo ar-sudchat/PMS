@@ -20,6 +20,7 @@ import {
     closestCenter,
 } from '@dnd-kit/core'
 import { TaskCard } from './TaskCard'
+import { TaskEditModal } from './TaskEditModal'
 
 // Helper to disable touch action for dnd
 class SmartPointerSensor extends PointerSensor {
@@ -187,24 +188,22 @@ export function ResourcePlanningView() {
         }
     }, [employees])
 
-    const summary = useMemo(() => {
-        if (!config || employees.length === 0) return null
+    // Edit Modal State
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [editingTask, setEditingTask] = useState<any>(null) // Using any for now to map between different task types
 
-        const totalCapacity = employees.length * config.workingHoursPerDay * 5
-        const totalAllocated = employees.reduce((sum, e) => sum + e.total_assigned_hours, 0)
-        const totalAvailable = Math.max(0, totalCapacity - totalAllocated)
-        const overloadedCount = employees.filter(e => e.average_workload_percent > 100).length
-        const availableCount = employees.filter(e => e.average_workload_percent < 70).length
+    const handleTaskClick = (task: any) => {
+        // Map incoming task to TaskEditModal format
+        // TaskEditModal expects: { id, assignee_id, reviewer_id, start_date, due_date } + display info
+        // We might need to ensure we have reviewer_id (SA) and assignee_id (PG)
+        setEditingTask(task)
+        setIsEditModalOpen(true)
+    }
 
-        return {
-            totalCapacity,
-            totalAllocated,
-            totalAvailable,
-            overloadedCount,
-            availableCount,
-            allocatedPercent: Math.round((totalAllocated / totalCapacity) * 100)
-        }
-    }, [employees, config])
+    const handleTaskUpdate = () => {
+        loadData()
+        refreshDemandPanel() // Refresh left panel too
+    }
 
     // Left Panel - Resource Demand
     const leftPanel = (
@@ -214,6 +213,7 @@ export function ResourcePlanningView() {
             startDate={startDate}
             endDate={endDate}
             dates={dates}
+            onTaskClick={handleTaskClick}
         />
     )
 
@@ -369,6 +369,7 @@ export function ResourcePlanningView() {
                                         dates={dates}
                                         isSelected={false}
                                         onSelect={() => { }}
+                                        onTaskClick={handleTaskClick}
                                     />
                                 ))
                             )}
@@ -409,6 +410,13 @@ export function ResourcePlanningView() {
                     </div>
                 ) : null}
             </DragOverlay>
+
+            <TaskEditModal
+                open={isEditModalOpen}
+                onOpenChange={setIsEditModalOpen}
+                task={editingTask}
+                onSaved={handleTaskUpdate}
+            />
         </DndContext>
     )
 }

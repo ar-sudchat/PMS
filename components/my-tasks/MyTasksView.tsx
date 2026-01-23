@@ -7,7 +7,7 @@ import { TaskTable } from './TaskTable'
 import { StatusFilter } from './StatusFilter'
 import { TaskDetailModal } from './TaskDetailModal'
 import { QuickLogTimeModal } from './QuickLogTimeModal'
-import { Search, Loader2, ChevronLeft, ChevronRight, Calendar, User, LayoutGrid, Table2 } from 'lucide-react'
+import { Search, Loader2, ChevronLeft, ChevronRight, Calendar, User, LayoutGrid, Table2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
@@ -72,6 +72,7 @@ export function MyTasksView({
     // New filters
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(currentUserId)
     const [currentWeekDate, setCurrentWeekDate] = useState<Date>(new Date())
+    const [filterDate, setFilterDate] = useState<string>('')
     const currentWeek = useMemo(() => getWeekInfo(currentWeekDate), [currentWeekDate])
 
     // Modals
@@ -189,10 +190,11 @@ export function MyTasksView({
     }
 
     const filteredTasks = tasks.filter(t =>
-    (search === '' ||
+    ((search === '' ||
         t.task_title.toLowerCase().includes(search.toLowerCase()) ||
         t.task_code.toLowerCase().includes(search.toLowerCase()) ||
-        t.project_name.toLowerCase().includes(search.toLowerCase()))
+        t.project_name.toLowerCase().includes(search.toLowerCase())) &&
+        (!filterDate || (t.due_date && t.due_date.startsWith(filterDate))))
     )
 
     // Get selected employee name for display
@@ -269,6 +271,24 @@ export function MyTasksView({
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64 transition-all"
                             />
+                        </div>
+
+                        {/* Date Filter */}
+                        <div className="relative">
+                            <input
+                                type="date"
+                                value={filterDate}
+                                onChange={(e) => setFilterDate(e.target.value)}
+                                className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600 w-40"
+                            />
+                            {filterDate && (
+                                <button
+                                    onClick={() => setFilterDate('')}
+                                    className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

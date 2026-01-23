@@ -430,3 +430,78 @@ export async function getTimeEntriesForTask(taskId: string): Promise<TaskTimeEnt
   }
 }
 
+// ============================================
+// GET DAILY LOG SUMMARY
+// ============================================
+export interface DailyLogSummaryItem {
+  id: string
+  name: string
+  position: string
+  task_count: number
+  logged_hours: number
+  status: 'Logged' | 'Not Logged'
+}
+
+export async function getDailyLogSummary(dateString: string): Promise<{ success: boolean; data: DailyLogSummaryItem[]; error?: string }> {
+  try {
+    const pool = await getConnection()
+
+    const result = await pool.request()
+      .input('date', sql.Date, dateString)
+      .query(`
+                SELECT 
+                    e.id, 
+                    e.employee_code, 
+                    ISNULL(NULLIF(ISNULL(e.first_name_th, '') + ' ' + ISNULL(e.last_name_th, ''), ' '), ISNULL(e.first_name, '') + ' ' + ISNULL(e.last_name, '')) as name,
+                    ISNULL(e.nickname, '') as nickname,
+                    CASE 
+                        WHEN r.name LIKE '%System Analyst%' THEN 'SA'
+                        WHEN r.name LIKE '%Business Analyst%' THEN 'BA'
+                        WHEN r.name LIKE '%Programmer%' OR r.name LIKE '%Developer%' THEN 'PG'
+                        ELSE r.name
+                    END as position,
+                    ISNULL(task_counts.cnt, 0) as task_count,
+                    ISNULL(log_sums.hrs, 0) as logged_hours
+                FROM pms.employees e
+                LEFT JOIN pms.positions r ON e.position_id = r.id
+                LEFT JOIN (
+                    SELECT assignee_id, COUNT(*) as cnt 
+                    FROM pms.tasks 
+                    WHERE status IN ('todo', 'in_progress') AND is_active = 1 
+                    GROUP BY assignee_id
+                ) as task_counts ON e.id = task_counts.assignee_id
+                LEFT JOIN (
+                    SELECT employee_id, SUM(hours) as hrs 
+                    FROM pms.timesheet_entries 
+                    WHERE entry_date = @date AND is_active = 1
+                    GROUP BY employee_id
+                ) as log_sums ON e.id = log_sums.employee_id
+                WHERE e.is_active = 1 
+                AND (r.name LIKE '%Programmer%' OR r.name LIKE '%Analyst%' OR r.name LIKE '%Developer%')
+                ORDER BY 
+                    CASE 
+                        WHEN r.position_level IS NOT NULL THEN r.position_level 
+                        WHEN r.name LIKE '%System Analyst%' THEN 1
+                        WHEN r.name LIKE '%Business Analyst%' THEN 2
+                        WHEN r.name LIKE '%Programmer%' THEN 3
+                        ELSE 4
+                    END,
+                    e.first_name_th
+            `)
+
+    const data = result.recordset.map((r: any) => ({
+      id: r.id,
+      name: r.nickname ? `${r.name} (${r.nickname})` : r.name,
+      position: r.position,
+      task_count: r.task_count,
+      logged_hours: r.logged_hours,
+      status: r.logged_hours > 0 ? 'Logged' : 'Not Logged'
+    }))
+
+    return { success: true, data }
+  } catch (error: any) {
+    console.error('getDailyLogSummary error:', error)
+    return { success: false, error: 'Failed to fetch summary', data: [] }
+  }
+}
+

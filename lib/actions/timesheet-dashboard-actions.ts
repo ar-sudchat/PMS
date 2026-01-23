@@ -253,11 +253,13 @@ export async function getHoursByProject(year: number, month: number): Promise<Pr
         FROM pms.projects p
         LEFT JOIN pms.stories s ON p.id = s.project_id
         LEFT JOIN pms.tasks t ON s.id = t.story_id
+        LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
         LEFT JOIN pms.timesheet_entries te ON t.id = te.task_id
           AND te.is_active = 1
           AND YEAR(te.entry_date) = @year
           AND MONTH(te.entry_date) = @month
         WHERE p.is_active = 1
+          AND (ps.code IS NULL OR ps.code <> 'cancelled')
         GROUP BY p.id, p.project_code, p.name, p.sold_mandays
         HAVING ISNULL(SUM(te.hours), 0) > 0
         ORDER BY total_hours DESC
@@ -418,12 +420,14 @@ export async function getOverBudgetProjects(year: number, month: number): Promis
         FROM pms.projects p
         LEFT JOIN pms.stories s ON p.id = s.project_id
         LEFT JOIN pms.tasks t ON s.id = t.story_id
+        LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
         LEFT JOIN pms.timesheet_entries te ON t.id = te.task_id
           AND te.is_active = 1
           AND YEAR(te.entry_date) = @year
           AND MONTH(te.entry_date) = @month
         WHERE p.is_active = 1
           AND ISNULL(p.sold_mandays, 0) > 0
+          AND (ps.code IS NULL OR ps.code <> 'cancelled')
         GROUP BY p.id, p.project_code, p.name, p.sold_mandays
         HAVING (ISNULL(SUM(te.hours), 0) / 7.0) > p.sold_mandays
         ORDER BY budget_used_percent DESC

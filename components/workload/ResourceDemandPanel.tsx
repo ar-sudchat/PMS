@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { RefreshCw, Package, ChevronDown, AlertCircle, Clock, CheckCircle2, Calendar, Zap, Users } from 'lucide-react'
 
 // Draggable Task Card for Demand Panel (Detailed version)
-function DemandTaskCard({ task }: { task: UnassignedTask }) {
+function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (task: UnassignedTask) => void }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: task.id,
         data: {
@@ -35,10 +35,12 @@ function DemandTaskCard({ task }: { task: UnassignedTask }) {
             ref={setNodeRef}
             {...listeners}
             {...attributes}
+            onClick={() => onClick?.(task)}
             className={cn(
-                "p-2.5 rounded-md border border-l-4 bg-white shadow-sm cursor-grab active:cursor-grabbing select-none hover:shadow-md text-xs transition-opacity",
+                "p-2.5 rounded-md border border-l-4 bg-white shadow-sm cursor-grab active:cursor-grabbing select-none hover:shadow-md text-xs transition-opacity relative group",
                 priorityColors[task.priority] || priorityColors.medium,
-                isDragging && "opacity-50"
+                isDragging && "opacity-50",
+                onClick && "cursor-pointer hover:ring-2 hover:ring-blue-500 hover:ring-offset-1"
             )}
         >
             {/* Row 1: Project Code + Project Name + Status */}
@@ -107,9 +109,10 @@ interface ResourceDemandPanelProps {
     startDate: string
     endDate: string
     dates: Date[]
+    onTaskClick?: (task: UnassignedTask) => void
 }
 
-export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTrigger = 0, startDate, endDate, dates }: ResourceDemandPanelProps) {
+export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTrigger = 0, startDate, endDate, dates, onTaskClick }: ResourceDemandPanelProps) {
     const [tasks, setTasks] = useState<UnassignedTask[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isAutoAssigning, setIsAutoAssigning] = useState(false)
@@ -534,7 +537,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                     {dateTasks.length > 0 ? (
                                         <div className="space-y-1.5">
                                             {dateTasks.map(task => (
-                                                <DemandTaskCard key={task.id} task={task} />
+                                                <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
                                             ))}
                                         </div>
                                     ) : (
@@ -562,7 +565,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                 </div>
                                 <div className="space-y-1.5">
                                     {groupedByDate.outsideRange.map(task => (
-                                        <DemandTaskCard key={task.id} task={task} />
+                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
                                     ))}
                                 </div>
                             </div>
@@ -584,7 +587,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                 </div>
                                 <div className="space-y-1.5">
                                     {groupedByDate.noDate.map(task => (
-                                        <DemandTaskCard key={task.id} task={task} />
+                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
                                     ))}
                                 </div>
                             </div>

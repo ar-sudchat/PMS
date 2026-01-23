@@ -1057,3 +1057,92 @@ function getWorkloadStatus(
     if (percent >= config.workloadWarningPercent) return 'warning'
     return 'available'
 }
+
+// ============================================
+// GET ALL EMPLOYEES FOR PLANNING (Comboboxes)
+// ============================================
+export async function getAllEmployeesForPlanning() {
+    try {
+        const pool = await getConnection()
+        const result = await pool.request().query(`
+            SELECT 
+                e.id,
+                ISNULL(NULLIF(ISNULL(e.first_name_th, '') + ' ' + ISNULL(e.last_name_th, ''), ' '), ISNULL(e.first_name, '') + ' ' + ISNULL(e.last_name, '')) as name,
+                e.nickname,
+                CASE 
+                    WHEN r.name LIKE '%System Analyst%' THEN 'SA'
+                    WHEN r.name LIKE '%Business Analyst%' THEN 'BA'
+                    WHEN r.name LIKE '%Programmer%' OR r.name LIKE '%Developer%' THEN 'PG'
+                    ELSE 'Other'
+                END as position_code
+            FROM pms.employees e
+            LEFT JOIN pms.positions r ON e.position_id = r.id
+            WHERE e.is_active = 1
+            AND (r.name LIKE '%System Analyst%' OR r.name LIKE '%Business Analyst%' OR r.name LIKE '%Programmer%' OR r.name LIKE '%Developer%')
+            ORDER BY r.name, e.first_name_th
+        `)
+
+        return { success: true, data: result.recordset }
+    } catch (error: any) {
+        return { success: false, error: error.message, data: [] }
+    }
+}
+
+// ============================================
+// UPDATE TASK PLANNING (Pop-up Save)
+// ============================================
+export async function updateTaskPlanning(data: {
+    taskId: string
+    assigneeId?: string | null // PG
+    reviewerId?: string | null // SA
+    startDate: string
+    dueDate: string
+}) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+
+        // 1. Get Old Data for Log
+        const oldData = await pool.request()
+            .input('id', sql.UniqueIdentifier, data.taskId)
+            .query(`SELECT title, assignee_id, reviewer_id, start_date, due_date FROM pms.tasks WHERE id = @id`)
+
+        const task = oldData.recordset[0]
+        if (!task) return { success: false, error: 'Task not found' }
+
+        // 2. Update
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, data.taskId)
+            .input('assigneeId', sql.UniqueIdentifier, data.assigneeId || null)
+            .input('reviewerId', sql.UniqueIdentifier, data.reviewerId || null)
+            .input('startDate', sql.Date, data.startDate)
+            .input('dueDate', sql.Date, data.dueDate)
+            .input('updatedBy', sql.UniqueIdentifier, user.id)
+            .query(`
+                UPDATE pms.tasks
+                SET assignee_id = @assigneeId,
+                    reviewer_id = @reviewerId,
+                    start_date = @startDate,
+                    due_date = @dueDate,
+                    updated_at = GETDATE(),
+                    updated_by = @updatedBy
+                    ${data.assigneeId ? ", assignment_status = 'assigned'" : ""}
+                WHERE id = @id
+            `)
+
+        revalidatePath('/projects/resource-planning')
+
+        // Return change summary for UI toast/log
+        const changes = []
+        if (task.assignee_id !== data.assigneeId) changes.push(`PG changed`)
+        if (task.reviewer_id !== data.reviewerId) changes.push(`SA changed`)
+        if (new Date(task.start_date).toISOString() !== new Date(data.startDate).toISOString()) changes.push('Date updated')
+
+        return { success: true, changes }
+    } catch (error: any) {
+        console.error('updateTaskPlanning error:', error)
+        return { success: false, error: error.message }
+    }
+}
