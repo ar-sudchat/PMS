@@ -7,69 +7,69 @@ import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, format } fro
 
 // Types
 export interface EmployeeForReport {
-    id: string
-    name: string
-    nickname: string | null
-    role: string
+  id: string
+  name: string
+  nickname: string | null
+  role: string
 }
 
 export interface EmployeeWorkSummary {
-    employee_id: string
-    employee_name: string
-    period_start: string
-    period_end: string
-    total_tasks: number
-    completed_tasks: number
-    in_progress_tasks: number
-    todo_tasks: number
-    total_hours_logged: number
-    completion_rate: number
+  employee_id: string
+  employee_name: string
+  period_start: string
+  period_end: string
+  total_tasks: number
+  completed_tasks: number
+  in_progress_tasks: number
+  todo_tasks: number
+  total_hours_logged: number
+  completion_rate: number
 }
 
 export interface WeeklyHours {
-    week_number: number
-    week_start: string
-    week_end: string
-    daily_hours: number[]  // [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
-    total_hours: number
-    target_hours: number   // 35
+  week_number: number
+  week_start: string
+  week_end: string
+  daily_hours: number[]  // [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+  total_hours: number
+  target_hours: number   // 35
 }
 
 export interface TaskRow {
-    task_id: string
-    project_code: string
-    project_name: string
-    task_code: string
-    task_title: string
-    task_type: string
-    status: string
-    estimated_hours: number
-    actual_hours: number
-    due_date: string | null
-    is_overdue: boolean
+  task_id: string
+  project_code: string
+  project_name: string
+  task_code: string
+  task_title: string
+  task_type: string
+  status: string
+  estimated_hours: number
+  actual_hours: number
+  due_date: string | null
+  is_overdue: boolean
 }
 
 export interface TaskTypeBreakdown {
-    task_type: string
-    task_type_name: string
-    hours: number
-    percentage: number
-    is_defect: boolean
+  task_type: string
+  task_type_name: string
+  hours: number
+  percentage: number
+  is_defect: boolean
 }
 
 export interface ProjectBreakdown {
-    project_id: string
-    project_code: string
-    project_name: string
-    hours: number
-    percentage: number
+  project_id: string
+  project_code: string
+  project_name: string
+  hours: number
+  percentage: number
 }
 
 // Get employees for dropdown
 export async function getEmployeesForReport(): Promise<EmployeeForReport[]> {
-    try {
-        const pool = await getConnection()
-        const result = await pool.request().query(`
+  try {
+    const pool = await getConnection()
+    const result = await pool.request().query(`
       SELECT
         e.id,
         COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS name,
@@ -80,29 +80,29 @@ export async function getEmployeesForReport(): Promise<EmployeeForReport[]> {
       WHERE e.is_active = 1
       ORDER BY e.first_name_th, e.first_name
     `)
-        return result.recordset
-    } catch (error) {
-        console.error('Error fetching employees for report:', error)
-        return []
-    }
+    return result.recordset
+  } catch (error) {
+    console.error('Error fetching employees for report:', error)
+    return []
+  }
 }
 
 // Get employee work summary - นับจาก assignee_id (คนที่ถูกจ่ายงาน)
 export async function getEmployeeWorkSummary(
-    employeeId: string,
-    year: number,
-    month: number
+  employeeId: string,
+  year: number,
+  month: number
 ): Promise<EmployeeWorkSummary | null> {
-    try {
-        const pool = await getConnection()
-        const periodStart = startOfMonth(new Date(year, month - 1))
-        const periodEnd = endOfMonth(new Date(year, month - 1))
+  try {
+    const pool = await getConnection()
+    const periodStart = startOfMonth(new Date(year, month - 1))
+    const periodEnd = endOfMonth(new Date(year, month - 1))
 
-        const result = await pool.request()
-            .input('employeeId', sql.UniqueIdentifier, employeeId)
-            .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
-            .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
-            .query(`
+    const result = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
+      .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
+      .query(`
         SELECT
           e.id AS employee_id,
           COALESCE(e.first_name_th + ' ' + ISNULL(e.last_name_th, ''), e.first_name + ' ' + ISNULL(e.last_name, '')) AS employee_name,
@@ -112,6 +112,7 @@ export async function getEmployeeWorkSummary(
            FROM pms.tasks t
            WHERE t.assignee_id = @employeeId
              AND t.is_active = 1
+             AND t.status <> 'cancelled'
              AND (
                (t.due_date BETWEEN @periodStart AND @periodEnd)
                OR (t.created_at BETWEEN @periodStart AND @periodEnd)
@@ -158,48 +159,48 @@ export async function getEmployeeWorkSummary(
         WHERE e.id = @employeeId
       `)
 
-        if (result.recordset.length === 0) return null
+    if (result.recordset.length === 0) return null
 
-        const data = result.recordset[0]
-        const completionRate = data.total_tasks > 0
-            ? Math.round((data.completed_tasks / data.total_tasks) * 100)
-            : 0
+    const data = result.recordset[0]
+    const completionRate = data.total_tasks > 0
+      ? Math.round((data.completed_tasks / data.total_tasks) * 100)
+      : 0
 
-        return {
-            employee_id: data.employee_id,
-            employee_name: data.employee_name,
-            period_start: format(periodStart, 'yyyy-MM-dd'),
-            period_end: format(periodEnd, 'yyyy-MM-dd'),
-            total_tasks: data.total_tasks,
-            completed_tasks: data.completed_tasks,
-            in_progress_tasks: data.in_progress_tasks,
-            todo_tasks: data.todo_tasks,
-            total_hours_logged: data.total_hours_logged,
-            completion_rate: completionRate
-        }
-    } catch (error) {
-        console.error('Error fetching employee work summary:', error)
-        return null
+    return {
+      employee_id: data.employee_id,
+      employee_name: data.employee_name,
+      period_start: format(periodStart, 'yyyy-MM-dd'),
+      period_end: format(periodEnd, 'yyyy-MM-dd'),
+      total_tasks: data.total_tasks,
+      completed_tasks: data.completed_tasks,
+      in_progress_tasks: data.in_progress_tasks,
+      todo_tasks: data.todo_tasks,
+      total_hours_logged: data.total_hours_logged,
+      completion_rate: completionRate
     }
+  } catch (error) {
+    console.error('Error fetching employee work summary:', error)
+    return null
+  }
 }
 
 // Get weekly hours breakdown
 export async function getEmployeeWeeklyHours(
-    employeeId: string,
-    year: number,
-    month: number
+  employeeId: string,
+  year: number,
+  month: number
 ): Promise<WeeklyHours[]> {
-    try {
-        const pool = await getConnection()
-        const periodStart = startOfMonth(new Date(year, month - 1))
-        const periodEnd = endOfMonth(new Date(year, month - 1))
+  try {
+    const pool = await getConnection()
+    const periodStart = startOfMonth(new Date(year, month - 1))
+    const periodEnd = endOfMonth(new Date(year, month - 1))
 
-        // Get all daily entries for the month
-        const result = await pool.request()
-            .input('employeeId', sql.UniqueIdentifier, employeeId)
-            .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
-            .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
-            .query(`
+    // Get all daily entries for the month
+    const result = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
+      .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
+      .query(`
         SELECT 
           entry_date,
           SUM(hours) AS total_hours
@@ -211,69 +212,69 @@ export async function getEmployeeWeeklyHours(
         ORDER BY entry_date
       `)
 
-        // Build hours map by date
-        const hoursMap: Record<string, number> = {}
-        result.recordset.forEach((row: any) => {
-            const dateKey = row.entry_date.toISOString().split('T')[0]
-            hoursMap[dateKey] = row.total_hours
-        })
+    // Build hours map by date
+    const hoursMap: Record<string, number> = {}
+    result.recordset.forEach((row: any) => {
+      const dateKey = row.entry_date.toISOString().split('T')[0]
+      hoursMap[dateKey] = row.total_hours
+    })
 
-        // Generate weeks for the month
-        const weeks: WeeklyHours[] = []
-        let currentDate = startOfWeek(periodStart, { weekStartsOn: 1 }) // Monday start
-        let weekNum = 1
+    // Generate weeks for the month
+    const weeks: WeeklyHours[] = []
+    let currentDate = startOfWeek(periodStart, { weekStartsOn: 1 }) // Monday start
+    let weekNum = 1
 
-        while (currentDate <= periodEnd) {
-            const weekStart = currentDate
-            const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 })
+    while (currentDate <= periodEnd) {
+      const weekStart = currentDate
+      const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 })
 
-            const dailyHours: number[] = []
-            let weekTotal = 0
+      const dailyHours: number[] = []
+      let weekTotal = 0
 
-            for (let i = 0; i < 7; i++) {
-                const day = addDays(weekStart, i)
-                const dateKey = format(day, 'yyyy-MM-dd')
-                const hours = hoursMap[dateKey] || 0
-                dailyHours.push(hours)
-                weekTotal += hours
-            }
+      for (let i = 0; i < 7; i++) {
+        const day = addDays(weekStart, i)
+        const dateKey = format(day, 'yyyy-MM-dd')
+        const hours = hoursMap[dateKey] || 0
+        dailyHours.push(hours)
+        weekTotal += hours
+      }
 
-            weeks.push({
-                week_number: weekNum,
-                week_start: format(weekStart, 'yyyy-MM-dd'),
-                week_end: format(weekEnd, 'yyyy-MM-dd'),
-                daily_hours: dailyHours,
-                total_hours: weekTotal,
-                target_hours: 35
-            })
+      weeks.push({
+        week_number: weekNum,
+        week_start: format(weekStart, 'yyyy-MM-dd'),
+        week_end: format(weekEnd, 'yyyy-MM-dd'),
+        daily_hours: dailyHours,
+        total_hours: weekTotal,
+        target_hours: 35
+      })
 
-            currentDate = addDays(weekEnd, 1)
-            weekNum++
+      currentDate = addDays(weekEnd, 1)
+      weekNum++
 
-            // Stop if we've gone past the month
-            if (weekStart > periodEnd) break
-        }
-
-        return weeks
-    } catch (error) {
-        console.error('Error fetching employee weekly hours:', error)
-        return []
+      // Stop if we've gone past the month
+      if (weekStart > periodEnd) break
     }
+
+    return weeks
+  } catch (error) {
+    console.error('Error fetching employee weekly hours:', error)
+    return []
+  }
 }
 
 // Get employee tasks - tasks ที่ถูก assign ให้ employee (assignee_id)
 export async function getEmployeeTasks(
-    employeeId: string,
-    year: number,
-    month: number,
-    filters?: { status?: string; projectId?: string; taskType?: string }
+  employeeId: string,
+  year: number,
+  month: number,
+  filters?: { status?: string; projectId?: string; taskType?: string }
 ): Promise<TaskRow[]> {
-    try {
-        const pool = await getConnection()
-        const periodStart = startOfMonth(new Date(year, month - 1))
-        const periodEnd = endOfMonth(new Date(year, month - 1))
+  try {
+    const pool = await getConnection()
+    const periodStart = startOfMonth(new Date(year, month - 1))
+    const periodEnd = endOfMonth(new Date(year, month - 1))
 
-        let query = `
+    let query = `
       SELECT
         t.id AS task_id,
         p.project_code,
@@ -295,6 +296,7 @@ export async function getEmployeeTasks(
       INNER JOIN pms.projects p ON s.project_id = p.id
       WHERE t.assignee_id = @employeeId
         AND t.is_active = 1
+        AND t.status <> 'cancelled'
         AND (
           (t.due_date BETWEEN @periodStart AND @periodEnd)
           OR (t.created_at BETWEEN @periodStart AND @periodEnd)
@@ -302,27 +304,27 @@ export async function getEmployeeTasks(
         )
     `
 
-        const request = pool.request()
-            .input('employeeId', sql.UniqueIdentifier, employeeId)
-            .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
-            .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
+    const request = pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
+      .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
 
-        if (filters?.status && filters.status !== 'all') {
-            query += ` AND t.status = @status`
-            request.input('status', sql.NVarChar, filters.status)
-        }
+    if (filters?.status && filters.status !== 'all') {
+      query += ` AND t.status = @status`
+      request.input('status', sql.NVarChar, filters.status)
+    }
 
-        if (filters?.projectId && filters.projectId !== 'all') {
-            query += ` AND p.id = @projectId`
-            request.input('projectId', sql.UniqueIdentifier, filters.projectId)
-        }
+    if (filters?.projectId && filters.projectId !== 'all') {
+      query += ` AND p.id = @projectId`
+      request.input('projectId', sql.UniqueIdentifier, filters.projectId)
+    }
 
-        if (filters?.taskType && filters.taskType !== 'all') {
-            query += ` AND t.task_type = @taskType`
-            request.input('taskType', sql.NVarChar, filters.taskType)
-        }
+    if (filters?.taskType && filters.taskType !== 'all') {
+      query += ` AND t.task_type = @taskType`
+      request.input('taskType', sql.NVarChar, filters.taskType)
+    }
 
-        query += ` ORDER BY
+    query += ` ORDER BY
           CASE t.status
             WHEN 'in_progress' THEN 1
             WHEN 'review' THEN 2
@@ -334,35 +336,35 @@ export async function getEmployeeTasks(
           p.project_code,
           t.task_code`
 
-        const result = await request.query(query)
+    const result = await request.query(query)
 
-        return result.recordset.map((row: any) => ({
-            ...row,
-            due_date: row.due_date?.toISOString?.()?.split('T')[0] || null,
-            is_overdue: !!row.is_overdue
-        }))
-    } catch (error) {
-        console.error('Error fetching employee tasks:', error)
-        return []
-    }
+    return result.recordset.map((row: any) => ({
+      ...row,
+      due_date: row.due_date?.toISOString?.()?.split('T')[0] || null,
+      is_overdue: !!row.is_overdue
+    }))
+  } catch (error) {
+    console.error('Error fetching employee tasks:', error)
+    return []
+  }
 }
 
 // Get hours breakdown by task type - จาก tasks ที่ถูก assign ให้ employee
 export async function getHoursByTaskType(
-    employeeId: string,
-    year: number,
-    month: number
+  employeeId: string,
+  year: number,
+  month: number
 ): Promise<TaskTypeBreakdown[]> {
-    try {
-        const pool = await getConnection()
-        const periodStart = startOfMonth(new Date(year, month - 1))
-        const periodEnd = endOfMonth(new Date(year, month - 1))
+  try {
+    const pool = await getConnection()
+    const periodStart = startOfMonth(new Date(year, month - 1))
+    const periodEnd = endOfMonth(new Date(year, month - 1))
 
-        const result = await pool.request()
-            .input('employeeId', sql.UniqueIdentifier, employeeId)
-            .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
-            .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
-            .query(`
+    const result = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
+      .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
+      .query(`
         SELECT
           ISNULL(t.task_type, 'other') AS task_type,
           ISNULL(ttc.name, ISNULL(t.task_type, 'Other')) AS task_type_name,
@@ -373,6 +375,7 @@ export async function getHoursByTaskType(
         LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
         WHERE t.assignee_id = @employeeId
           AND t.is_active = 1
+          AND t.status <> 'cancelled'
           AND (
             (t.due_date BETWEEN @periodStart AND @periodEnd)
             OR (t.created_at BETWEEN @periodStart AND @periodEnd)
@@ -382,37 +385,37 @@ export async function getHoursByTaskType(
         ORDER BY COUNT(*) DESC
       `)
 
-        const total = result.recordset.reduce((sum: number, row: any) => sum + row.task_count, 0)
+    const total = result.recordset.reduce((sum: number, row: any) => sum + row.task_count, 0)
 
-        return result.recordset.map((row: any) => ({
-            task_type: row.task_type,
-            task_type_name: row.task_type_name,
-            hours: row.task_count, // ใช้จำนวน tasks แทน hours
-            percentage: total > 0 ? Math.round((row.task_count / total) * 100) : 0,
-            is_defect: !!row.is_defect
-        }))
-    } catch (error) {
-        console.error('Error fetching hours by task type:', error)
-        return []
-    }
+    return result.recordset.map((row: any) => ({
+      task_type: row.task_type,
+      task_type_name: row.task_type_name,
+      hours: row.task_count, // ใช้จำนวน tasks แทน hours
+      percentage: total > 0 ? Math.round((row.task_count / total) * 100) : 0,
+      is_defect: !!row.is_defect
+    }))
+  } catch (error) {
+    console.error('Error fetching hours by task type:', error)
+    return []
+  }
 }
 
 // Get hours breakdown by project - จาก tasks ที่ถูก assign ให้ employee
 export async function getHoursByProject(
-    employeeId: string,
-    year: number,
-    month: number
+  employeeId: string,
+  year: number,
+  month: number
 ): Promise<ProjectBreakdown[]> {
-    try {
-        const pool = await getConnection()
-        const periodStart = startOfMonth(new Date(year, month - 1))
-        const periodEnd = endOfMonth(new Date(year, month - 1))
+  try {
+    const pool = await getConnection()
+    const periodStart = startOfMonth(new Date(year, month - 1))
+    const periodEnd = endOfMonth(new Date(year, month - 1))
 
-        const result = await pool.request()
-            .input('employeeId', sql.UniqueIdentifier, employeeId)
-            .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
-            .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
-            .query(`
+    const result = await pool.request()
+      .input('employeeId', sql.UniqueIdentifier, employeeId)
+      .input('periodStart', sql.Date, format(periodStart, 'yyyy-MM-dd'))
+      .input('periodEnd', sql.Date, format(periodEnd, 'yyyy-MM-dd'))
+      .query(`
         SELECT
           p.id AS project_id,
           p.project_code,
@@ -424,6 +427,7 @@ export async function getHoursByProject(
         INNER JOIN pms.projects p ON s.project_id = p.id
         WHERE t.assignee_id = @employeeId
           AND t.is_active = 1
+          AND t.status <> 'cancelled'
           AND (
             (t.due_date BETWEEN @periodStart AND @periodEnd)
             OR (t.created_at BETWEEN @periodStart AND @periodEnd)
@@ -433,17 +437,17 @@ export async function getHoursByProject(
         ORDER BY COUNT(*) DESC
       `)
 
-        const total = result.recordset.reduce((sum: number, row: any) => sum + row.task_count, 0)
+    const total = result.recordset.reduce((sum: number, row: any) => sum + row.task_count, 0)
 
-        return result.recordset.map((row: any) => ({
-            project_id: row.project_id,
-            project_code: row.project_code,
-            project_name: row.project_name,
-            hours: row.task_count, // ใช้จำนวน tasks แทน hours
-            percentage: total > 0 ? Math.round((row.task_count / total) * 100) : 0
-        }))
-    } catch (error) {
-        console.error('Error fetching hours by project:', error)
-        return []
-    }
+    return result.recordset.map((row: any) => ({
+      project_id: row.project_id,
+      project_code: row.project_code,
+      project_name: row.project_name,
+      hours: row.task_count, // ใช้จำนวน tasks แทน hours
+      percentage: total > 0 ? Math.round((row.task_count / total) * 100) : 0
+    }))
+  } catch (error) {
+    console.error('Error fetching hours by project:', error)
+    return []
+  }
 }

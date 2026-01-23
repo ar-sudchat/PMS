@@ -20,6 +20,7 @@ import {
     closestCenter,
 } from '@dnd-kit/core'
 import { TaskCard } from './TaskCard'
+import { TaskEditModal } from './TaskEditModal'
 
 // Helper to disable touch action for dnd
 class SmartPointerSensor extends PointerSensor {
@@ -187,24 +188,33 @@ export function ResourcePlanningView() {
         }
     }, [employees])
 
-    const summary = useMemo(() => {
-        if (!config || employees.length === 0) return null
+    // Edit Modal State
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [editingTask, setEditingTask] = useState<any>(null) // Using any for now to map between different task types
 
-        const totalCapacity = employees.length * config.workingHoursPerDay * 5
-        const totalAllocated = employees.reduce((sum, e) => sum + e.total_assigned_hours, 0)
-        const totalAvailable = Math.max(0, totalCapacity - totalAllocated)
-        const overloadedCount = employees.filter(e => e.average_workload_percent > 100).length
-        const availableCount = employees.filter(e => e.average_workload_percent < 70).length
-
-        return {
-            totalCapacity,
-            totalAllocated,
-            totalAvailable,
-            overloadedCount,
-            availableCount,
-            allocatedPercent: Math.round((totalAllocated / totalCapacity) * 100)
+    const handleTaskClick = (task: any) => {
+        // Map incoming task to TaskEditModal format
+        // TaskEditModal expects: { id, title, projectCode, projectName, hours, start, end, employeeId, reviewerId }
+        const mappedTask = {
+            id: task.id,
+            title: task.title,
+            projectCode: task.project_code || task.projectCode,
+            projectName: task.project_name || task.projectName,
+            hours: task.estimated_hours || task.hours || 0,
+            start: task.start_date || task.start || '',
+            end: task.due_date || task.end || '',
+            employeeId: task.assignee_id || task.employeeId,
+            reviewerId: task.reviewer_id || task.reviewerId,
+            position: task.position
         }
-    }, [employees, config])
+        setEditingTask(mappedTask)
+        setIsEditModalOpen(true)
+    }
+
+    const handleTaskUpdate = () => {
+        loadData()
+        refreshDemandPanel() // Refresh left panel too
+    }
 
     // Left Panel - Resource Demand
     const leftPanel = (
@@ -214,6 +224,7 @@ export function ResourcePlanningView() {
             startDate={startDate}
             endDate={endDate}
             dates={dates}
+            onTaskClick={handleTaskClick}
         />
     )
 
@@ -369,6 +380,7 @@ export function ResourcePlanningView() {
                                         dates={dates}
                                         isSelected={false}
                                         onSelect={() => { }}
+                                        onTaskClick={handleTaskClick}
                                     />
                                 ))
                             )}
@@ -380,12 +392,7 @@ export function ResourcePlanningView() {
     )
 
     return (
-        <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-        >
+        <>
             <ResizablePanelLayout
                 leftPanel={leftPanel}
                 rightPanel={rightPanel}
@@ -394,21 +401,12 @@ export function ResourcePlanningView() {
                 maxLeftWidth={40}
             />
 
-            <DragOverlay dropAnimation={null}>
-                {activeId && dragData ? (
-                    <div className="cursor-grabbing shadow-xl">
-                        <TaskCard
-                            id={activeId}
-                            title={dragData.title}
-                            hours={dragData.hours}
-                            priority={dragData.priority}
-                            status="Dragging"
-                            projectCode={dragData.projectCode}
-                            isLocked={dragData.isLocked}
-                        />
-                    </div>
-                ) : null}
-            </DragOverlay>
-        </DndContext>
+            <TaskEditModal
+                open={isEditModalOpen}
+                onOpenChange={setIsEditModalOpen}
+                task={editingTask}
+                onSaved={handleTaskUpdate}
+            />
+        </>
     )
 }

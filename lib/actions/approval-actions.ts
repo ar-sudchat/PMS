@@ -554,6 +554,134 @@ export async function addStepApprover(data: {
     }
 }
 
+/**
+ * Delete a flow step
+ */
+export async function deleteFlowStep(stepId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'กรุณาเข้าสู่ระบบ' }
+        }
+
+        // Allow admin or manager roles
+        const allowedRoles = ['admin', 'manager', 'pm', 'department_head']
+        if (!allowedRoles.includes(user.role || '')) {
+            return { success: false, error: 'คุณไม่มีสิทธิ์ในการลบ Step กรุณาติดต่อ Admin' }
+        }
+
+        const pool = await getConnection()
+
+        // Delete approvers for this step
+        await pool.request()
+            .input('stepId', sql.UniqueIdentifier, stepId)
+            .query(`DELETE FROM pms.approval_step_approvers WHERE step_id = @stepId`)
+
+        // Delete the step
+        await pool.request()
+            .input('stepId', sql.UniqueIdentifier, stepId)
+            .query(`DELETE FROM pms.approval_flow_steps WHERE id = @stepId`)
+
+        revalidatePath('/settings/approvals')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('deleteFlowStep error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+/**
+ * Update a flow step
+ */
+export async function updateFlowStep(
+    stepId: string,
+    data: {
+        step_name: string
+        step_type: 'SEQUENTIAL' | 'PARALLEL' | 'CONDITIONAL'
+        approval_type: 'SINGLE' | 'ALL' | 'ANY' | 'MAJORITY'
+        can_reject: boolean
+        can_delegate: boolean
+        timeout_hours: number | null
+        step_order: number
+    }
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'กรุณาเข้าสู่ระบบ' }
+        }
+
+        const allowedRoles = ['admin', 'manager', 'pm', 'department_head']
+        if (!allowedRoles.includes(user.role || '')) {
+            return { success: false, error: 'คุณไม่มีสิทธิ์ในการแก้ไข Step' }
+        }
+
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, stepId)
+            .input('step_name', sql.NVarChar, data.step_name)
+            .input('step_type', sql.VarChar, data.step_type)
+            .input('approval_type', sql.VarChar, data.approval_type)
+            .input('can_reject', sql.Bit, data.can_reject)
+            .input('can_delegate', sql.Bit, data.can_delegate)
+            .input('timeout_hours', sql.Int, data.timeout_hours)
+            .input('step_order', sql.Int, data.step_order)
+            .query(`
+                UPDATE pms.approval_flow_steps
+                SET 
+                    step_name = @step_name,
+                    step_type = @step_type,
+                    approval_type = @approval_type,
+                    can_reject = @can_reject,
+                    can_delegate = @can_delegate,
+                    timeout_hours = @timeout_hours,
+                    step_order = @step_order,
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+
+        revalidatePath('/settings/approvals')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('updateFlowStep error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+/**
+ * Delete a step approver
+ */
+export async function deleteStepApprover(approverId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'กรุณาเข้าสู่ระบบ' }
+        }
+
+        // Allow admin or manager roles
+        const allowedRoles = ['admin', 'manager', 'pm', 'department_head']
+        if (!allowedRoles.includes(user.role || '')) {
+            return { success: false, error: 'คุณไม่มีสิทธิ์ในการลบ Approver กรุณาติดต่อ Admin' }
+        }
+
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, approverId)
+            .query(`DELETE FROM pms.approval_step_approvers WHERE id = @id`)
+
+        revalidatePath('/settings/approvals')
+        return { success: true }
+
+    } catch (error: any) {
+        console.error('deleteStepApprover error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
 // ============================================
 // APPROVER CHECK
 // ============================================
@@ -644,7 +772,7 @@ export async function getApprovalInstanceByDocumentId(
             instanceId: instance.id,
             status: instance.status,
             canApprove: approverResult.recordset.length > 0 &&
-                       (instance.status === 'PENDING' || instance.status === 'IN_PROGRESS')
+                (instance.status === 'PENDING' || instance.status === 'IN_PROGRESS')
         }
 
     } catch (error) {

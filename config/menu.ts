@@ -38,6 +38,7 @@ import {
   Timer,
   Calculator,
   Bug,
+  FilePlus,
   type LucideIcon
 } from 'lucide-react'
 
@@ -99,6 +100,14 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
           { id: 'resource-planning', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
+        ]
+      },
+      {
+        id: 'requests',
+        title: 'Requests',
+        titleTh: 'คำขอโครงการ',
+        children: [
+          { id: 'project-requests', label: 'Project Requests', labelTh: 'รายการคำขอ', path: '/project-requests', icon: FilePlus },
         ]
       },
       {
@@ -181,9 +190,11 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Personal KPI',
         titleTh: 'KPI ส่วนบุคคล',
         children: [
-          { id: 'deploy-success', label: 'Deploy Success', labelTh: 'ผลการ Deploy', path: '/kpi-record/deploy-success', icon: Rocket, roles: ['admin', 'manager'] },
-          { id: 'deploy-backup', label: 'Deploy Backup', labelTh: 'Backup ก่อน Deploy', path: '/kpi-record/deploy-backup', icon: HardDrive, roles: ['admin', 'manager'] },
-          { id: 'meeting-minutes', label: 'Meeting Minutes', labelTh: 'MoM Tracking', path: '/kpi-record/meeting-minutes', icon: FileCheck, roles: ['admin', 'manager'] },
+          { id: 'deploy-success', label: 'Deploy Success', labelTh: 'ผลการ Deploy', path: '/kpi-record/deploy-success', icon: Rocket },
+          { id: 'deploy-backup', label: 'Deploy Backup', labelTh: 'Backup ก่อน Deploy', path: '/kpi-record/deploy-backup', icon: HardDrive },
+          { id: 'meeting-minutes', label: 'Meeting Minutes', labelTh: 'MoM Tracking', path: '/kpi-record/meeting-minutes', icon: FileCheck },
+          { id: 'contact-customer', label: 'Contact Customer', labelTh: 'ติดต่อลูกค้า (Presale)', path: '/kpi-record/contact-customer', icon: Users },
+          { id: 'manday-assessment', label: 'Manday Assessment', labelTh: 'ประเมิน Manday', path: '/kpi-record/manday-assessment', icon: Calculator },
         ]
       },
       {
@@ -191,12 +202,12 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Department KPI',
         titleTh: 'KPI ส่วนงาน',
         children: [
-          { id: 'docs-ontime', label: 'Docs On-time', labelTh: 'เอกสารตรงเวลา', path: '/kpi-record/docs-ontime', icon: FileText, roles: ['admin', 'manager'] },
-          { id: 'issue-clearing', label: 'Issue Clearing', labelTh: 'งานคงค้าง', path: '/kpi-record/issue-clearing', icon: CheckSquare, roles: ['admin', 'manager'] },
-          { id: 'post-golive-rework', label: 'Post Go-Live Rework', labelTh: 'Rework หลัง Go-Live', path: '/kpi-record/post-golive-rework', icon: Wrench, roles: ['admin', 'manager'] },
-          { id: 'time-to-delivery', label: 'Time to Delivery', labelTh: 'ส่งมอบตรงเวลา', path: '/kpi-record/time-to-delivery', icon: Timer, roles: ['admin', 'manager'] },
-          { id: 'manday-control', label: 'Man-day Control', labelTh: 'ควบคุม Man-day', path: '/kpi-record/manday-control', icon: Calculator, roles: ['admin', 'manager'] },
-          { id: 'defect-ratio', label: 'Defect Ratio', labelTh: 'อัตรา Defect', path: '/kpi-record/defect-ratio', icon: Bug, roles: ['admin', 'manager'] },
+          { id: 'docs-ontime', label: 'Docs On-time', labelTh: 'เอกสารตรงเวลา', path: '/kpi-record/docs-ontime', icon: FileText },
+          { id: 'issue-clearing', label: 'Issue Clearing', labelTh: 'งานคงค้าง', path: '/kpi-record/issue-clearing', icon: CheckSquare },
+          { id: 'post-golive-rework', label: 'Post Go-Live Rework', labelTh: 'Rework หลัง Go-Live', path: '/kpi-record/post-golive-rework', icon: Wrench },
+          { id: 'time-to-delivery', label: 'Time to Delivery', labelTh: 'ส่งมอบตรงเวลา', path: '/kpi-record/time-to-delivery', icon: Timer },
+          { id: 'manday-control', label: 'Man-day Control', labelTh: 'ควบคุม Man-day', path: '/kpi-record/manday-control', icon: Calculator },
+          { id: 'defect-ratio', label: 'Defect Ratio', labelTh: 'อัตรา Defect', path: '/kpi-record/defect-ratio', icon: Bug },
         ]
       },
       {

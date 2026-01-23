@@ -341,6 +341,14 @@ export async function processApprovalAction(input: ApprovalActionInput): Promise
         }
 
         // Check if user is authorized to approve
+        console.log('[processApprovalAction] Checking authorization:', {
+            instanceId: input.instance_id,
+            currentStepOrder: instance.current_step_order,
+            userId: user.id,
+            userName: user.name,
+            userRoles: user.role || 'No role'
+        })
+
         const approverResult = await pool.request()
             .input('instanceId', sql.UniqueIdentifier, input.instance_id)
             .input('stepOrder', sql.Int, instance.current_step_order)
@@ -350,14 +358,37 @@ export async function processApprovalAction(input: ApprovalActionInput): Promise
                 WHERE instance_id = @instanceId AND step_order = @stepOrder AND approver_id = @approverId
             `)
 
+        console.log('[processApprovalAction] Approver query result:', approverResult.recordset)
+
         if (approverResult.recordset.length === 0) {
-            console.error('Authorization failed:', {
+            // Check who ARE the approvers for this step
+            const allApproversResult = await pool.request()
+                .input('instanceId', sql.UniqueIdentifier, input.instance_id)
+                .input('stepOrder', sql.Int, instance.current_step_order)
+                .query(`
+                    SELECT aia.*, e.first_name, e.last_name, e.email
+                    FROM pms.approval_instance_approvers aia
+                    LEFT JOIN pms.employees e ON aia.approver_id = e.id
+                    WHERE instance_id = @instanceId AND step_order = @stepOrder
+                `)
+
+            console.error('Authorization failed. Current approvers for this step:', allApproversResult.recordset)
+            console.error('Your user info:', {
                 instanceId: input.instance_id,
                 stepOrder: instance.current_step_order,
                 userId: user.id,
                 userName: user.name
             })
-            return { success: false, error: 'You are not authorized to approve this request' }
+
+            // Return detailed error message  
+            const approverNames = allApproversResult.recordset
+                .map((a: any) => `${a.first_name || ''} ${a.last_name || ''} (${a.email || 'no email'})`.trim())
+                .join(', ') || 'ไม่มี'
+
+            return {
+                success: false,
+                error: `คุณไม่มีสิทธิ์อนุมัติ\n\nผู้อนุมัติในขั้นตอนนี้: ${approverNames}\n\nUser ID ของคุณ: ${user.id}\nชื่อ: ${user.name}`
+            }
         }
 
         const approverRecord = approverResult.recordset[0]
@@ -1365,4 +1396,96 @@ async function getUser(pool: sql.ConnectionPool, userId: string): Promise<any> {
         .query(`SELECT id, CONCAT(first_name, ' ', last_name) AS user_name, nickname, email FROM pms.employees WHERE id = @userId`)
 
     return result.recordset[0] || null
+}
+
+// ============================================
+// EXPORTED HELPERS
+// ============================================
+
+export async function checkCanApproveDocument(
+    instanceId: string
+): Promise<{ canApprove: boolean; instanceId?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { canApprove: false }
+
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('instanceId', sql.UniqueIdentifier, instanceId)
+            .input('userId', sql.UniqueIdentifier, user.id)
+            .query(`
+                SELECT ai.id AS instance_id
+                FROM pms.approval_instances ai
+                JOIN pms.approval_instance_approvers aia
+                    ON ai.id = aia.instance_id
+                    AND ai.current_step_order = aia.step_order
+                WHERE ai.id = @instanceId
+                  AND ai.status IN ('PENDING', 'IN_PROGRESS')
+                  AND aia.status = 'PENDING'
+                  AND aia.approver_id = @userId
+            `)
+
+        if (result.recordset.length > 0) {
+            return { canApprove: true, instanceId: result.recordset[0].instance_id }
+        }
+
+        return { canApprove: false }
+
+    } catch (error) {
+        console.error('checkCanApproveDocument error:', error)
+        return { canApprove: false }
+    }
+}
+
+export async function getApprovalInstanceByDocumentId(
+    documentId: string,
+    moduleCode: string
+): Promise<{ instanceId?: string; status?: string; canApprove?: boolean }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return {}
+
+        const pool = await getConnection()
+
+        const instanceResult = await pool.request()
+            .input('documentId', sql.VarChar(100), documentId)
+            .input('moduleCode', sql.VarChar(50), moduleCode)
+            .query(`
+                SELECT TOP 1 id, status, current_step_order
+                FROM pms.approval_instances
+                WHERE document_id = @documentId AND module_code = @moduleCode
+                ORDER BY request_date DESC
+            `)
+
+        if (instanceResult.recordset.length === 0) {
+            return {}
+        }
+
+        const instance = instanceResult.recordset[0]
+
+        // Check if user can approve
+        const approverResult = await pool.request()
+            .input('instanceId', sql.UniqueIdentifier, instance.id)
+            .input('stepOrder', sql.Int, instance.current_step_order)
+            .input('userId', sql.UniqueIdentifier, user.id)
+            .query(`
+                SELECT id FROM pms.approval_instance_approvers
+                WHERE instance_id = @instanceId
+                  AND step_order = @stepOrder
+                  AND approver_id = @userId
+                  AND status = 'PENDING'
+            `)
+
+        return {
+            instanceId: instance.id,
+            status: instance.status,
+            canApprove: approverResult.recordset.length > 0 &&
+                (instance.status === 'PENDING' || instance.status === 'IN_PROGRESS')
+        }
+
+    } catch (error) {
+        console.error('getApprovalInstanceByDocumentId error:', error)
+        return {}
+    }
 }

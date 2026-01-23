@@ -7,7 +7,10 @@ import { Check } from "lucide-react"
 
 const DropdownMenu = Menu
 
-const DropdownMenuTrigger = Menu.Button
+const DropdownMenuTrigger = React.forwardRef<HTMLButtonElement, React.ComponentPropsWithoutRef<typeof Menu.Button>>((props, ref) => (
+    <Menu.Button ref={ref} {...props} suppressHydrationWarning />
+))
+DropdownMenuTrigger.displayName = "DropdownMenuTrigger"
 
 const DropdownMenuContent = ({
     className,

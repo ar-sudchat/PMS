@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Edit2, Trash2, ChevronRight, Settings, Users, Clock, RefreshCw, Save, X, UserCheck } from 'lucide-react'
-import { fetchFlowTemplates, fetchFlowTemplateWithSteps, createFlowTemplate, updateFlowTemplate, addFlowStep, addStepApprover } from '@/lib/actions/approval-actions'
+import { fetchFlowTemplates, fetchFlowTemplateWithSteps, createFlowTemplate, updateFlowTemplate, addFlowStep, updateFlowStep, addStepApprover, deleteFlowStep, deleteStepApprover } from '@/lib/actions/approval-actions'
 import { getActiveEmployees } from '@/lib/actions/employee-actions'
 import { getActivePositions } from '@/lib/actions/position-actions'
 import { toast } from 'sonner'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { useAlert } from '@/components/ui/central-alert'
+
+
 
 interface FlowTemplate {
     id: string
@@ -70,6 +73,7 @@ const dynamicApproverLabels: Record<string, string> = {
 }
 
 export function ApprovalFlowManagement() {
+    const alert = useAlert()
     const [templates, setTemplates] = useState<FlowTemplate[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [selectedTemplate, setSelectedTemplate] = useState<FlowTemplate | null>(null)
@@ -83,6 +87,7 @@ export function ApprovalFlowManagement() {
     const [showApproverModal, setShowApproverModal] = useState(false)
     const [editingTemplate, setEditingTemplate] = useState<FlowTemplate | null>(null)
     const [editingStepId, setEditingStepId] = useState<string | null>(null)
+    const [editingStep, setEditingStep] = useState<FlowStep | null>(null)
 
     // Form states
     const [templateForm, setTemplateForm] = useState({
@@ -190,30 +195,51 @@ export function ApprovalFlowManagement() {
         }
     }
 
-    const handleAddStep = async () => {
+    const handleSaveStep = async () => {
         if (!selectedTemplate || !stepForm.step_name) {
             toast.error('Please fill in step name')
             return
         }
 
-        const result = await addFlowStep({
-            flow_template_id: selectedTemplate.id,
-            step_order: stepForm.step_order,
-            step_name: stepForm.step_name,
-            step_type: stepForm.step_type as any,
-            approval_type: stepForm.approval_type as any,
-            can_reject: stepForm.can_reject,
-            can_delegate: stepForm.can_delegate,
-            timeout_hours: stepForm.timeout_hours
-        })
+        if (editingStep) {
+            const result = await updateFlowStep(editingStep.id, {
+                step_name: stepForm.step_name,
+                step_type: stepForm.step_type as any,
+                approval_type: stepForm.approval_type as any,
+                can_reject: stepForm.can_reject,
+                can_delegate: stepForm.can_delegate,
+                timeout_hours: stepForm.timeout_hours,
+                step_order: stepForm.step_order
+            })
 
-        if (result.success) {
-            toast.success('Step added')
-            setShowStepModal(false)
-            setStepForm({ step_order: steps.length + 2, step_name: '', step_type: 'SEQUENTIAL', approval_type: 'SINGLE', can_reject: true, can_delegate: true, timeout_hours: 48 })
-            handleSelectTemplate(selectedTemplate)
+            if (result.success) {
+                toast.success('Step updated')
+                setShowStepModal(false)
+                setEditingStep(null)
+                handleSelectTemplate(selectedTemplate)
+            } else {
+                toast.error(result.error || 'Failed to update step')
+            }
         } else {
-            toast.error(result.error || 'Failed to add step')
+            const result = await addFlowStep({
+                flow_template_id: selectedTemplate.id,
+                step_order: stepForm.step_order,
+                step_name: stepForm.step_name,
+                step_type: stepForm.step_type as any,
+                approval_type: stepForm.approval_type as any,
+                can_reject: stepForm.can_reject,
+                can_delegate: stepForm.can_delegate,
+                timeout_hours: stepForm.timeout_hours
+            })
+
+            if (result.success) {
+                toast.success('Step added')
+                setShowStepModal(false)
+                setStepForm({ step_order: steps.length + 2, step_name: '', step_type: 'SEQUENTIAL', approval_type: 'SINGLE', can_reject: true, can_delegate: true, timeout_hours: 48 })
+                handleSelectTemplate(selectedTemplate)
+            } else {
+                toast.error(result.error || 'Failed to add step')
+            }
         }
     }
 
@@ -256,6 +282,38 @@ export function ApprovalFlowManagement() {
         }
     }
 
+    const handleDeleteStep = async (stepId: string) => {
+        const confirmed = await alert.confirm(
+            'ยืนยันการลบ',
+            'คุณต้องการลบขั้นตอนการอนุมัตินี้หรือไม่?'
+        )
+        if (!confirmed) return
+
+        const result = await deleteFlowStep(stepId)
+        if (result.success) {
+            toast.success('ลบขั้นตอนสำเร็จ')
+            if (selectedTemplate) handleSelectTemplate(selectedTemplate)
+        } else {
+            toast.error(result.error || 'ไม่สามารถลบขั้นตอนได้')
+        }
+    }
+
+    const handleDeleteApprover = async (approverId: string) => {
+        const confirmed = await alert.confirm(
+            'ยืนยันการลบ',
+            'คุณต้องการลบผู้อนุมัตินี้หรือไม่?'
+        )
+        if (!confirmed) return
+
+        const result = await deleteStepApprover(approverId)
+        if (result.success) {
+            toast.success('ลบผู้อนุมัติสำเร็จ')
+            if (selectedTemplate) handleSelectTemplate(selectedTemplate)
+        } else {
+            toast.error(result.error || 'ไม่สามารถลบผู้อนุมัติได้')
+        }
+    }
+
     const openEditTemplate = (template: FlowTemplate) => {
         setEditingTemplate(template)
         setTemplateForm({
@@ -269,6 +327,7 @@ export function ApprovalFlowManagement() {
     }
 
     const openAddStep = () => {
+        setEditingStep(null)
         setStepForm({
             step_order: steps.length + 1,
             step_name: '',
@@ -277,6 +336,20 @@ export function ApprovalFlowManagement() {
             can_reject: true,
             can_delegate: true,
             timeout_hours: 48
+        })
+        setShowStepModal(true)
+    }
+
+    const openEditStep = (step: FlowStep) => {
+        setEditingStep(step)
+        setStepForm({
+            step_order: step.step_order,
+            step_name: step.step_name,
+            step_type: step.step_type,
+            approval_type: step.approval_type,
+            can_reject: step.can_reject,
+            can_delegate: step.can_delegate,
+            timeout_hours: step.timeout_hours || 0
         })
         setShowStepModal(true)
     }
@@ -480,7 +553,25 @@ export function ApprovalFlowManagement() {
 
                                                 {/* Step Info */}
                                                 <div className="flex-1">
-                                                    <div className="font-medium text-slate-700">{step.step_name}</div>
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="font-medium text-slate-700">{step.step_name}</div>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                onClick={() => openEditStep(step)}
+                                                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                                title="Edit Step"
+                                                            >
+                                                                <Edit2 size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteStep(step.id)}
+                                                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                title="Delete Step"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                     <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                                                         <span className="flex items-center gap-1">
                                                             <Users size={12} />
@@ -516,12 +607,21 @@ export function ApprovalFlowManagement() {
                                                         {approvers[step.id]?.length > 0 ? (
                                                             <div className="space-y-1">
                                                                 {approvers[step.id].map((approver) => (
-                                                                    <div key={approver.id} className="flex items-center gap-2 text-sm">
-                                                                        <UserCheck size={14} className="text-green-600" />
-                                                                        <span className="text-slate-600">{getApproverDisplay(approver)}</span>
-                                                                        {approver.is_required && (
-                                                                            <span className="text-xs text-amber-600">(Required)</span>
-                                                                        )}
+                                                                    <div key={approver.id} className="flex items-center justify-between group py-1">
+                                                                        <div className="flex items-center gap-2 text-sm">
+                                                                            <UserCheck size={14} className="text-green-600" />
+                                                                            <span className="text-slate-600">{getApproverDisplay(approver)}</span>
+                                                                            {approver.is_required && (
+                                                                                <span className="text-xs text-amber-600">(Required)</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => handleDeleteApprover(approver.id)}
+                                                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all cursor-pointer"
+                                                                            title="Remove Approver"
+                                                                        >
+                                                                            <X size={14} />
+                                                                        </button>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -653,7 +753,7 @@ export function ApprovalFlowManagement() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <h2 className="text-lg font-semibold text-slate-800">Add Approval Step</h2>
+                            <h2 className="text-lg font-semibold text-slate-800">{editingStep ? 'Edit Approval Step' : 'Add Approval Step'}</h2>
                             <button
                                 onClick={() => setShowStepModal(false)}
                                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
@@ -755,11 +855,11 @@ export function ApprovalFlowManagement() {
                                 Cancel
                             </button>
                             <button
-                                onClick={handleAddStep}
+                                onClick={handleSaveStep}
                                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                             >
-                                <Plus size={16} />
-                                Add Step
+                                {editingStep ? <Save size={16} /> : <Plus size={16} />}
+                                {editingStep ? 'Update' : 'Add Step'}
                             </button>
                         </div>
                     </div>

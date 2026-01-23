@@ -3,26 +3,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getUnassignedTasks, UnassignedTask, autoAssignSABATasks, autoAssignAllReadyTasks } from '@/lib/actions/workload-actions'
 import { toast } from 'sonner'
-import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import { RefreshCw, Package, ChevronDown, AlertCircle, Clock, CheckCircle2, Calendar, Zap, Users } from 'lucide-react'
 
-// Draggable Task Card for Demand Panel (Detailed version)
-function DemandTaskCard({ task }: { task: UnassignedTask }) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-        id: task.id,
-        data: {
-            title: task.title,
-            hours: task.estimated_hours,
-            estimated_hours: task.estimated_hours,
-            priority: task.priority,
-            projectCode: task.project_code,
-            project_code: task.project_code,
-            isLocked: false,
-            fromDemand: true
-        }
-    })
-
+// Task Card for Demand Panel (Click to Edit)
+function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (task: UnassignedTask) => void }) {
     const priorityColors: Record<string, string> = {
         critical: 'border-l-red-500 bg-red-50/50',
         high: 'border-l-amber-500 bg-amber-50/50',
@@ -30,17 +15,23 @@ function DemandTaskCard({ task }: { task: UnassignedTask }) {
         low: 'border-l-slate-400 bg-slate-50/50'
     }
 
+    const handleClick = () => {
+        console.log('Card clicked!', task.title, 'onClick exists:', !!onClick)
+        if (onClick) {
+            onClick(task)
+        }
+    }
+
     return (
         <div
-            ref={setNodeRef}
-            {...listeners}
-            {...attributes}
+            onClick={handleClick}
             className={cn(
-                "p-2.5 rounded-md border border-l-4 bg-white shadow-sm cursor-grab active:cursor-grabbing select-none hover:shadow-md text-xs transition-opacity",
+                "p-2.5 rounded-md border border-l-4 bg-white shadow-sm select-none hover:shadow-md text-xs transition-all relative group",
                 priorityColors[task.priority] || priorityColors.medium,
-                isDragging && "opacity-50"
+                onClick && "cursor-pointer hover:ring-2 hover:ring-blue-500 hover:ring-offset-1 hover:scale-[1.02]"
             )}
         >
+
             {/* Row 1: Project Code + Project Name + Status */}
             <div className="flex items-center justify-between gap-1 mb-1.5">
                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -107,9 +98,10 @@ interface ResourceDemandPanelProps {
     startDate: string
     endDate: string
     dates: Date[]
+    onTaskClick?: (task: UnassignedTask) => void
 }
 
-export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTrigger = 0, startDate, endDate, dates }: ResourceDemandPanelProps) {
+export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTrigger = 0, startDate, endDate, dates, onTaskClick }: ResourceDemandPanelProps) {
     const [tasks, setTasks] = useState<UnassignedTask[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isAutoAssigning, setIsAutoAssigning] = useState(false)
@@ -534,7 +526,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                     {dateTasks.length > 0 ? (
                                         <div className="space-y-1.5">
                                             {dateTasks.map(task => (
-                                                <DemandTaskCard key={task.id} task={task} />
+                                                <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
                                             ))}
                                         </div>
                                     ) : (
@@ -562,7 +554,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                 </div>
                                 <div className="space-y-1.5">
                                     {groupedByDate.outsideRange.map(task => (
-                                        <DemandTaskCard key={task.id} task={task} />
+                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
                                     ))}
                                 </div>
                             </div>
@@ -584,7 +576,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                 </div>
                                 <div className="space-y-1.5">
                                     {groupedByDate.noDate.map(task => (
-                                        <DemandTaskCard key={task.id} task={task} />
+                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
                                     ))}
                                 </div>
                             </div>

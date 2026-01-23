@@ -128,7 +128,7 @@ export async function getTasksByStory(storyId: string) {
         LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
         LEFT JOIN pms.employees assignee ON t.assignee_id = assignee.id
         LEFT JOIN pms.employees reviewer ON t.reviewer_id = reviewer.id
-        WHERE t.story_id = @storyId AND t.[is_active] = 1
+        WHERE t.story_id = @storyId AND t.[is_active] = 1 AND t.[status] <> 'cancelled'
         ORDER BY CASE t.[status] WHEN 'blocked' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'review' THEN 3 ELSE 4 END, t.task_code
       `)
 
@@ -172,7 +172,7 @@ export async function getTasksByProject(projectId: string, filters?: {
       LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
       LEFT JOIN pms.employees assignee ON t.assignee_id = assignee.id
       LEFT JOIN pms.employees reviewer ON t.reviewer_id = reviewer.id
-      WHERE s.project_id = @projectId AND t.[is_active] = 1
+      WHERE s.project_id = @projectId AND t.[is_active] = 1 AND t.[status] <> 'cancelled'
     `
 
         const request = pool.request()

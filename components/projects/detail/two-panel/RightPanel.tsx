@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { getProjectTasks, TaskListItem, StorySimple } from '@/lib/actions/project-detail-actions'
 import { updateStory, deleteStory, deleteTask } from '@/lib/actions/work-items-actions'
 import { TasksPanelHeader } from './TasksPanelHeader'
@@ -27,6 +27,18 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
     const [taskModalMode, setTaskModalMode] = useState<'create' | 'edit'>('create')
     const [selectedTask, setSelectedTask] = useState<TaskListItem | undefined>(undefined)
+
+    // Filters
+    const [filterDate, setFilterDate] = useState<string>('')
+
+    const filteredTasks = useMemo(() => {
+        if (!filterDate) return tasks
+        return tasks.filter(t => {
+            if (!t.due_date) return false
+            // standard comparison: YYYY-MM-DD
+            return new Date(t.due_date).toISOString().split('T')[0] === filterDate
+        })
+    }, [tasks, filterDate])
 
     const fetchTasks = useCallback(async () => {
         if (!selectedStory) return
@@ -312,19 +324,37 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
             <div className="flex-1 p-4 overflow-hidden flex flex-col">
                 <div className="bg-white rounded-lg border shadow-sm flex-1 flex flex-col overflow-hidden">
                     <SuperTable
-                        data={tasks}
+                        data={filteredTasks}
                         columns={columns}
                         isLoading={isLoading}
                         enableGlobalFilter={false} // Maybe enable later?
                         enablePagination={false}
                         // Inject custom toolbar action for "Add Task"
                         renderToolbarAction={() => (
-                            <button
-                                onClick={handleCreateTask}
-                                className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors shadow-sm"
-                            >
-                                ＋ Add Task
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <input
+                                        type="date"
+                                        value={filterDate}
+                                        onChange={(e) => setFilterDate(e.target.value)}
+                                        className="px-2 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-600 w-36"
+                                    />
+                                    {filterDate && (
+                                        <button
+                                            onClick={() => setFilterDate('')}
+                                            className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={handleCreateTask}
+                                    className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors shadow-sm"
+                                >
+                                    ＋ Add Task
+                                </button>
+                            </div>
                         )}
                         onRowClick={(task) => handleEditTask(task)}
                     />

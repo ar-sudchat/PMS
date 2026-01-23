@@ -56,7 +56,7 @@ export async function getMyTasks(filters?: TaskFilters): Promise<MyTask[]> {
         const pool = await getConnection()
         let query = `
       SELECT * FROM pms.vw_my_tasks
-      WHERE assignee_id = @employeeId
+      WHERE assignee_id = @employeeId AND status <> 'cancelled'
     `
         const request = pool.request()
         // Using employeeId from session or filter override (for managers viewing other employees)
@@ -108,7 +108,7 @@ export async function getMyTaskCounts(filters?: { employeeId?: string; weekStart
             status,
             COUNT(*) as count
           FROM pms.vw_my_tasks
-          WHERE assignee_id = @employeeId
+          WHERE assignee_id = @employeeId AND status <> 'cancelled'
         `
         const request = pool.request()
         request.input('employeeId', sql.UniqueIdentifier, employeeId)

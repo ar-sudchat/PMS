@@ -1,26 +1,31 @@
 import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { getUserGroups, getTodayStandup, getPendingTasks } from '@/lib/actions/standup-actions'
+import { getAllStandupGroups, getUserGroups } from '@/lib/actions/standup-actions'
 import { StandupContainer } from '@/components/standup/StandupContainer'
 
 export default async function StandupPage() {
     const user = await getCurrentUser()
     if (!user) redirect('/auth/login')
 
-    const groupsResult = await getUserGroups()
-    const groups = groupsResult.success ? groupsResult.data ?? [] : []
+    const groupsResult = await getAllStandupGroups()
+    const groups = (groupsResult.success && groupsResult.data) ? groupsResult.data : []
 
-    // Default to first group if exists, or require group creation
-    const activeGroup = groups.length > 0 ? groups[0] : null
+    // Determine default active group:
+    // 1. First group the user is a member of
+    // 2. Or the first group in the list
+    // 3. Or null
+    let activeGroup = null
+    if (groups.length > 0) {
+        const userGroupsResult = await getUserGroups()
+        const userGroups = (userGroupsResult.success && userGroupsResult.data) ? userGroupsResult.data : []
 
-    let todayStandup = null
-    if (activeGroup) {
-        const standupResult = await getTodayStandup(activeGroup.id)
-        if (standupResult.success) todayStandup = standupResult.data
+        if (userGroups.length > 0) {
+            // Find the full group object from 'groups' that matches the user's first group
+            activeGroup = groups.find(g => g.id === userGroups[0].id) || groups[0]
+        } else {
+            activeGroup = groups[0]
+        }
     }
-
-    const pendingTasksResult = await getPendingTasks()
-    const pendingTasks = pendingTasksResult.success ? pendingTasksResult.data : []
 
     return (
         <div className="container mx-auto py-6 max-w-5xl">
@@ -30,8 +35,6 @@ export default async function StandupPage() {
                 user={user}
                 groups={groups}
                 activeGroup={activeGroup}
-                todayStandup={todayStandup ?? null}
-                pendingTasks={pendingTasks ?? []}
             />
         </div>
     )
