@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, KeyboardEvent } from 'react'
 import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle } from 'lucide-react'
 import { MilestoneRow } from '@/types/project'
-import { Switch } from '@/components/ui/Switch'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'

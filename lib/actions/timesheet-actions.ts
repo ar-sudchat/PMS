@@ -495,7 +495,7 @@ export async function getDailyLogSummary(dateString: string): Promise<{ success:
       position: r.position,
       task_count: r.task_count,
       logged_hours: r.logged_hours,
-      status: r.logged_hours > 0 ? 'Logged' : 'Not Logged'
+      status: (r.logged_hours > 0 ? 'Logged' : 'Not Logged') as 'Logged' | 'Not Logged'
     }))
 
     return { success: true, data }

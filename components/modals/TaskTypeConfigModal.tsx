@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/Switch";
+import { Switch } from "@/components/ui/switch";
 import { TaskTypeConfig, TaskTypeConfigFormData } from "@/types/task-type-config";
 import { createTaskTypeConfig, updateTaskTypeConfig } from "@/lib/actions/task-type-config-actions";
 

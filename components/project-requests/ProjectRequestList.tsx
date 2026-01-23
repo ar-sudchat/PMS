@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -232,7 +233,7 @@ export function ProjectRequestList({
                                         <TableCell>{request.created_by_name}</TableCell>
                                         <TableCell onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenu>
-                                                <DropdownMenuTrigger as={Button} variant="ghost" size="icon">
+                                                <DropdownMenuTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }))}>
                                                     <MoreHorizontal className="h-4 w-4" />
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">

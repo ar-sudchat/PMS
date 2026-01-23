@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Customer, CustomerFormData } from '@/types/customer';
 import { createCustomer, updateCustomer } from '@/lib/actions/customer-actions';
-import { Switch } from '@/components/ui/Switch'; // Ensure correct casing for Switch component path
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 interface CustomerModalProps {

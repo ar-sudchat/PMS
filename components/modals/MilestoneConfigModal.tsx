@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/Switch";
+import { Switch } from "@/components/ui/switch";
 import { MilestoneConfig, MilestoneConfigFormData } from "@/types/milestone-config";
 import { createMilestoneConfig, updateMilestoneConfig } from "@/lib/actions/milestone-config-actions";
 

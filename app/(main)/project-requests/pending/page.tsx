@@ -3,7 +3,9 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
-import { getPendingProjectRequests } from '@/lib/actions/project-request-actions'
+import { getPendingProjectRequests, getProjectRequestTypes, getProjectRequestPriorities } from '@/lib/actions/project-request-actions'
+import { getCustomers } from '@/lib/actions/customer-actions'
+import { getCurrentUser } from '@/lib/auth'
 import { ProjectRequestList } from '@/components/project-requests/ProjectRequestList'
 
 export const metadata = {
@@ -11,7 +13,13 @@ export const metadata = {
 }
 
 export default async function PendingProjectRequestsPage() {
-    const requests = await getPendingProjectRequests()
+    const [requests, customers, requestTypes, priorities, user] = await Promise.all([
+        getPendingProjectRequests(),
+        getCustomers(),
+        getProjectRequestTypes(),
+        getProjectRequestPriorities(),
+        getCurrentUser()
+    ])
 
     return (
         <div className="space-y-6">
@@ -29,7 +37,13 @@ export default async function PendingProjectRequestsPage() {
             </div>
 
             <Suspense fallback={<div>Loading...</div>}>
-                <ProjectRequestList requests={requests} />
+                <ProjectRequestList
+                    requests={requests}
+                    customers={customers}
+                    requestTypes={requestTypes}
+                    priorities={priorities}
+                    currentUserId={user?.id || ''}
+                />
             </Suspense>
         </div>
     )
