@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { Check, Clock, Circle, User, XCircle } from 'lucide-react'
-import { Tooltip } from '@/components/ui/Tooltip'
+import { SimpleTooltip as Tooltip } from '@/components/ui/Tooltip'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 interface ApprovalFlowStepsProps {

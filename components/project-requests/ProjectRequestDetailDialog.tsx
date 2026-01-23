@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -17,8 +17,15 @@ import { ApprovalFlowSteps } from '@/components/approval/ApprovalFlowSteps'
 import { ProjectRequestForm } from '@/components/project-requests/ProjectRequestForm'
 import { ProjectRequestAttachments } from '@/components/project-requests/ProjectRequestAttachments'
 import { ProjectRequestHistory } from '@/components/project-requests/ProjectRequestHistory'
-import { ProjectRequestActions } from '@/components/project-requests/ProjectRequestActions'
+import { ProjectRequestDialogFooter } from '@/components/project-requests/ProjectRequestDialogFooter'
+import { WorkflowStepProgress } from '@/components/project-requests/WorkflowStepProgress'
+import { WorkflowStepHistory } from '@/components/project-requests/WorkflowStepHistory'
+import type { WorkflowStep } from '@/components/project-requests/WorkflowStepProgress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+    getWorkflowStepsForRequest
+} from '@/lib/actions/project-request-actions'
+import { useAlert } from '@/components/ui/central-alert'
 
 interface ProjectRequestDetailDialogProps {
     requestId: string | null
@@ -43,6 +50,14 @@ export function ProjectRequestDetailDialog({
 }: ProjectRequestDetailDialogProps) {
     const [loading, setLoading] = useState(false)
     const [data, setData] = useState<any>(null)
+    const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([])
+    const [isSaving, setIsSaving] = useState(false)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const alert = useAlert()
+
+    // Refs to store form action functions
+    const saveRef = useRef<(() => Promise<void>) | null>(null)
+    const submitRef = useRef<(() => Promise<void>) | null>(null)
 
     useEffect(() => {
         const fetchData = async () => {
@@ -51,6 +66,12 @@ export function ProjectRequestDetailDialog({
                 try {
                     const result = await getProjectRequestDetailForSheet(requestId)
                     setData(result)
+
+                    // Fetch workflow steps if request exists
+                    if (result?.request?.workflow_template_id) {
+                        const steps = await getWorkflowStepsForRequest(requestId)
+                        setWorkflowSteps(steps)
+                    }
                 } catch (error) {
                     console.error('Failed to fetch request details:', error)
                 } finally {
@@ -58,11 +79,43 @@ export function ProjectRequestDetailDialog({
                 }
             } else {
                 setData(null)
+                setWorkflowSteps([])
             }
         }
 
         fetchData()
     }, [requestId, isOpen])
+
+    // Handlers for form actions
+    const handleSave = useCallback(async () => {
+        if (saveRef.current) {
+            await saveRef.current()
+        }
+    }, [])
+
+    const handleSaveAndSubmit = useCallback(async () => {
+        if (submitRef.current) {
+            await submitRef.current()
+        }
+    }, [])
+
+    const handleLoadingChange = useCallback((saving: boolean, submitting: boolean) => {
+        setIsSaving(saving)
+        setIsSubmitting(submitting)
+    }, [])
+
+    // Refresh data after footer actions
+    const handleUpdateSuccess = useCallback(async () => {
+        if (requestId) {
+            const newData = await getProjectRequestDetailForSheet(requestId)
+            setData(newData)
+            if (newData?.request?.workflow_template_id) {
+                const steps = await getWorkflowStepsForRequest(requestId)
+                setWorkflowSteps(steps)
+            }
+        }
+        if (onUpdateSuccess) onUpdateSuccess()
+    }, [requestId, onUpdateSuccess])
 
     const request = data?.request
     const history = data?.history || []
@@ -93,9 +146,11 @@ export function ProjectRequestDetailDialog({
                                     </span>
                                 )}
                             </div>
-                            <DialogDescription className="text-base text-slate-500 max-w-[600px] line-clamp-1">
-                                {isCreateMode ? 'กรอกรายละเอียดเพื่อสร้างคำขอโครงการใหม่' : request?.title}
-                            </DialogDescription>
+{isCreateMode && (
+                                <DialogDescription className="text-base text-slate-500 max-w-[600px]">
+                                    กรอกรายละเอียดเพื่อสร้างคำขอโครงการใหม่
+                                </DialogDescription>
+                            )}
 
                             {/* Converted Project Link */}
                             {request?.converted_project_id && (
@@ -117,15 +172,8 @@ export function ProjectRequestDetailDialog({
                             )}
                         </div>
 
-                        {/* Actions & Close Button */}
+                        {/* Close Button */}
                         <div className="flex items-center gap-3 shrink-0">
-                            {!isCreateMode && request && (
-                                <ProjectRequestActions
-                                    request={request}
-                                    currentUserId={currentUserId}
-                                    canApprove={true} // Forced true for testing/visibility
-                                />
-                            )}
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -146,6 +194,18 @@ export function ProjectRequestDetailDialog({
                     </div>
                 ) : (
                     <Tabs defaultValue="details" className="flex-1 flex flex-col overflow-hidden">
+                        {/* Workflow Step Progress - แสดงด้านบนสุดก่อน tabs (compact mode - ปุ่มอยู่ที่ footer) */}
+                        {!isCreateMode && request && workflowSteps.length > 0 && (
+                            <div className="px-6 py-4 bg-slate-50/50 border-b shrink-0">
+                                <WorkflowStepProgress
+                                    steps={workflowSteps}
+                                    currentStep={request.current_step || 1}
+                                    workflowStatus={request.workflow_status || 'DRAFT'}
+                                    compact={true}
+                                />
+                            </div>
+                        )}
+
                         {/* Tabs Navigation - Hide in Create Mode */}
                         {!isCreateMode && (
                             <div className="px-6 border-b bg-white relative z-10 shrink-0">
@@ -202,8 +262,12 @@ export function ProjectRequestDetailDialog({
                                             requestTypes={requestTypes}
                                             priorities={priorities}
                                             currentUserId={currentUserId}
+                                            hideActions={true}
+                                            onSaveRef={(fn) => { saveRef.current = fn }}
+                                            onSubmitRef={(fn) => { submitRef.current = fn }}
+                                            onLoadingChange={handleLoadingChange}
                                             onSuccess={() => {
-                                                if (onUpdateSuccess) onUpdateSuccess()
+                                                handleUpdateSuccess()
                                             }}
                                         />
                                     </section>
@@ -219,11 +283,49 @@ export function ProjectRequestDetailDialog({
                                     )}
                                 </TabsContent>
 
-                                <TabsContent value="history" className="mt-0 animate-in fade-in-50 duration-300">
-                                    <ProjectRequestHistory history={history} />
+                                <TabsContent value="history" className="mt-0 animate-in fade-in-50 duration-300 space-y-8">
+                                    {/* Workflow Step History */}
+                                    {request && (
+                                        <section>
+                                            <div className="mb-4 flex items-center gap-2">
+                                                <div className="h-4 w-1 bg-indigo-500 rounded-full" />
+                                                <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
+                                                    ประวัติขั้นตอน Workflow
+                                                </h3>
+                                            </div>
+                                            <div className="bg-slate-50/50 rounded-lg p-4 border">
+                                                <WorkflowStepHistory requestId={request.id} />
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    {/* Request History */}
+                                    <section>
+                                        <div className="mb-4 flex items-center gap-2">
+                                            <div className="h-4 w-1 bg-slate-500 rounded-full" />
+                                            <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
+                                                ประวัติการเปลี่ยนแปลงสถานะ
+                                            </h3>
+                                        </div>
+                                        <ProjectRequestHistory history={history} />
+                                    </section>
                                 </TabsContent>
                             </div>
                         </ScrollArea>
+
+                        {/* Footer with all action buttons */}
+                        <ProjectRequestDialogFooter
+                            request={request}
+                            currentUserId={currentUserId}
+                            workflowSteps={workflowSteps}
+                            isCreateMode={isCreateMode}
+                            isSaving={isSaving}
+                            isSubmitting={isSubmitting}
+                            onSave={handleSave}
+                            onSaveAndSubmit={handleSaveAndSubmit}
+                            onClose={onClose}
+                            onUpdateSuccess={handleUpdateSuccess}
+                        />
                     </Tabs>
                 )}
             </DialogContent>

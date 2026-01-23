@@ -7,6 +7,7 @@ import { getActiveEmployees } from '@/lib/actions/employee-actions'
 import { getActivePositions } from '@/lib/actions/position-actions'
 import { toast } from 'sonner'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { useAlert } from '@/components/ui/central-alert'
 
 
 
@@ -72,6 +73,7 @@ const dynamicApproverLabels: Record<string, string> = {
 }
 
 export function ApprovalFlowManagement() {
+    const alert = useAlert()
     const [templates, setTemplates] = useState<FlowTemplate[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [selectedTemplate, setSelectedTemplate] = useState<FlowTemplate | null>(null)
@@ -281,26 +283,34 @@ export function ApprovalFlowManagement() {
     }
 
     const handleDeleteStep = async (stepId: string) => {
-        if (!confirm('Are you sure you want to delete this approval step?')) return
+        const confirmed = await alert.confirm(
+            'ยืนยันการลบ',
+            'คุณต้องการลบขั้นตอนการอนุมัตินี้หรือไม่?'
+        )
+        if (!confirmed) return
 
         const result = await deleteFlowStep(stepId)
         if (result.success) {
-            toast.success('Step deleted')
+            toast.success('ลบขั้นตอนสำเร็จ')
             if (selectedTemplate) handleSelectTemplate(selectedTemplate)
         } else {
-            toast.error(result.error || 'Failed to delete step')
+            toast.error(result.error || 'ไม่สามารถลบขั้นตอนได้')
         }
     }
 
     const handleDeleteApprover = async (approverId: string) => {
-        if (!confirm('Are you sure you want to remove this approver?')) return
+        const confirmed = await alert.confirm(
+            'ยืนยันการลบ',
+            'คุณต้องการลบผู้อนุมัตินี้หรือไม่?'
+        )
+        if (!confirmed) return
 
         const result = await deleteStepApprover(approverId)
         if (result.success) {
-            toast.success('Approver removed')
+            toast.success('ลบผู้อนุมัติสำเร็จ')
             if (selectedTemplate) handleSelectTemplate(selectedTemplate)
         } else {
-            toast.error(result.error || 'Failed to remove approver')
+            toast.error(result.error || 'ไม่สามารถลบผู้อนุมัติได้')
         }
     }
 

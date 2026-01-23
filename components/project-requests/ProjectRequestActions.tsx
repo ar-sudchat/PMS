@@ -16,19 +16,23 @@ import {
     convertToProject
 } from '@/lib/actions/project-request-actions'
 import { Check, X, RotateCcw, FolderPlus, Loader2 } from 'lucide-react'
+import { useAlert } from '@/components/ui/central-alert'
 
 interface ProjectRequestActionsProps {
     request: any
     currentUserId: string
     canApprove: boolean
+    onActionComplete?: () => void
 }
 
 export function ProjectRequestActions({
     request,
     currentUserId,
-    canApprove
+    canApprove,
+    onActionComplete
 }: ProjectRequestActionsProps) {
     const router = useRouter()
+    const alert = useAlert()
     const [isLoading, setIsLoading] = useState(false)
     const [showApproveDialog, setShowApproveDialog] = useState(false)
     const [showRejectDialog, setShowRejectDialog] = useState(false)
@@ -43,23 +47,19 @@ export function ProjectRequestActions({
         console.log('[handleApprove] Result:', result)
 
         if (result.success) {
-            toast.success('อนุมัติคำขอเรียบร้อย')
             setShowApproveDialog(false)
+            await alert.success('อนุมัติสำเร็จ', 'อนุมัติคำขอเรียบร้อยแล้ว')
             router.refresh()
+            if (onActionComplete) onActionComplete()
         } else {
-            // Show error and keep dialog open
-            toast.error(result.error || 'เกิดข้อผิดพลาดในการอนุมัติ', {
-                duration: 5000,
-                position: 'top-center'
-            })
-            alert(`ไม่สามารถอนุมัติได้\n\nสาเหตุ: ${result.error}`)
+            await alert.error('ไม่สามารถอนุมัติได้', result.error || 'เกิดข้อผิดพลาดในการอนุมัติ')
         }
         setIsLoading(false)
     }
 
     const handleReject = async () => {
         if (!comments.trim()) {
-            toast.error('กรุณาระบุเหตุผล')
+            await alert.warning('กรุณาระบุเหตุผล', 'ต้องระบุเหตุผลในการปฏิเสธ')
             return
         }
 
@@ -67,18 +67,19 @@ export function ProjectRequestActions({
         const result = await rejectProjectRequest(request.id, currentUserId, comments)
 
         if (result.success) {
-            toast.success('ปฏิเสธคำขอเรียบร้อย')
             setShowRejectDialog(false)
+            await alert.success('ปฏิเสธสำเร็จ', 'ปฏิเสธคำขอเรียบร้อยแล้ว')
             router.refresh()
+            if (onActionComplete) onActionComplete()
         } else {
-            toast.error(result.error)
+            await alert.error('เกิดข้อผิดพลาด', result.error || 'ไม่สามารถปฏิเสธคำขอได้')
         }
         setIsLoading(false)
     }
 
     const handleRevision = async () => {
         if (!comments.trim()) {
-            toast.error('กรุณาระบุเหตุผล')
+            await alert.warning('กรุณาระบุเหตุผล', 'ต้องระบุสิ่งที่ต้องการให้แก้ไข')
             return
         }
 
@@ -86,11 +87,12 @@ export function ProjectRequestActions({
         const result = await requestRevision(request.id, currentUserId, comments)
 
         if (result.success) {
-            toast.success('ส่งกลับแก้ไขเรียบร้อย')
             setShowRevisionDialog(false)
+            await alert.success('ส่งกลับแก้ไขสำเร็จ', 'ส่งคำขอกลับให้แก้ไขเรียบร้อยแล้ว')
             router.refresh()
+            if (onActionComplete) onActionComplete()
         } else {
-            toast.error(result.error)
+            await alert.error('เกิดข้อผิดพลาด', result.error || 'ไม่สามารถส่งกลับแก้ไขได้')
         }
         setIsLoading(false)
     }
@@ -100,11 +102,12 @@ export function ProjectRequestActions({
         const result = await convertToProject(request.id, currentUserId)
 
         if (result.success) {
-            toast.success(`สร้าง Project เรียบร้อย: ${result.projectCode || ''}`)
             setShowConvertDialog(false)
-            router.refresh() // Refresh current page to show updated status
+            await alert.success('สร้าง Project สำเร็จ', `รหัส Project: ${result.projectCode || ''}`)
+            router.refresh()
+            if (onActionComplete) onActionComplete()
         } else {
-            toast.error(result.error)
+            await alert.error('เกิดข้อผิดพลาด', result.error || 'ไม่สามารถสร้าง Project ได้')
         }
         setIsLoading(false)
     }

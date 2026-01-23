@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { Search, Eye, Edit, MoreHorizontal, Plus } from 'lucide-react'
+import { Search, Eye, Edit, MoreHorizontal, Plus, ChevronRight } from 'lucide-react'
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuTrigger
@@ -158,6 +158,7 @@ export function ProjectRequestList({
                                 <TableHead>ประเภท</TableHead>
                                 <TableHead>ความสำคัญ</TableHead>
                                 <TableHead>สถานะ</TableHead>
+                                <TableHead>ขั้นตอน</TableHead>
                                 <TableHead>เลขที่โครงการ</TableHead>
                                 <TableHead>วันที่สร้าง</TableHead>
                                 <TableHead>ผู้สร้าง</TableHead>
@@ -167,7 +168,7 @@ export function ProjectRequestList({
                         <TableBody>
                             {requests.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                                         ไม่พบข้อมูล
                                     </TableCell>
                                 </TableRow>
@@ -195,6 +196,26 @@ export function ProjectRequestList({
                                             <Badge className={statusColors[request.status] || statusColors.DRAFT}>
                                                 {request.status_name || request.status}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {request.current_step && request.total_steps ? (
+                                                <div className="flex flex-col">
+                                                    {request.workflow_status === 'COMPLETED' ? (
+                                                        <span className="text-xs text-green-600 font-medium">เสร็จสิ้น</span>
+                                                    ) : (
+                                                        <>
+                                                            <span className="text-xs font-medium text-slate-700 truncate max-w-[100px]">
+                                                                {request.current_step_name || `ขั้นตอน ${request.current_step}`}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400">
+                                                                ({request.current_step}/{request.total_steps})
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">-</span>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {request.converted_project_code ? (

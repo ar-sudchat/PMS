@@ -68,6 +68,17 @@ export interface ProjectRequest {
     revision_reason?: string
     converted_project_id?: string
     converted_project_code?: string
+    converted_project_name?: string
+    // Workflow fields
+    workflow_template_id?: string
+    workflow_template_code?: string
+    workflow_template_name?: string
+    current_step?: number
+    current_step_name?: string
+    current_step_code?: string
+    workflow_status?: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+    total_steps?: number
+    // Metadata
     created_by: string
     created_by_name?: string
     created_at: string
@@ -382,42 +393,89 @@ export async function submitProjectRequest(
         const request = await getProjectRequestById(id)
         if (!request) return { success: false, error: 'Request not found' }
 
-        // 1. Submit to Approval System
-        const result = await submitForApproval({
-            flow_code: FLOW_CODE,
-            module_code: MODULE_CODE,
-            document_id: id,
-            document_type: DOCUMENT_TYPE,
-            document_number: request.request_code,
-            document_title: request.title,
-            document_data: request as any,
-            priority: 'NORMAL' // or map from request.priority if aligned
-        })
-
-        if (!result.success) {
-            return { success: false, error: result.error }
-        }
-
         const pool = await getConnection()
 
-        // 2. Update status to PENDING
+        // Get workflow template max step
+        const stepResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query(`
+                SELECT r.workflow_template_id,
+                       (SELECT MIN(step_order) FROM pms.project_request_workflow_step_defs
+                        WHERE template_id = r.workflow_template_id AND step_order > 1 AND is_active = 1) as next_step
+                FROM pms.project_requests r
+                WHERE r.id = @id
+            `)
+
+        const nextStep = stepResult.recordset[0]?.next_step || 2
+        const templateId = stepResult.recordset[0]?.workflow_template_id
+
+        // Update status to PENDING and advance to step 2
         await pool.request()
             .input('id', sql.UniqueIdentifier, id)
             .input('submitted_by', sql.UniqueIdentifier, submittedBy)
+            .input('next_step', sql.Int, nextStep)
             .query(`
-        UPDATE pms.project_requests SET
-        status = 'PENDING',
-            submitted_at = GETDATE(),
-            submitted_by = @submitted_by,
-            updated_at = GETDATE()
-        WHERE id = @id AND status IN('DRAFT', 'REVISION')
+                UPDATE pms.project_requests SET
+                    status = 'PENDING',
+                    current_step = @next_step,
+                    workflow_status = 'IN_PROGRESS',
+                    submitted_at = GETDATE(),
+                    submitted_by = @submitted_by,
+                    updated_at = GETDATE()
+                WHERE id = @id AND status IN('DRAFT', 'REVISION')
             `)
 
-        // Add history (local history helps with quick view, but Approval System has detailed history)
-        await addRequestHistory(id, 'submit', submittedBy, 'DRAFT', 'PENDING', 'ส่งคำขอเพื่ออนุมัติ (Approval Flow Started)')
+        // Record step 1 as completed
+        const step1Def = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, templateId)
+            .query(`
+                SELECT * FROM pms.project_request_workflow_step_defs
+                WHERE template_id = @template_id AND step_order = 1 AND is_active = 1
+            `)
+
+        if (step1Def.recordset.length > 0) {
+            const step1 = step1Def.recordset[0]
+            await pool.request()
+                .input('request_id', sql.UniqueIdentifier, id)
+                .input('step_order', sql.Int, 1)
+                .input('step_code', sql.NVarChar, step1.step_code)
+                .input('step_name', sql.NVarChar, step1.step_name)
+                .input('completed_by', sql.UniqueIdentifier, submittedBy)
+                .query(`
+                    INSERT INTO pms.project_request_step_history
+                    (request_id, step_order, step_code, step_name, action, completed_at, completed_by)
+                    VALUES (@request_id, @step_order, @step_code, @step_name, 'COMPLETED', GETDATE(), @completed_by)
+                `)
+        }
+
+        // Record step 2 as started
+        const step2Def = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, templateId)
+            .input('step_order', sql.Int, nextStep)
+            .query(`
+                SELECT * FROM pms.project_request_workflow_step_defs
+                WHERE template_id = @template_id AND step_order = @step_order AND is_active = 1
+            `)
+
+        if (step2Def.recordset.length > 0) {
+            const step2 = step2Def.recordset[0]
+            await pool.request()
+                .input('request_id', sql.UniqueIdentifier, id)
+                .input('step_order', sql.Int, nextStep)
+                .input('step_code', sql.NVarChar, step2.step_code)
+                .input('step_name', sql.NVarChar, step2.step_name)
+                .query(`
+                    INSERT INTO pms.project_request_step_history
+                    (request_id, step_order, step_code, step_name, action)
+                    VALUES (@request_id, @step_order, @step_code, @step_name, 'STARTED')
+                `)
+        }
+
+        // Add history
+        await addRequestHistory(id, 'submit', submittedBy, 'DRAFT', 'PENDING', 'ส่งคำขอเพื่อดำเนินการ')
 
         revalidatePath('/project-requests')
-        revalidatePath(`/ project - requests / ${id} `)
+        revalidatePath(`/project-requests/${id}`)
         return { success: true }
     } catch (error: any) {
         console.error('Submit project request error:', error)
@@ -843,5 +901,935 @@ export async function getProjectRequestStatuses() {
     const pool = await getConnection()
     const result = await pool.request()
         .query(`SELECT * FROM pms.project_request_statuses WHERE is_active = 1 ORDER BY sort_order`)
+    return result.recordset
+}
+
+// ============================================
+// Workflow Step Actions
+// ============================================
+
+// Get workflow templates
+export async function getWorkflowTemplates() {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .query(`SELECT * FROM pms.vw_workflow_templates WHERE is_active = 1 ORDER BY is_default DESC, name`)
+    return result.recordset
+}
+
+// Get workflow steps for a template
+export async function getWorkflowSteps(templateId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('template_id', sql.UniqueIdentifier, templateId)
+        .query(`
+            SELECT * FROM pms.project_request_workflow_step_defs
+            WHERE template_id = @template_id AND is_active = 1
+            ORDER BY step_order
+        `)
+    return result.recordset
+}
+
+// Get workflow steps for a request (by request's workflow_template_id)
+export async function getWorkflowStepsForRequest(requestId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('request_id', sql.UniqueIdentifier, requestId)
+        .query(`
+            SELECT s.*
+            FROM pms.project_request_workflow_step_defs s
+            INNER JOIN pms.project_requests r ON s.template_id = r.workflow_template_id
+            WHERE r.id = @request_id AND s.is_active = 1
+            ORDER BY s.step_order
+        `)
+    return result.recordset
+}
+
+// Get step history for a request
+export async function getWorkflowStepHistory(requestId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('request_id', sql.UniqueIdentifier, requestId)
+        .query(`
+            SELECT
+                h.*,
+                COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS completed_by_name
+            FROM pms.project_request_step_history h
+            LEFT JOIN pms.employees e ON h.completed_by = e.id
+            WHERE h.request_id = @request_id
+            ORDER BY h.created_at DESC
+        `)
+    return result.recordset
+}
+
+// Advance to next step
+export async function advanceWorkflowStep(
+    requestId: string,
+    userId: string,
+    notes?: string
+): Promise<{ success: boolean; error?: string; newStep?: number; workflowCompleted?: boolean }> {
+    try {
+        const pool = await getConnection()
+
+        // Get current request info
+        const requestResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, requestId)
+            .query(`
+                SELECT r.id, r.current_step, r.workflow_template_id, r.workflow_status,
+                       (SELECT MAX(step_order) FROM pms.project_request_workflow_step_defs WHERE template_id = r.workflow_template_id AND is_active = 1) as max_step
+                FROM pms.project_requests r
+                WHERE r.id = @id
+            `)
+
+        if (requestResult.recordset.length === 0) {
+            return { success: false, error: 'Request not found' }
+        }
+
+        const request = requestResult.recordset[0]
+        if (request.workflow_status === 'COMPLETED' || request.workflow_status === 'CANCELLED') {
+            return { success: false, error: 'Workflow already completed or cancelled' }
+        }
+
+        // Get current step definition
+        const stepResult = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, request.workflow_template_id)
+            .input('step_order', sql.Int, request.current_step)
+            .query(`
+                SELECT * FROM pms.project_request_workflow_step_defs
+                WHERE template_id = @template_id AND step_order = @step_order AND is_active = 1
+            `)
+
+        const currentStepDef = stepResult.recordset[0]
+        if (!currentStepDef) {
+            return { success: false, error: 'Current step definition not found' }
+        }
+
+        const newStep = request.current_step + 1
+        const isLastStep = newStep > request.max_step
+
+        // Record history for completed step
+        await pool.request()
+            .input('request_id', sql.UniqueIdentifier, requestId)
+            .input('step_order', sql.Int, request.current_step)
+            .input('step_code', sql.NVarChar, currentStepDef.step_code)
+            .input('step_name', sql.NVarChar, currentStepDef.step_name)
+            .input('action', sql.NVarChar, 'COMPLETED')
+            .input('notes', sql.NVarChar, notes || null)
+            .input('completed_by', sql.UniqueIdentifier, userId)
+            .query(`
+                INSERT INTO pms.project_request_step_history
+                (request_id, step_order, step_code, step_name, action, notes, completed_at, completed_by)
+                VALUES (@request_id, @step_order, @step_code, @step_name, @action, @notes, GETDATE(), @completed_by)
+            `)
+
+        // Update request
+        if (isLastStep) {
+            // Mark as completed
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, requestId)
+                .input('step', sql.Int, request.max_step)
+                .query(`
+                    UPDATE pms.project_requests
+                    SET current_step = @step,
+                        workflow_status = 'COMPLETED',
+                        updated_at = GETDATE()
+                    WHERE id = @id
+                `)
+        } else {
+            // Move to next step
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, requestId)
+                .input('step', sql.Int, newStep)
+                .query(`
+                    UPDATE pms.project_requests
+                    SET current_step = @step,
+                        workflow_status = 'IN_PROGRESS',
+                        updated_at = GETDATE()
+                    WHERE id = @id
+                `)
+
+            // Record history for started step
+            const nextStepResult = await pool.request()
+                .input('template_id', sql.UniqueIdentifier, request.workflow_template_id)
+                .input('step_order', sql.Int, newStep)
+                .query(`
+                    SELECT * FROM pms.project_request_workflow_step_defs
+                    WHERE template_id = @template_id AND step_order = @step_order AND is_active = 1
+                `)
+
+            if (nextStepResult.recordset.length > 0) {
+                const nextStepDef = nextStepResult.recordset[0]
+                await pool.request()
+                    .input('request_id', sql.UniqueIdentifier, requestId)
+                    .input('step_order', sql.Int, newStep)
+                    .input('step_code', sql.NVarChar, nextStepDef.step_code)
+                    .input('step_name', sql.NVarChar, nextStepDef.step_name)
+                    .input('action', sql.NVarChar, 'STARTED')
+                    .query(`
+                        INSERT INTO pms.project_request_step_history
+                        (request_id, step_order, step_code, step_name, action)
+                        VALUES (@request_id, @step_order, @step_code, @step_name, @action)
+                    `)
+            }
+        }
+
+        revalidatePath('/project-requests')
+        revalidatePath(`/project-requests/${requestId}`)
+        return { success: true, newStep: isLastStep ? request.max_step : newStep, workflowCompleted: isLastStep }
+    } catch (error: any) {
+        console.error('Advance workflow step error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Skip current step
+export async function skipWorkflowStep(
+    requestId: string,
+    userId: string,
+    notes?: string
+): Promise<{ success: boolean; error?: string; newStep?: number }> {
+    try {
+        const pool = await getConnection()
+
+        // Get current request and step info
+        const requestResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, requestId)
+            .query(`
+                SELECT r.id, r.current_step, r.workflow_template_id, r.workflow_status,
+                       (SELECT MAX(step_order) FROM pms.project_request_workflow_step_defs WHERE template_id = r.workflow_template_id AND is_active = 1) as max_step
+                FROM pms.project_requests r
+                WHERE r.id = @id
+            `)
+
+        if (requestResult.recordset.length === 0) {
+            return { success: false, error: 'Request not found' }
+        }
+
+        const request = requestResult.recordset[0]
+
+        // Get current step definition and check if skippable
+        const stepResult = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, request.workflow_template_id)
+            .input('step_order', sql.Int, request.current_step)
+            .query(`
+                SELECT * FROM pms.project_request_workflow_step_defs
+                WHERE template_id = @template_id AND step_order = @step_order AND is_active = 1
+            `)
+
+        const currentStepDef = stepResult.recordset[0]
+        if (!currentStepDef) {
+            return { success: false, error: 'Current step definition not found' }
+        }
+
+        if (!currentStepDef.can_skip) {
+            return { success: false, error: 'This step cannot be skipped' }
+        }
+
+        const newStep = request.current_step + 1
+        const isLastStep = newStep > request.max_step
+
+        // Record history for skipped step
+        await pool.request()
+            .input('request_id', sql.UniqueIdentifier, requestId)
+            .input('step_order', sql.Int, request.current_step)
+            .input('step_code', sql.NVarChar, currentStepDef.step_code)
+            .input('step_name', sql.NVarChar, currentStepDef.step_name)
+            .input('action', sql.NVarChar, 'SKIPPED')
+            .input('notes', sql.NVarChar, notes || 'ข้าม step นี้')
+            .input('completed_by', sql.UniqueIdentifier, userId)
+            .query(`
+                INSERT INTO pms.project_request_step_history
+                (request_id, step_order, step_code, step_name, action, notes, completed_at, completed_by)
+                VALUES (@request_id, @step_order, @step_code, @step_name, @action, @notes, GETDATE(), @completed_by)
+            `)
+
+        // Update request (same logic as advance)
+        if (isLastStep) {
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, requestId)
+                .input('step', sql.Int, request.max_step)
+                .query(`
+                    UPDATE pms.project_requests
+                    SET current_step = @step,
+                        workflow_status = 'COMPLETED',
+                        updated_at = GETDATE()
+                    WHERE id = @id
+                `)
+        } else {
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, requestId)
+                .input('step', sql.Int, newStep)
+                .query(`
+                    UPDATE pms.project_requests
+                    SET current_step = @step,
+                        workflow_status = 'IN_PROGRESS',
+                        updated_at = GETDATE()
+                    WHERE id = @id
+                `)
+        }
+
+        revalidatePath('/project-requests')
+        revalidatePath(`/project-requests/${requestId}`)
+        return { success: true, newStep: isLastStep ? request.max_step : newStep }
+    } catch (error: any) {
+        console.error('Skip workflow step error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Complete workflow early (open project from current step)
+export async function completeWorkflowEarly(
+    requestId: string,
+    userId: string,
+    notes?: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // Get current request and step info
+        const requestResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, requestId)
+            .query(`
+                SELECT r.id, r.current_step, r.workflow_template_id, r.workflow_status
+                FROM pms.project_requests r
+                WHERE r.id = @id
+            `)
+
+        if (requestResult.recordset.length === 0) {
+            return { success: false, error: 'Request not found' }
+        }
+
+        const request = requestResult.recordset[0]
+
+        // Get current step definition and check if can complete early
+        const stepResult = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, request.workflow_template_id)
+            .input('step_order', sql.Int, request.current_step)
+            .query(`
+                SELECT * FROM pms.project_request_workflow_step_defs
+                WHERE template_id = @template_id AND step_order = @step_order AND is_active = 1
+            `)
+
+        const currentStepDef = stepResult.recordset[0]
+        if (!currentStepDef) {
+            return { success: false, error: 'Current step definition not found' }
+        }
+
+        if (!currentStepDef.can_complete_early) {
+            return { success: false, error: 'Cannot complete early from this step' }
+        }
+
+        // Record history
+        await pool.request()
+            .input('request_id', sql.UniqueIdentifier, requestId)
+            .input('step_order', sql.Int, request.current_step)
+            .input('step_code', sql.NVarChar, currentStepDef.step_code)
+            .input('step_name', sql.NVarChar, currentStepDef.step_name)
+            .input('action', sql.NVarChar, 'COMPLETED')
+            .input('notes', sql.NVarChar, notes || 'จบ workflow ก่อนกำหนด - เปิดโครงการ')
+            .input('completed_by', sql.UniqueIdentifier, userId)
+            .query(`
+                INSERT INTO pms.project_request_step_history
+                (request_id, step_order, step_code, step_name, action, notes, completed_at, completed_by)
+                VALUES (@request_id, @step_order, @step_code, @step_name, @action, @notes, GETDATE(), @completed_by)
+            `)
+
+        // Mark workflow as completed
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, requestId)
+            .query(`
+                UPDATE pms.project_requests
+                SET workflow_status = 'COMPLETED',
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+
+        revalidatePath('/project-requests')
+        revalidatePath(`/project-requests/${requestId}`)
+        return { success: true }
+    } catch (error: any) {
+        console.error('Complete workflow early error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Set workflow template for a request
+export async function setWorkflowTemplate(
+    requestId: string,
+    templateId: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, requestId)
+            .input('template_id', sql.UniqueIdentifier, templateId)
+            .query(`
+                UPDATE pms.project_requests
+                SET workflow_template_id = @template_id,
+                    current_step = 1,
+                    workflow_status = 'IN_PROGRESS',
+                    updated_at = GETDATE()
+                WHERE id = @id
+            `)
+
+        revalidatePath('/project-requests')
+        revalidatePath(`/project-requests/${requestId}`)
+        return { success: true }
+    } catch (error: any) {
+        console.error('Set workflow template error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Auto-assign workflow based on project type
+export async function assignWorkflowByProjectType(requestId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // Call stored procedure
+        await pool.request()
+            .input('request_id', sql.UniqueIdentifier, requestId)
+            .execute('pms.sp_assign_workflow_by_type')
+
+        revalidatePath('/project-requests')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Assign workflow by type error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Get step assignees for a step
+export async function getStepAssignees(stepDefId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('step_def_id', sql.UniqueIdentifier, stepDefId)
+        .query(`
+            SELECT * FROM pms.vw_workflow_step_assignees
+            WHERE step_def_id = @step_def_id AND is_active = 1
+            ORDER BY is_primary DESC, assignee_type, assignee_value
+        `)
+    return result.recordset
+}
+
+// Get all step assignees for a template
+export async function getTemplateStepAssignees(templateId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('template_id', sql.UniqueIdentifier, templateId)
+        .query(`
+            SELECT * FROM pms.vw_workflow_step_assignees
+            WHERE template_id = @template_id AND is_active = 1
+            ORDER BY step_order, is_primary DESC, assignee_type
+        `)
+    return result.recordset
+}
+
+// Add step assignee
+export async function addStepAssignee(
+    stepDefId: string,
+    assigneeType: 'POSITION' | 'ROLE' | 'USER',
+    assigneeValue: string,
+    isPrimary: boolean = false
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('step_def_id', sql.UniqueIdentifier, stepDefId)
+            .input('assignee_type', sql.NVarChar, assigneeType)
+            .input('assignee_value', sql.NVarChar, assigneeValue)
+            .input('is_primary', sql.Bit, isPrimary)
+            .query(`
+                INSERT INTO pms.project_request_workflow_step_assignees
+                (step_def_id, assignee_type, assignee_value, is_primary)
+                VALUES (@step_def_id, @assignee_type, @assignee_value, @is_primary)
+            `)
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('Add step assignee error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Remove step assignee
+export async function removeStepAssignee(assigneeId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, assigneeId)
+            .query(`DELETE FROM pms.project_request_workflow_step_assignees WHERE id = @id`)
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('Remove step assignee error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Check if current user can complete a step
+export async function canUserCompleteStep(
+    requestId: string,
+    userId: string
+): Promise<{ canComplete: boolean; reason?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // Get current step and user's position
+        const result = await pool.request()
+            .input('request_id', sql.UniqueIdentifier, requestId)
+            .input('user_id', sql.UniqueIdentifier, userId)
+            .query(`
+                SELECT
+                    r.current_step,
+                    r.workflow_template_id,
+                    r.workflow_status,
+                    e.position_code,
+                    (
+                        SELECT COUNT(*)
+                        FROM pms.project_request_workflow_step_assignees a
+                        INNER JOIN pms.project_request_workflow_step_defs s ON a.step_def_id = s.id
+                        WHERE s.template_id = r.workflow_template_id
+                          AND s.step_order = r.current_step
+                          AND a.is_active = 1
+                          AND a.can_complete = 1
+                          AND (
+                              (a.assignee_type = 'POSITION' AND a.assignee_value = e.position_code)
+                              OR (a.assignee_type = 'USER' AND a.assignee_value = CAST(@user_id AS NVARCHAR(36)))
+                          )
+                    ) AS has_permission
+                FROM pms.project_requests r
+                LEFT JOIN pms.employees e ON e.id = @user_id
+                WHERE r.id = @request_id
+            `)
+
+        if (result.recordset.length === 0) {
+            return { canComplete: false, reason: 'Request not found' }
+        }
+
+        const data = result.recordset[0]
+
+        if (data.workflow_status === 'COMPLETED') {
+            return { canComplete: false, reason: 'Workflow already completed' }
+        }
+
+        if (data.workflow_status === 'CANCELLED') {
+            return { canComplete: false, reason: 'Workflow was cancelled' }
+        }
+
+        // If no assignees configured, anyone can complete
+        const assigneeCount = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, data.workflow_template_id)
+            .input('step_order', sql.Int, data.current_step)
+            .query(`
+                SELECT COUNT(*) AS cnt
+                FROM pms.project_request_workflow_step_assignees a
+                INNER JOIN pms.project_request_workflow_step_defs s ON a.step_def_id = s.id
+                WHERE s.template_id = @template_id AND s.step_order = @step_order AND a.is_active = 1
+            `)
+
+        if (assigneeCount.recordset[0].cnt === 0) {
+            return { canComplete: true }
+        }
+
+        if (data.has_permission > 0) {
+            return { canComplete: true }
+        }
+
+        return { canComplete: false, reason: 'You are not assigned to this step' }
+    } catch (error: any) {
+        console.error('Check step permission error:', error)
+        return { canComplete: false, reason: error.message }
+    }
+}
+
+// ============================================
+// Workflow Template CRUD
+// ============================================
+
+export interface WorkflowTemplateInput {
+    code: string
+    name: string
+    description?: string
+    is_default?: boolean
+}
+
+// Get all workflow templates (including inactive)
+export async function getAllWorkflowTemplates() {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .query(`SELECT * FROM pms.vw_workflow_templates ORDER BY is_default DESC, name`)
+    return result.recordset
+}
+
+// Get workflow template by ID with steps
+export async function getWorkflowTemplateById(id: string) {
+    const pool = await getConnection()
+
+    const templateResult = await pool.request()
+        .input('id', sql.UniqueIdentifier, id)
+        .query(`
+            SELECT * FROM pms.project_request_workflow_templates
+            WHERE id = @id
+        `)
+
+    if (templateResult.recordset.length === 0) return null
+
+    const stepsResult = await pool.request()
+        .input('template_id', sql.UniqueIdentifier, id)
+        .query(`
+            SELECT * FROM pms.project_request_workflow_step_defs
+            WHERE template_id = @template_id AND is_active = 1
+            ORDER BY step_order
+        `)
+
+    return {
+        ...templateResult.recordset[0],
+        steps: stepsResult.recordset
+    }
+}
+
+// Create workflow template
+export async function createWorkflowTemplate(
+    data: WorkflowTemplateInput,
+    createdBy?: string
+): Promise<{ success: boolean; error?: string; id?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // Check for duplicate code
+        const existing = await pool.request()
+            .input('code', sql.NVarChar, data.code)
+            .query(`SELECT id FROM pms.project_request_workflow_templates WHERE code = @code`)
+
+        if (existing.recordset.length > 0) {
+            return { success: false, error: 'รหัส Template นี้มีอยู่แล้ว' }
+        }
+
+        // If setting as default, unset other defaults
+        if (data.is_default) {
+            await pool.request()
+                .query(`UPDATE pms.project_request_workflow_templates SET is_default = 0`)
+        }
+
+        const result = await pool.request()
+            .input('code', sql.NVarChar, data.code)
+            .input('name', sql.NVarChar, data.name)
+            .input('description', sql.NVarChar, data.description || null)
+            .input('is_default', sql.Bit, data.is_default || false)
+            .input('created_by', sql.UniqueIdentifier, createdBy || null)
+            .query(`
+                INSERT INTO pms.project_request_workflow_templates
+                (code, name, description, is_default, created_by)
+                OUTPUT INSERTED.id
+                VALUES (@code, @name, @description, @is_default, @created_by)
+            `)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true, id: result.recordset[0].id }
+    } catch (error: any) {
+        console.error('Create workflow template error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Update workflow template
+export async function updateWorkflowTemplate(
+    id: string,
+    data: Partial<WorkflowTemplateInput>
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // If setting as default, unset other defaults
+        if (data.is_default) {
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, id)
+                .query(`UPDATE pms.project_request_workflow_templates SET is_default = 0 WHERE id != @id`)
+        }
+
+        const setClauses: string[] = []
+        const request = pool.request().input('id', sql.UniqueIdentifier, id)
+
+        if (data.code !== undefined) {
+            setClauses.push('code = @code')
+            request.input('code', sql.NVarChar, data.code)
+        }
+        if (data.name !== undefined) {
+            setClauses.push('name = @name')
+            request.input('name', sql.NVarChar, data.name)
+        }
+        if (data.description !== undefined) {
+            setClauses.push('description = @description')
+            request.input('description', sql.NVarChar, data.description)
+        }
+        if (data.is_default !== undefined) {
+            setClauses.push('is_default = @is_default')
+            request.input('is_default', sql.Bit, data.is_default)
+        }
+
+        if (setClauses.length === 0) {
+            return { success: true }
+        }
+
+        await request.query(`
+            UPDATE pms.project_request_workflow_templates
+            SET ${setClauses.join(', ')}
+            WHERE id = @id
+        `)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Update workflow template error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Delete workflow template (soft delete by setting is_active = 0)
+export async function deleteWorkflowTemplate(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        // Check if template is in use
+        const usageCheck = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, id)
+            .query(`
+                SELECT COUNT(*) AS cnt FROM pms.project_requests
+                WHERE workflow_template_id = @template_id
+            `)
+
+        if (usageCheck.recordset[0].cnt > 0) {
+            return { success: false, error: 'Template นี้กำลังถูกใช้งาน ไม่สามารถลบได้' }
+        }
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query(`UPDATE pms.project_request_workflow_templates SET is_active = 0 WHERE id = @id`)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Delete workflow template error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Toggle template active status
+export async function toggleWorkflowTemplateActive(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query(`
+                UPDATE pms.project_request_workflow_templates
+                SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
+                WHERE id = @id
+            `)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Toggle workflow template error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// ============================================
+// Workflow Step Definition CRUD
+// ============================================
+
+export interface WorkflowStepInput {
+    template_id: string
+    step_order: number
+    step_code: string
+    step_name: string
+    description?: string
+    icon?: string
+    color?: string
+    is_required?: boolean
+    can_skip?: boolean
+    can_complete_early?: boolean
+    required_fields?: string // JSON string
+}
+
+// Get workflow steps for a template
+export async function getWorkflowStepDefs(templateId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('template_id', sql.UniqueIdentifier, templateId)
+        .query(`
+            SELECT * FROM pms.project_request_workflow_step_defs
+            WHERE template_id = @template_id AND is_active = 1
+            ORDER BY step_order
+        `)
+    return result.recordset
+}
+
+// Create workflow step
+export async function createWorkflowStep(
+    data: WorkflowStepInput
+): Promise<{ success: boolean; error?: string; id?: string }> {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('template_id', sql.UniqueIdentifier, data.template_id)
+            .input('step_order', sql.Int, data.step_order)
+            .input('step_code', sql.NVarChar, data.step_code)
+            .input('step_name', sql.NVarChar, data.step_name)
+            .input('description', sql.NVarChar, data.description || null)
+            .input('icon', sql.NVarChar, data.icon || null)
+            .input('color', sql.NVarChar, data.color || null)
+            .input('is_required', sql.Bit, data.is_required ?? true)
+            .input('can_skip', sql.Bit, data.can_skip ?? false)
+            .input('can_complete_early', sql.Bit, data.can_complete_early ?? false)
+            .input('required_fields', sql.NVarChar, data.required_fields || null)
+            .query(`
+                INSERT INTO pms.project_request_workflow_step_defs
+                (template_id, step_order, step_code, step_name, description, icon, color, is_required, can_skip, can_complete_early, required_fields)
+                OUTPUT INSERTED.id
+                VALUES (@template_id, @step_order, @step_code, @step_name, @description, @icon, @color, @is_required, @can_skip, @can_complete_early, @required_fields)
+            `)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true, id: result.recordset[0].id }
+    } catch (error: any) {
+        console.error('Create workflow step error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Update workflow step
+export async function updateWorkflowStep(
+    id: string,
+    data: Partial<WorkflowStepInput>
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        const setClauses: string[] = []
+        const request = pool.request().input('id', sql.UniqueIdentifier, id)
+
+        if (data.step_order !== undefined) {
+            setClauses.push('step_order = @step_order')
+            request.input('step_order', sql.Int, data.step_order)
+        }
+        if (data.step_code !== undefined) {
+            setClauses.push('step_code = @step_code')
+            request.input('step_code', sql.NVarChar, data.step_code)
+        }
+        if (data.step_name !== undefined) {
+            setClauses.push('step_name = @step_name')
+            request.input('step_name', sql.NVarChar, data.step_name)
+        }
+        if (data.description !== undefined) {
+            setClauses.push('description = @description')
+            request.input('description', sql.NVarChar, data.description)
+        }
+        if (data.icon !== undefined) {
+            setClauses.push('icon = @icon')
+            request.input('icon', sql.NVarChar, data.icon)
+        }
+        if (data.color !== undefined) {
+            setClauses.push('color = @color')
+            request.input('color', sql.NVarChar, data.color)
+        }
+        if (data.is_required !== undefined) {
+            setClauses.push('is_required = @is_required')
+            request.input('is_required', sql.Bit, data.is_required)
+        }
+        if (data.can_skip !== undefined) {
+            setClauses.push('can_skip = @can_skip')
+            request.input('can_skip', sql.Bit, data.can_skip)
+        }
+        if (data.can_complete_early !== undefined) {
+            setClauses.push('can_complete_early = @can_complete_early')
+            request.input('can_complete_early', sql.Bit, data.can_complete_early)
+        }
+        if (data.required_fields !== undefined) {
+            setClauses.push('required_fields = @required_fields')
+            request.input('required_fields', sql.NVarChar, data.required_fields)
+        }
+
+        if (setClauses.length === 0) {
+            return { success: true }
+        }
+
+        await request.query(`
+            UPDATE pms.project_request_workflow_step_defs
+            SET ${setClauses.join(', ')}
+            WHERE id = @id
+        `)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Update workflow step error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Delete workflow step (soft delete)
+export async function deleteWorkflowStep(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query(`UPDATE pms.project_request_workflow_step_defs SET is_active = 0 WHERE id = @id`)
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Delete workflow step error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Reorder workflow steps
+export async function reorderWorkflowSteps(
+    templateId: string,
+    stepOrders: { id: string; order: number }[]
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        for (const item of stepOrders) {
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, item.id)
+                .input('step_order', sql.Int, item.order)
+                .query(`
+                    UPDATE pms.project_request_workflow_step_defs
+                    SET step_order = @step_order
+                    WHERE id = @id
+                `)
+        }
+
+        revalidatePath('/projects/settings/workflow-templates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Reorder workflow steps error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Get step history for a request
+export async function getStepHistory(requestId: string) {
+    const pool = await getConnection()
+    const result = await pool.request()
+        .input('request_id', sql.UniqueIdentifier, requestId)
+        .query(`
+            SELECT
+                h.*,
+                COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS completed_by_name
+            FROM pms.project_request_step_history h
+            LEFT JOIN pms.employees e ON h.completed_by = e.id
+            WHERE h.request_id = @request_id
+            ORDER BY h.created_at ASC
+        `)
     return result.recordset
 }

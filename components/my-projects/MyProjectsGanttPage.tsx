@@ -11,6 +11,7 @@ import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
 import { AssignTaskModal } from '@/components/gantt/AssignTaskModal'
 import { WorkItemsModal } from '@/components/gantt/WorkItemsModal'
 import { DailyTaskWorkloadView } from '@/components/workload/DailyTaskWorkloadView'
+import { WeeklyWorkloadTable } from '@/components/workload/WeeklyWorkloadTable'
 import { getProjectFilterOptions } from '@/lib/actions/project-actions'
 import {
     GanttData,
@@ -28,7 +29,7 @@ interface MyProjectsGanttPageProps {
     currentUser: any
 }
 
-type ViewMode = 'gantt' | 'work-items' | 'daily-workload'
+type ViewMode = 'gantt' | 'work-items' | 'daily-workload' | 'weekly-workload'
 
 interface Filters {
     year: number | ''
@@ -430,6 +431,12 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                             >
                                 Daily Workload
                             </button>
+                            <button
+                                onClick={() => setViewMode('weekly-workload')}
+                                className={cn("px-4 py-1.5 text-xs font-medium rounded-md transition-all h-full flex items-center", viewMode === 'weekly-workload' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700')}
+                            >
+                                Weekly Workload
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -519,6 +526,10 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                         filters={filters}
                         onRefresh={handleRefresh}
                     />
+                ) : viewMode === 'weekly-workload' ? (
+                    <div className="h-full overflow-y-auto p-4">
+                        <WeeklyWorkloadTable />
+                    </div>
                 ) : (
                     <div className="h-full overflow-y-auto">
                         <DailyTaskWorkloadView />

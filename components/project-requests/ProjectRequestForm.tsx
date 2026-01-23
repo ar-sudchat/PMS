@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,10 @@ interface ProjectRequestFormProps {
     priorities: any[]
     currentUserId: string
     onSuccess?: () => void
+    hideActions?: boolean
+    onSaveRef?: (fn: () => Promise<void>) => void
+    onSubmitRef?: (fn: () => Promise<void>) => void
+    onLoadingChange?: (isSaving: boolean, isSubmitting: boolean) => void
 }
 
 export function ProjectRequestForm({
@@ -32,14 +36,22 @@ export function ProjectRequestForm({
     requestTypes,
     priorities,
     currentUserId,
-    onSuccess
+    onSuccess,
+    hideActions = false,
+    onSaveRef,
+    onSubmitRef,
+    onLoadingChange
 }: ProjectRequestFormProps) {
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
 
     const isEdit = !!request
-    const canEdit = !request || request.status === 'DRAFT' || request.status === 'REVISION' || request.status === 'PENDING'
+    // แก้ไขได้เฉพาะ DRAFT หรือ REVISION เท่านั้น (PENDING และ APPROVED ห้ามแก้)
+    const canEdit = !request || request.status === 'DRAFT' || request.status === 'REVISION'
+    // APPROVED แล้วแก้ไขได้เฉพาะบางฟิลด์ (วันที่ติดต่อ, ประชุม, ประเมินราคา, งบประมาณ, Man-day)
+    const canEditAfterApproved = request?.status === 'APPROVED' || request?.status === 'CONVERTED'
+    const canEditDates = canEdit || canEditAfterApproved
 
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
         defaultValues: {
@@ -67,25 +79,34 @@ export function ProjectRequestForm({
         setIsSaving(true)
 
         try {
-            let result
             if (isEdit) {
-                result = await updateProjectRequest(request.id, data, currentUserId)
-            } else {
-                result = await createProjectRequest(data, currentUserId)
-            }
-
-            if (result.success) {
-                toast.success('บันทึกสำเร็จ')
-                if (onSuccess) {
-                    onSuccess()
-                    router.refresh()
-                } else if (!isEdit && result.request) {
-                    router.push(`/project-requests/${result.request.id}`)
+                const result = await updateProjectRequest(request.id, data, currentUserId)
+                if (result.success) {
+                    toast.success('บันทึกสำเร็จ')
+                    if (onSuccess) {
+                        onSuccess()
+                        router.refresh()
+                    } else {
+                        router.refresh()
+                    }
                 } else {
-                    router.refresh();
+                    toast.error(result.error || 'เกิดข้อผิดพลาด')
                 }
             } else {
-                toast.error(result.error || 'เกิดข้อผิดพลาด')
+                const result = await createProjectRequest(data, currentUserId)
+                if (result.success) {
+                    toast.success('บันทึกสำเร็จ')
+                    if (onSuccess) {
+                        onSuccess()
+                        router.refresh()
+                    } else if (result.request) {
+                        router.push(`/project-requests/${result.request.id}`)
+                    } else {
+                        router.refresh()
+                    }
+                } else {
+                    toast.error(result.error || 'เกิดข้อผิดพลาด')
+                }
             }
         } catch (error) {
             toast.error('เกิดข้อผิดพลาด')
@@ -133,6 +154,29 @@ export function ProjectRequestForm({
             setIsSubmitting(false)
         }
     }
+
+    // Expose functions to parent via callback refs
+    const triggerSave = useCallback(() => {
+        return handleSubmit(handleSave)()
+    }, [handleSubmit])
+
+    const triggerSubmit = useCallback(() => {
+        return handleSubmit(handleSaveAndSubmit)()
+    }, [handleSubmit])
+
+    // Register callbacks with parent
+    useEffect(() => {
+        if (onSaveRef) onSaveRef(triggerSave)
+    }, [onSaveRef, triggerSave])
+
+    useEffect(() => {
+        if (onSubmitRef) onSubmitRef(triggerSubmit)
+    }, [onSubmitRef, triggerSubmit])
+
+    // Notify parent of loading state changes
+    useEffect(() => {
+        if (onLoadingChange) onLoadingChange(isSaving, isSubmitting)
+    }, [isSaving, isSubmitting, onLoadingChange])
 
     return (
         <form className="space-y-6">
@@ -217,7 +261,7 @@ export function ProjectRequestForm({
                                     {...register('estimated_budget')}
                                     type="number"
                                     placeholder="0.00"
-                                    disabled={!canEdit}
+                                    disabled={!canEditDates}
                                     className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
                                 />
                             </div>
@@ -228,7 +272,7 @@ export function ProjectRequestForm({
                                     {...register('estimated_mandays')}
                                     type="number"
                                     placeholder="0"
-                                    disabled={!canEdit}
+                                    disabled={!canEditDates}
                                     className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
                                 />
                             </div>
@@ -332,7 +376,7 @@ export function ProjectRequestForm({
                                 <Input
                                     {...register('customer_contact_date')}
                                     type="date"
-                                    disabled={!canEdit}
+                                    disabled={!canEditDates}
                                     className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
                                 />
                             </div>
@@ -341,7 +385,7 @@ export function ProjectRequestForm({
                                 <Input
                                     {...register('last_meeting_date')}
                                     type="date"
-                                    disabled={!canEdit}
+                                    disabled={!canEditDates}
                                     className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
                                 />
                             </div>
@@ -350,7 +394,7 @@ export function ProjectRequestForm({
                                 <Input
                                     {...register('quotation_date')}
                                     type="date"
-                                    disabled={!canEdit}
+                                    disabled={!canEditDates}
                                     className="mt-1 disabled:opacity-100 disabled:text-slate-900 bg-white"
                                 />
                             </div>
@@ -359,8 +403,8 @@ export function ProjectRequestForm({
                 </div>
             </div>
 
-            {/* Actions */}
-            {canEdit && (
+            {/* Actions - hidden when controlled by parent */}
+            {!hideActions && canEdit && (
                 <div className="flex justify-end gap-3 pt-4 border-t mt-6">
                     <Button
                         type="button"
@@ -374,7 +418,7 @@ export function ProjectRequestForm({
                         ) : (
                             <Save className="h-4 w-4 mr-2" />
                         )}
-                        บันทึกร่าง
+                        บันทึก
                     </Button>
 
                     <Button
@@ -389,6 +433,24 @@ export function ProjectRequestForm({
                             <Send className="h-4 w-4 mr-2" />
                         )}
                         ส่งอนุมัติ
+                    </Button>
+                </div>
+            )}
+
+            {/* Save button for APPROVED/CONVERTED - only for editable date fields */}
+            {!hideActions && canEditAfterApproved && (
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                    <Button
+                        type="button"
+                        onClick={handleSubmit(handleSave)}
+                        disabled={isSaving}
+                    >
+                        {isSaving ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                            <Save className="h-4 w-4 mr-2" />
+                        )}
+                        บันทึก
                     </Button>
                 </div>
             )}
