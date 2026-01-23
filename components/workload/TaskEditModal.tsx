@@ -18,11 +18,12 @@ interface TaskEditModalProps {
         title: string
         projectCode: string
         projectName?: string
+        customerName?: string // ลูกค้า
         hours: number
         start: string // YYYY-MM-DD
         end: string // YYYY-MM-DD
         employeeId?: string // PG
-        reviewerId?: string // SA (if available) - we might not have this in quick view
+        reviewerId?: string // SA/BA/PM (Reviewer)
         position?: string
     } | null
     onSaved: () => void
@@ -34,13 +35,14 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
 
     // Form State
     const [assigneeId, setAssigneeId] = useState<string>("") // PG
-    const [reviewerId, setReviewerId] = useState<string>("") // SA
+    const [reviewerId, setReviewerId] = useState<string>("") // SA/BA/PM
     const [startDate, setStartDate] = useState<string>("")
     const [dueDate, setDueDate] = useState<string>("")
 
     // Helper to filter employees
     const pgs = employees.filter(e => e.position_code === 'PG').map(e => ({ value: e.id, label: e.name }))
-    const sas = employees.filter(e => e.position_code === 'SA' || e.position_code === 'BA').map(e => ({ value: e.id, label: e.name }))
+    // SA, BA, PM can be reviewers
+    const reviewers = employees.filter(e => e.position_code === 'SA' || e.position_code === 'BA' || e.position_code === 'PM').map(e => ({ value: e.id, label: e.name }))
 
     useEffect(() => {
         if (open) {
@@ -109,9 +111,11 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
                         Edit Planning: {task.projectCode}
                         {task.projectName && <span className="text-sm font-normal text-slate-500 ml-2">({task.projectName})</span>}
                     </DialogTitle>
-                    <DialogDescription>
-                        Modify assignment details, planning dates, and reviewers for this task.
-                    </DialogDescription>
+                    {task.customerName && (
+                        <DialogDescription className="text-blue-600 font-medium">
+                            ลูกค้า: {task.customerName}
+                        </DialogDescription>
+                    )}
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
@@ -147,13 +151,13 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
                     </div>
 
                     <div className="space-y-2">
-                        <Label>System Analyst (SA/Reviewer)</Label>
+                        <Label>Reviewer (SA/BA/PM)</Label>
                         <SmartCombobox
-                            options={sas}
+                            options={reviewers}
                             value={reviewerId}
                             onChange={setReviewerId}
-                            placeholder="Select SA/BA..."
-                            searchPlaceholder="Search SA..."
+                            placeholder="Select Reviewer..."
+                            searchPlaceholder="Search SA/BA/PM..."
                         />
                     </div>
 

@@ -226,12 +226,13 @@ export function ResourcePlanningView() {
 
     const handleTaskClick = (task: any) => {
         // Map incoming task to TaskEditModal format
-        // TaskEditModal expects: { id, title, projectCode, projectName, hours, start, end, employeeId, reviewerId }
+        // TaskEditModal expects: { id, title, projectCode, projectName, customerName, hours, start, end, employeeId, reviewerId }
         const mappedTask = {
             id: task.id,
             title: task.title,
             projectCode: task.project_code || task.projectCode,
             projectName: task.project_name || task.projectName,
+            customerName: task.customer_name || task.customerName,
             hours: task.estimated_hours || task.hours || 0,
             start: task.start_date || task.start || '',
             end: task.due_date || task.end || '',

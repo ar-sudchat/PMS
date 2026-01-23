@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle, Send } from "lucide-react"
-import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult, submitDeployBackupForApproval } from "@/lib/actions/deploy-backup-actions"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle } from "lucide-react"
+import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult, approveAllPendingDeployBackups } from "@/lib/actions/deploy-backup-actions"
 import { getActiveBackupSources } from "@/lib/actions/backup-source-actions"
 import { DeployBackupModal } from "@/components/kpi-record/DeployBackupModal"
 import { toast } from "sonner"
@@ -122,22 +122,22 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
         fetchData()
     }
 
-    const handleSubmitForApproval = async (record: DeployBackupRecord) => {
+    const handleApproveAllPending = async () => {
         try {
-            const result = await submitDeployBackupForApproval(
-                record.id,
-                `Backup - ${record.backup_source_code} - ${format(new Date(record.backup_date), 'd MMM yyyy', { locale: th })}`
-            )
+            const result = await approveAllPendingDeployBackups()
             if (result.success) {
-                toast.success('Submitted for approval')
+                toast.success(`Approved ${result.count || 0} pending records`)
                 fetchData()
             } else {
-                toast.error(result.error || 'Failed to submit')
+                toast.error(result.error || 'Failed to approve')
             }
         } catch (error) {
             toast.error('An error occurred')
         }
     }
+
+    // Count pending records
+    const pendingCount = data.filter(d => d.approval_status === 'PENDING').length
 
     const clearFilters = () => {
         setSearchQuery('')
@@ -285,16 +285,6 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
                 const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
-                        {/* Submit for approval button - only for DRAFT status */}
-                        {status === 'DRAFT' && (
-                            <button
-                                onClick={() => handleSubmitForApproval(record)}
-                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
-                                title="Submit for Approval"
-                            >
-                                <Send size={16} />
-                            </button>
-                        )}
                         <button
                             onClick={() => handleEdit(record)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -328,13 +318,24 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
                     </div>
                 )}
                 {embedded && <div className="text-sm text-slate-500">Target: 100% Pass - Maintain 5 versions</div>}
-                <button
-                    onClick={handleCreate}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
-                >
-                    <Plus size={16} />
-                    New Backup
-                </button>
+                <div className="flex items-center gap-2">
+                    {pendingCount > 0 && (
+                        <button
+                            onClick={handleApproveAllPending}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20 font-medium text-sm"
+                        >
+                            <CheckCircle2 size={16} />
+                            Approve All ({pendingCount})
+                        </button>
+                    )}
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
+                    >
+                        <Plus size={16} />
+                        New Backup
+                    </button>
+                </div>
             </div>
 
             {/* KPI Summary */}

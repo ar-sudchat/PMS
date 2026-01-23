@@ -4,10 +4,31 @@ import { useState, useEffect, useMemo } from 'react'
 import { getUnassignedTasks, UnassignedTask, autoAssignSABATasks, autoAssignAllReadyTasks } from '@/lib/actions/workload-actions'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { RefreshCw, Package, ChevronDown, AlertCircle, Clock, CheckCircle2, Calendar, Zap, Users } from 'lucide-react'
+import { RefreshCw, Package, ChevronDown, AlertCircle, Clock, CheckCircle2, Calendar, Zap, Users, GripVertical } from 'lucide-react'
+import { useDraggable } from '@dnd-kit/core'
 
-// Task Card for Demand Panel (Click to Edit)
+// Task Card for Demand Panel (Click to Edit + Draggable)
 function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (task: UnassignedTask) => void }) {
+    const { attributes, listeners, setNodeRef, isDragging, transform } = useDraggable({
+        id: `demand-task-${task.id}`,
+        data: {
+            id: task.id,
+            title: task.title,
+            projectCode: task.project_code,
+            projectName: task.project_name,
+            customerName: task.customer_name,
+            hours: task.estimated_hours,
+            priority: task.priority,
+            status: task.status,
+            isLocked: false,
+            employeeId: task.assignee_id || '',
+            date: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : '',
+            reviewerId: task.reviewer_id,
+            reviewerName: task.reviewer_name,
+            fromDemandPanel: true
+        }
+    })
+
     const priorityColors: Record<string, string> = {
         critical: 'border-l-red-500 bg-red-50/50',
         high: 'border-l-amber-500 bg-amber-50/50',
@@ -15,22 +36,34 @@ function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (ta
         low: 'border-l-slate-400 bg-slate-50/50'
     }
 
-    const handleClick = () => {
-        console.log('Card clicked!', task.title, 'onClick exists:', !!onClick)
-        if (onClick) {
-            onClick(task)
-        }
-    }
+    const style = transform ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        zIndex: 1000,
+    } : undefined
 
     return (
         <div
-            onClick={handleClick}
+            ref={setNodeRef}
+            style={style}
+            {...listeners}
+            {...attributes}
+            onClick={() => {
+                // Don't trigger click when dragging
+                if (!isDragging && onClick) {
+                    onClick(task)
+                }
+            }}
             className={cn(
-                "p-2.5 rounded-md border border-l-4 bg-white shadow-sm select-none hover:shadow-md text-xs transition-all relative group",
+                "p-2.5 pl-6 rounded-md border border-l-4 bg-white shadow-sm select-none text-xs transition-all relative group touch-none",
                 priorityColors[task.priority] || priorityColors.medium,
-                onClick && "cursor-pointer hover:ring-2 hover:ring-blue-500 hover:ring-offset-1 hover:scale-[1.02]"
+                "cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400",
+                isDragging && "opacity-70 ring-2 ring-blue-500 shadow-xl z-50 scale-105"
             )}
         >
+            {/* Drag Handle Icon */}
+            <div className="absolute left-1 top-0 bottom-0 flex items-center justify-center pointer-events-none">
+                <GripVertical className="w-3.5 h-3.5 text-slate-300" />
+            </div>
 
             {/* Row 1: Project Code + Project Name + Status */}
             <div className="flex items-center justify-between gap-1 mb-1.5">

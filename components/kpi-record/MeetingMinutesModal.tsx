@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Save, Send, Check, XCircle } from 'lucide-react'
-import { MeetingMinutesRecord, createMeetingMinutesRecord, updateMeetingMinutesRecord, submitMeetingMinutesForApproval, updateMeetingMinutesApprovalStatus } from '@/lib/actions/meeting-minutes-actions'
+import { X, Save, Check, XCircle } from 'lucide-react'
+import { MeetingMinutesRecord, createMeetingMinutesRecord, updateMeetingMinutesRecord, updateMeetingMinutesApprovalStatus } from '@/lib/actions/meeting-minutes-actions'
 import { MEETING_TYPES } from '@/lib/constants/kpi-record'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -164,7 +164,7 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
         return Object.keys(newErrors).length === 0
     }
 
-    const handleSubmit = async (e?: React.FormEvent | React.MouseEvent, submitForApproval: boolean = false) => {
+    const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
         e?.preventDefault()
         console.log('handleSubmit called', formData)
         console.log('organized_by value:', formData.organized_by, 'length:', formData.organized_by?.length)
@@ -206,23 +206,7 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
             }
 
             if (result.success) {
-                // Get the record ID - for new records it's in result.id, for updates use record.id
-                const recordId = (result as any).id || record?.id
-
-                // If submitForApproval is true, submit the record for approval
-                if (submitForApproval && recordId) {
-                    const approvalResult = await submitMeetingMinutesForApproval(
-                        recordId,
-                        `MoM - ${formData.meeting_title}`
-                    )
-                    if (approvalResult.success) {
-                        toast.success('Record created and submitted for approval')
-                    } else {
-                        toast.warning(`Record saved but approval submission failed: ${approvalResult.error}`)
-                    }
-                } else {
-                    toast.success(record ? 'Record updated successfully' : 'Record created successfully')
-                }
+                toast.success(record ? 'Record updated successfully' : 'Record created successfully')
                 onClose()
             } else {
                 toast.error(result.error || 'Operation failed')
@@ -549,39 +533,20 @@ export function MeetingMinutesModal({ open, onClose, record, currentUserId }: Me
                             </>
                         )}
 
-                        {/* Save/Submit buttons - Show when not pending approval OR user is not approver */}
+                        {/* Save button - Show when not pending approval OR user is not approver */}
                         {(!isPending || !approvalInfo.canApprove) && (
-                            <>
-                                <button
-                                    onClick={(e) => handleSubmit(e, false)}
-                                    disabled={isLoading}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-                                >
-                                    {isLoading ? (
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    ) : (
-                                        <Save size={16} />
-                                    )}
-                                    {record ? 'Update' : 'Save Draft'}
-                                </button>
-                                {/* Show Submit button for new records OR existing DRAFT records */}
-                                {/* Only enable when MoM Sent At and Sent By are filled */}
-                                {(!record || approvalStatus === 'DRAFT') && (
-                                    <button
-                                        onClick={(e) => handleSubmit(e, true)}
-                                        disabled={isLoading || !formData.mom_sent_at || !formData.sent_by}
-                                        title={!formData.mom_sent_at || !formData.sent_by ? 'กรุณากรอก MoM Sent At และ Sent By ก่อนส่งอนุมัติ' : ''}
-                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm shadow-green-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-                                    >
-                                        {isLoading ? (
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        ) : (
-                                            <Send size={16} />
-                                        )}
-                                        {record ? 'Submit for Approval' : 'Save & Submit'}
-                                    </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={isLoading}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-600/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <Save size={16} />
                                 )}
-                            </>
+                                {record ? 'Update' : 'Save'}
+                            </button>
                         )}
                     </div>
                 </div>

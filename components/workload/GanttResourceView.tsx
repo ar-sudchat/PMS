@@ -52,6 +52,7 @@ interface TaskBlock {
     reviewerId?: string
     reviewerName?: string
     projectName?: string
+    customerName?: string
 }
 
 type PositionFilter = 'all' | 'SA' | 'BA' | 'PG'
@@ -256,6 +257,7 @@ export function GanttResourceView() {
         title: string
         projectCode: string
         projectName?: string
+        customerName?: string
         hours: number
         start: string
         end: string
@@ -340,7 +342,8 @@ export function GanttResourceView() {
             date: dateStr,
             reviewerId: t.reviewer_id,
             reviewerName: t.reviewer_name,
-            projectName: t.project_name
+            projectName: t.project_name,
+            customerName: t.customer_name
         }))
     }
 
@@ -392,12 +395,13 @@ export function GanttResourceView() {
                 id: task.id,
                 title: task.title,
                 projectCode: task.projectCode,
+                projectName: task.projectName,
+                customerName: task.customerName,
                 hours: task.hours,
                 start: task.date,
                 end: task.date,
                 employeeId: task.employeeId,
-                reviewerId: task.reviewerId,
-                projectName: task.projectName
+                reviewerId: task.reviewerId
             }
         } else {
             // UnassignedTask from Resource Demand
@@ -406,6 +410,7 @@ export function GanttResourceView() {
                 title: task.title,
                 projectCode: task.project_code || task.projectCode,
                 projectName: task.project_name || task.projectName,
+                customerName: task.customer_name || task.customerName,
                 hours: task.estimated_hours || task.hours || 0,
                 start: task.start_date ? new Date(task.start_date).toISOString().split('T')[0] : (task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : (task.start || '')),
                 end: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : (task.end || ''),
@@ -453,17 +458,18 @@ export function GanttResourceView() {
 
         if (!over) return
 
-        const activeTask = active.data.current as TaskBlock
+        const activeTask = active.data.current as TaskBlock & { fromDemandPanel?: boolean }
         const overData = over.data.current as { date: string, employeeId: string }
 
         if (!activeTask || !overData) return
 
-        // Check if changed
-        if (activeTask.employeeId === overData.employeeId && activeTask.date === overData.date) {
+        // Check if changed (skip check for tasks from demand panel - always allow assignment)
+        const isFromDemandPanel = activeTask.fromDemandPanel
+        if (!isFromDemandPanel && activeTask.employeeId === overData.employeeId && activeTask.date === overData.date) {
             return
         }
 
-        const toastId = toast.loading("Saving changes...")
+        const toastId = toast.loading(isFromDemandPanel ? "กำลังจ่ายงาน..." : "Saving changes...")
 
         try {
             // Optimistic update could go here, but for now we wait for server
@@ -471,17 +477,17 @@ export function GanttResourceView() {
                 activeTask.id,
                 overData.employeeId,
                 overData.date, // This becomes the new Due Date (and Start Date due to sync logic)
-                "Drag and Drop",
-                "Moved via Gantt"
+                isFromDemandPanel ? "Assigned from Demand Panel" : "Drag and Drop",
+                isFromDemandPanel ? "Assigned via Drag & Drop" : "Moved via Gantt"
             )
 
             if (result.success) {
-                toast.success("Task moved successfully", { id: toastId })
+                toast.success(isFromDemandPanel ? "จ่ายงานสำเร็จ" : "Task moved successfully", { id: toastId })
                 if (result.warning) toast.warning(result.warning)
                 loadData(true) // Silent reload
                 setDemandRefreshKey(k => k + 1)
             } else {
-                toast.error(result.error || "Failed to move task", { id: toastId })
+                toast.error(result.error || "Failed to assign task", { id: toastId })
             }
         } catch (error) {
             toast.error("An error occurred", { id: toastId })
@@ -494,11 +500,6 @@ export function GanttResourceView() {
 
     // Right Panel - Gantt Chart
     const rightPanel = (
-        <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-        >
             <div className={cn(
                 "h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden",
                 isFullscreen && "fixed inset-0 z-50 rounded-none w-screen h-screen"
@@ -735,22 +736,15 @@ export function GanttResourceView() {
                     </div>
                 )}
 
-                <DragOverlay>
-                    {activeDragTask ? (
-                        <div style={{ transform: 'none' }}>
-                            <TaskBar
-                                task={activeDragTask}
-                            // No interactivity while dragging overlay
-                            />
-                        </div>
-                    ) : null}
-                </DragOverlay>
             </div>
-        </DndContext>
     )
 
     return (
-        <>
+        <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+        >
             <ResizablePanelLayout
                 leftPanel={leftPanel}
                 rightPanel={rightPanel}
@@ -765,6 +759,25 @@ export function GanttResourceView() {
                 task={editingTask}
                 onSaved={handleTaskSaved}
             />
-        </>
+
+            <DragOverlay dropAnimation={null}>
+                {activeDragTask ? (
+                    <div
+                        className="bg-white rounded-lg border-2 border-blue-500 shadow-2xl px-3 py-2 min-w-[180px] max-w-[250px]"
+                        style={{ transform: 'rotate(2deg)' }}
+                    >
+                        <div className="font-bold text-blue-600 text-xs truncate">
+                            {activeDragTask.projectCode}
+                        </div>
+                        <div className="text-slate-700 text-[11px] truncate mt-0.5">
+                            {activeDragTask.title}
+                        </div>
+                        <div className="text-slate-500 text-[10px] mt-1">
+                            {activeDragTask.hours}h
+                        </div>
+                    </div>
+                ) : null}
+            </DragOverlay>
+        </DndContext>
     )
 }

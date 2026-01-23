@@ -141,12 +141,12 @@ export function WeeklyWorkloadTable() {
 
         if (tasks.length === 0) {
             return (
-                <div className="relative min-h-[60px] pt-5">
+                <div className="relative min-h-[40px] pt-4">
                     {/* Indicator - Top Left */}
                     {remainingHours > 0 && (
-                        <div className="absolute top-1 left-1">
+                        <div className="absolute top-0.5 left-0.5">
                             <span
-                                className="text-[9px] px-1 py-0.5 bg-amber-50 text-amber-600 rounded font-medium border border-amber-200"
+                                className="text-[8px] px-0.5 py-0 bg-amber-50 text-amber-600 rounded font-medium border border-amber-200"
                                 title={`เหลือ ${remainingHours.toFixed(1)} ชั่วโมง`}
                             >
                                 -{remainingHours.toFixed(1)}h
@@ -154,7 +154,7 @@ export function WeeklyWorkloadTable() {
                         </div>
                     )}
                     <div className="flex items-center justify-center h-full">
-                        <span className="text-slate-300">-</span>
+                        <span className="text-slate-300 text-xs">-</span>
                     </div>
                 </div>
             )
@@ -170,28 +170,19 @@ export function WeeklyWorkloadTable() {
         })
 
         return (
-            <div className="relative space-y-1.5 pt-5">
+            <div className="relative space-y-1 pt-4">
                 {/* Indicator - Top Left */}
-                <div className="absolute top-1 left-1 z-10 flex gap-1">
-                    {/* SA Color Dots */}
-                    {tasks.map((t, i) => {
-                        if (!t.reviewer_id) return null
-                        // Deduplicate: only show dot for unique reviewers? Or for each task?
-                        // Let's show small dot for each task to indicate density?
-                        // Or better: Use the border color of the task block below.
-                        return null
-                    })}
-
+                <div className="absolute top-0.5 left-0.5 z-10 flex gap-0.5">
                     {isFull ? (
                         <div
-                            className="bg-emerald-100 border border-emerald-300 rounded-full p-0.5"
+                            className="bg-emerald-100 border border-emerald-300 rounded-full p-0"
                             title={`เต็มแล้ว (${totalHours.toFixed(1)}h)`}
                         >
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                         </div>
                     ) : remainingHours > 0 ? (
                         <span
-                            className="text-[9px] px-1 py-0.5 bg-amber-50 text-amber-600 rounded font-medium border border-amber-200"
+                            className="text-[8px] px-0.5 py-0 bg-amber-50 text-amber-600 rounded font-medium border border-amber-200"
                             title={`เหลือ ${remainingHours.toFixed(1)} ชั่วโมง`}
                         >
                             -{remainingHours.toFixed(1)}h
@@ -203,27 +194,27 @@ export function WeeklyWorkloadTable() {
                 {Object.entries(byProject).map(([projectCode, { tasks: projectTasks, projectName }]) => {
                     const projectHours = projectTasks.reduce((sum, t) => sum + t.estimated_hours, 0)
                     return (
-                        <div key={projectCode} className="text-xs border-l-2 border-slate-300 pl-2">
-                            <div className="flex items-start justify-between gap-1">
-                                <div className="min-w-0">
-                                    <div className="font-medium text-slate-700" title={projectCode}>
+                        <div key={projectCode} className="text-[10px] border-l-2 border-slate-300 pl-1.5">
+                            <div className="flex items-start justify-between gap-0.5">
+                                <div className="min-w-0 flex-1">
+                                    <div className="font-semibold text-slate-700 leading-tight" title={projectCode}>
                                         {projectCode}
                                     </div>
-                                    <div className="text-[10px] text-slate-500 truncate max-w-[100px]" title={projectName}>
+                                    <div className="text-[9px] text-slate-500 truncate max-w-[80px] leading-tight" title={projectName}>
                                         {projectName}
                                     </div>
-                                    <div className="flex flex-wrap gap-1 mt-1">
+                                    <div className="flex flex-wrap gap-0.5 mt-0.5">
                                         {projectTasks.map((t, idx) => (
                                             <div
                                                 key={idx}
-                                                className="w-2 h-2 rounded-full"
+                                                className="w-1.5 h-1.5 rounded-full"
                                                 style={{ backgroundColor: t.reviewer_id ? stringToColor(t.reviewer_id) : '#e2e8f0' }}
                                                 title={t.task_title + (t.reviewer_id ? ' (SA Assigned)' : '')}
                                             />
                                         ))}
                                     </div>
                                 </div>
-                                <span className="text-slate-700 shrink-0 font-bold text-base">
+                                <span className="text-slate-700 shrink-0 font-bold text-xs">
                                     {projectHours}h
                                 </span>
                             </div>
@@ -235,9 +226,9 @@ export function WeeklyWorkloadTable() {
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-3 h-full flex flex-col">
             {/* Header Controls */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-lg border shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3 rounded-lg border shadow-sm shrink-0">
                 {/* Week Navigation */}
                 <div className="flex items-center gap-3">
                     <button
@@ -324,23 +315,23 @@ export function WeeklyWorkloadTable() {
 
             {/* Workload Table */}
             {isLoading ? (
-                <div className="flex items-center justify-center py-20 bg-white rounded-lg border">
-                    <RefreshCw className="w-8 h-8 text-slate-400 animate-spin" />
+                <div className="flex items-center justify-center py-12 bg-white rounded-lg border flex-1">
+                    <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
                 </div>
             ) : !workloadData || workloadData.employees.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-lg border text-slate-400">
+                <div className="text-center py-12 bg-white rounded-lg border text-slate-400 flex-1">
                     ไม่พบข้อมูล Workload
                 </div>
             ) : (
-                <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                <div className="bg-white rounded-lg border shadow-sm overflow-hidden flex-1 flex flex-col min-h-0">
+                    <div className="overflow-auto flex-1">
+                        <table className="w-full text-xs">
                             <thead>
                                 <tr className="bg-slate-50 border-b">
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[50px] border-r">
+                                    <th className="text-left px-2 py-2 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[40px] border-r text-xs">
                                         No
                                     </th>
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700 sticky left-[50px] bg-slate-50 min-w-[180px] border-r">
+                                    <th className="text-left px-2 py-2 font-semibold text-slate-700 sticky left-[40px] bg-slate-50 min-w-[140px] border-r text-xs">
                                         Name
                                     </th>
                                     {workloadData.date_headers.map((header, idx) => {
@@ -349,12 +340,12 @@ export function WeeklyWorkloadTable() {
                                             <th
                                                 key={header.date}
                                                 className={cn(
-                                                    "text-center px-3 py-3 font-semibold text-slate-700 min-w-[120px]",
+                                                    "text-center px-1.5 py-2 font-semibold text-slate-700 min-w-[100px]",
                                                     idx < workloadData.date_headers.length - 1 && "border-r"
                                                 )}
                                             >
-                                                <div>{dateNum}</div>
-                                                <div className="text-xs font-normal text-slate-500">
+                                                <div className="text-sm">{dateNum}</div>
+                                                <div className="text-[10px] font-normal text-slate-500">
                                                     {header.day_name}
                                                 </div>
                                             </th>
@@ -375,18 +366,18 @@ export function WeeklyWorkloadTable() {
                                                 empIdx === emps.length - 1 && "border-b-2"
                                             )}
                                         >
-                                            <td className="px-4 py-3 text-center text-slate-500 sticky left-0 bg-white border-r">
+                                            <td className="px-2 py-1 text-center text-slate-500 sticky left-0 bg-white border-r text-xs">
                                                 {empIdx + 1}
                                             </td>
-                                            <td className="px-4 py-3 sticky left-[50px] bg-white border-r">
-                                                <div className="flex items-center gap-2">
+                                            <td className="px-2 py-1 sticky left-[40px] bg-white border-r">
+                                                <div className="flex items-center gap-1.5">
                                                     <span className={cn(
-                                                        "px-1.5 py-0.5 text-[10px] font-medium rounded border shrink-0",
+                                                        "px-1 py-0 text-[9px] font-medium rounded border shrink-0",
                                                         getPositionBadgeColor(emp.position_code)
                                                     )}>
                                                         {emp.position_code}
                                                     </span>
-                                                    <span className="font-medium text-slate-700 truncate">
+                                                    <span className="font-medium text-slate-700 truncate text-xs">
                                                         {emp.employee_name}
                                                     </span>
                                                 </div>
@@ -395,7 +386,7 @@ export function WeeklyWorkloadTable() {
                                                 <td
                                                     key={day.date}
                                                     className={cn(
-                                                        "px-3 py-2 align-top",
+                                                        "px-1.5 py-1 align-top",
                                                         dayIdx < emp.days.length - 1 && "border-r",
                                                         // Yellow background if no tasks
                                                         day.tasks.length === 0 && "bg-yellow-50/50"
@@ -412,7 +403,6 @@ export function WeeklyWorkloadTable() {
                     </div>
                 </div>
             )}
-
         </div>
     )
 }
