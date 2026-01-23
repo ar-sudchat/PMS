@@ -95,8 +95,52 @@ export async function createStandupGroup(name: string) {
 }
 
 export async function joinGroup(inviteCode: string) {
-    // Implementing a simple join by ID for now, unrelated to invite code logic which needs more design
-    return { success: false, error: 'Not implemented' }
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: 'Unauthorized' }
+
+    // Simple logic: Invite Code = Group ID
+    const groupId = parseInt(inviteCode)
+    if (isNaN(groupId)) {
+        return { success: false, error: 'Invalid invite code (must be numeric Group ID)' }
+    }
+
+    try {
+        const pool = await getConnection()
+
+        // 1. Check if group exists
+        const groupCheck = await pool.request()
+            .input('groupId', sql.Int, groupId)
+            .query('SELECT id, name FROM pms.standup_groups WHERE id = @groupId')
+
+        if (groupCheck.recordset.length === 0) {
+            return { success: false, error: 'Group not found' }
+        }
+
+        // 2. Check if already member
+        const memberCheck = await pool.request()
+            .input('groupId', sql.Int, groupId)
+            .input('userId', sql.UniqueIdentifier, user.id)
+            .query('SELECT id FROM pms.standup_group_members WHERE group_id = @groupId AND user_id = @userId')
+
+        if (memberCheck.recordset.length > 0) {
+            return { success: false, error: 'You are already a member of this group' }
+        }
+
+        // 3. Add Member
+        await pool.request()
+            .input('groupId', sql.Int, groupId)
+            .input('userId', sql.UniqueIdentifier, user.id)
+            .query(`
+                INSERT INTO pms.standup_group_members (group_id, user_id)
+                VALUES (@groupId, @userId)
+            `)
+
+        revalidatePath('/standup')
+        return { success: true, data: groupId }
+    } catch (error) {
+        console.error('Error joining group:', error)
+        return { success: false, error: 'Failed to join group' }
+    }
 }
 
 // --- Daily Standup Operations ---

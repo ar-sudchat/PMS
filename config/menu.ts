@@ -193,6 +193,8 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'deploy-success', label: 'Deploy Success', labelTh: 'ผลการ Deploy', path: '/kpi-record/deploy-success', icon: Rocket },
           { id: 'deploy-backup', label: 'Deploy Backup', labelTh: 'Backup ก่อน Deploy', path: '/kpi-record/deploy-backup', icon: HardDrive },
           { id: 'meeting-minutes', label: 'Meeting Minutes', labelTh: 'MoM Tracking', path: '/kpi-record/meeting-minutes', icon: FileCheck },
+          { id: 'contact-customer', label: 'Contact Customer', labelTh: 'ติดต่อลูกค้า (Presale)', path: '/kpi-record/contact-customer', icon: Users },
+          { id: 'manday-assessment', label: 'Manday Assessment', labelTh: 'ประเมิน Manday', path: '/kpi-record/manday-assessment', icon: Calculator },
         ]
       },
       {

@@ -3,6 +3,7 @@
 import sql from 'mssql'
 import { getConnection } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { getPresaleKPIStats, getCustomerContactRecords, getMandayAssessmentRecords } from '@/lib/actions/presale-kpi-actions'
 
 // ============================================
 // Department KPI Definitions
@@ -18,12 +19,7 @@ const ALL_DEPARTMENT_KPIS = [
   { kpi_name: 'Pre-deploy Backup', category: 'Availability', target: '100%', target_value: 100, affected_positions: 'PG', higherIsBetter: true }
 ]
 
-// All 3 Personal KPIs with their definitions
-const ALL_PERSONAL_KPIS = [
-  { kpi_name: 'Issue Clearing', target: '>= 85%', target_value: 85, affected_positions: 'PG,SA', higherIsBetter: true },
-  { kpi_name: 'On-time Meeting Minutes', target: '<= 3 ครั้ง', target_value: 3, affected_positions: 'PM,SA', higherIsBetter: false },
-  { kpi_name: 'Required Docs On-time', target: '>= 95%', target_value: 95, affected_positions: 'SA', higherIsBetter: true }
-]
+
 
 // ============================================
 // Department KPI Actions
@@ -175,7 +171,34 @@ export async function getPersonalKPISummary(
         ${whereClause}
       `)
 
-    return result.recordset
+    const summaryData = result.recordset
+
+    // --- Inject Presale KPIs ---
+    try {
+      const presaleStats = await getPresaleKPIStats(employeeId, year, period, periodValue)
+
+      // 1. Contact Customer (PM)
+      summaryData.push({
+        kpi_name: 'Contact Customer',
+        actual_value: presaleStats.customer_contact.actual_value,
+        target_value: 85,
+        is_pass: presaleStats.customer_contact.is_pass ? 1 : 0,
+        affected_positions: 'PM'
+      })
+
+      // 2. Manday Assessment (SA, PM)
+      summaryData.push({
+        kpi_name: 'Manday Assessment',
+        actual_value: presaleStats.manday_assessment.actual_value,
+        target_value: 85,
+        is_pass: presaleStats.manday_assessment.is_pass ? 1 : 0,
+        affected_positions: 'SA,PM'
+      })
+    } catch (err) {
+      console.error('Error injecting presale kpis:', err)
+    }
+
+    return summaryData
   } catch (error) {
     console.error('getPersonalKPISummary error:', error)
     return []
@@ -321,6 +344,15 @@ export async function getPersonalKPITrend(employeeId: string, year: number) {
   }
 }
 
+// All 5 Personal KPIs with their definitions
+const ALL_PERSONAL_KPIS = [
+  { kpi_name: 'Issue Clearing', target: '>= 85%', target_value: 85, affected_positions: 'PG,SA', higherIsBetter: true },
+  { kpi_name: 'On-time Meeting Minutes', target: '<= 3 ครั้ง', target_value: 3, affected_positions: 'PM,SA', higherIsBetter: false },
+  { kpi_name: 'Required Docs On-time', target: '>= 95%', target_value: 95, affected_positions: 'SA', higherIsBetter: true },
+  { kpi_name: 'Contact Customer', target: '>= 85%', target_value: 85, affected_positions: 'PM', higherIsBetter: true },
+  { kpi_name: 'Manday Assessment', target: '>= 85%', target_value: 85, affected_positions: 'SA,PM', higherIsBetter: true }
+]
+
 // ============================================
 // Employee Position Mapping
 // ============================================
@@ -338,12 +370,12 @@ export async function getKPIsByPosition(position: string): Promise<string[]> {
 
   // Personal KPIs ตาม Spec
   const personalKPIs: Record<string, string[]> = {
-    // PM: On-time Meeting Minutes(5) = 5, รวม PM = 60
-    'PM': ['On-time Meeting Minutes'],
-    // PG: Issue Clearing(15) = 15, รวม PG = 60
+    // PM: On-time Meeting Minutes(5) + Contact Customer + Manday Assessment
+    'PM': ['On-time Meeting Minutes', 'Contact Customer', 'Manday Assessment'],
+    // PG: Issue Clearing(15)
     'PG': ['Issue Clearing'],
-    // SA: On-time Meeting Minutes(5) + Required Docs On-time(5) + Issue Clearing(5) = 15, รวม SA = 60
-    'SA': ['On-time Meeting Minutes', 'Required Docs On-time', 'Issue Clearing']
+    // SA: On-time Meeting Minutes(5) + Required Docs On-time(5) + Issue Clearing(5) + Manday Assessment
+    'SA': ['On-time Meeting Minutes', 'Required Docs On-time', 'Issue Clearing', 'Manday Assessment']
   }
 
   return [
@@ -796,16 +828,16 @@ export async function getKPIDetail(
     // Determine target value
     const targetValue = kpiName === 'On-time Meeting Minutes' ? 3 :
       kpiName === 'Defect Ratio' ? 15 :
-      kpiName === 'Post Go-live Rework' ? 8 :
-      kpiName === 'Man-day Control' ? 85 :
-      kpiName === 'Pre-deploy Backup' ? 100 :
-      kpiName === 'Deploy Success Rate' ? 95 : 80
+        kpiName === 'Post Go-live Rework' ? 8 :
+          kpiName === 'Man-day Control' ? 85 :
+            kpiName === 'Pre-deploy Backup' ? 100 :
+              kpiName === 'Deploy Success Rate' ? 95 : 80
 
     // Determine pass/fail
     const isPass = kpiName === 'On-time Meeting Minutes' ? actualValue <= 3 :
       kpiName === 'Defect Ratio' ? actualValue <= 15 :
-      kpiName === 'Post Go-live Rework' ? actualValue <= 8 :
-      actualValue >= targetValue
+        kpiName === 'Post Go-live Rework' ? actualValue <= 8 :
+          actualValue >= targetValue
 
     return {
       kpiName,
