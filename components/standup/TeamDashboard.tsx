@@ -23,6 +23,7 @@ import { TimesheetLogSummary } from "@/components/timesheet/TimesheetLogSummary"
 export function TeamDashboard({ groupId, date }: { groupId: number, date?: string }) {
     const [teamData, setTeamData] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+    const [groupName, setGroupName] = useState<string>('')
 
     // Manage Members State
     const [manageOpen, setManageOpen] = useState(false)
@@ -39,12 +40,15 @@ export function TeamDashboard({ groupId, date }: { groupId: number, date?: strin
     // MS Teams State
     const [sending, setSending] = useState(false)
 
-    // Fetch Team Data
+    // Fetch Team Data and Group Name
     const fetchTeamData = async () => {
         setLoading(true)
         const result = await getTeamStandupStatus(groupId, date)
         if (result.success) {
             setTeamData(result.data || [])
+            if (result.groupName) {
+                setGroupName(result.groupName)
+            }
         }
         setLoading(false)
     }
@@ -311,7 +315,9 @@ export function TeamDashboard({ groupId, date }: { groupId: number, date?: strin
             <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
                 <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>AI Team Summary</DialogTitle>
+                        <DialogTitle>
+                            AI Team Summary{groupName && <span className="text-sm font-normal text-slate-500 ml-2">({groupName})</span>}
+                        </DialogTitle>
                     </DialogHeader>
                     <div className="prose prose-sm max-w-none dark:prose-invert">
                         <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{summaryText}</div>
@@ -329,6 +335,9 @@ export function TeamDashboard({ groupId, date }: { groupId: number, date?: strin
             {/* Log Summary Dialog */}
             <Dialog open={logSummaryOpen} onOpenChange={setLogSummaryOpen}>
                 <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Timesheet Log Summary</DialogTitle>
+                    </DialogHeader>
                     <TimesheetLogSummary />
                 </DialogContent>
             </Dialog>

@@ -713,9 +713,11 @@ export interface UnassignedTask {
     story_code: string
     story_title: string
     milestone_code: string | null
+    created_by: string | null
     created_by_name: string | null
     created_at: string
     assignment_status: 'requested' | 'assigned'
+    start_date: string | null
     due_date: string | null
     assignee_id: string | null
     assignee_name: string | null
@@ -766,9 +768,11 @@ export async function getUnassignedTasks(
                 s.story_code,
                 s.title as story_title,
                 mc.code as milestone_code,
+                t.created_by,
                 ISNULL(NULLIF(CONCAT(creator.first_name_th, ' ', creator.last_name_th), ' '), CONCAT(creator.first_name, ' ', creator.last_name)) as created_by_name,
                 t.created_at,
                 CASE WHEN t.assignee_id IS NULL THEN 'requested' ELSE 'assigned' END as assignment_status,
+                t.start_date,
                 t.due_date,
                 t.assignee_id,
                 ISNULL(NULLIF(CONCAT(assignee.first_name_th, ' ', assignee.last_name_th), ' '), CONCAT(assignee.first_name, ' ', assignee.last_name)) as assignee_name,

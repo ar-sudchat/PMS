@@ -138,10 +138,13 @@ export function GanttResourceView() {
         id: string
         title: string
         projectCode: string
+        projectName?: string
         hours: number
         start: string
         end: string
         employeeId?: string
+        reviewerId?: string
+        position?: string
     } | null>(null)
 
     const containerRef = useRef<HTMLDivElement>(null)
@@ -257,10 +260,10 @@ export function GanttResourceView() {
                 projectCode: task.project_code || task.projectCode,
                 projectName: task.project_name || task.projectName,
                 hours: task.estimated_hours || task.hours || 0,
-                start: task.start_date || task.start || '',
-                end: task.due_date || task.end || '',
+                start: task.start_date ? new Date(task.start_date).toISOString().split('T')[0] : (task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : (task.start || '')),
+                end: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : (task.end || ''),
                 employeeId: task.assignee_id || task.employeeId,
-                reviewerId: task.reviewer_id || task.reviewerId,
+                reviewerId: task.reviewer_id || task.created_by || task.reviewerId,
                 position: task.position
             }
         }

@@ -50,8 +50,7 @@ export function TaskEditModal({ open, onOpenChange, task, onSaved }: TaskEditMod
                 setDueDate(task.end)
                 // We initially set assignee from the task prop (which usually comes from the row it's in)
                 setAssigneeId(task.employeeId || "")
-                // Reviewer likely not in task prop from Gantt, would need fetch or separate loading
-                // For simplified version, we leave empty or if we had it.
+                setReviewerId(task.reviewerId || "")
             }
         }
     }, [open, task])

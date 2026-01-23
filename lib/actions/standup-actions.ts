@@ -153,12 +153,13 @@ export async function sendSummaryToMSTeams(groupId: number, summaryMarkdown: str
     try {
         const pool = await getConnection()
 
-        // 1. Get Webhook URL
+        // 1. Get Webhook URL and Group Name
         const groupResult = await pool.request()
             .input('id', sql.Int, groupId)
-            .query('SELECT webhook_url FROM pms.standup_groups WHERE id = @id')
+            .query('SELECT webhook_url, name FROM pms.standup_groups WHERE id = @id')
 
         const webhookUrl = groupResult.recordset[0]?.webhook_url
+        const groupName = groupResult.recordset[0]?.name || 'Team'
 
         if (!webhookUrl) {
             return { success: false, error: 'Webhook URL not configured for this group' }
@@ -179,7 +180,7 @@ export async function sendSummaryToMSTeams(groupId: number, summaryMarkdown: str
                         "body": [
                             {
                                 "type": "TextBlock",
-                                "text": "Daily Stand-up Summary",
+                                "text": `Daily Stand-up Summary - ${groupName}`,
                                 "weight": "Bolder",
                                 "size": "Medium",
                                 "color": "Accent"
@@ -557,6 +558,13 @@ export async function getTeamStandupStatus(groupId: number, dateString?: string)
         const pool = await getConnection()
         const today = dateString || new Date().toISOString().split('T')[0]
 
+        // 0. Get group name
+        const groupResult = await pool.request()
+            .input('groupId', sql.Int, groupId)
+            .query('SELECT name FROM pms.standup_groups WHERE id = @groupId')
+
+        const groupName = groupResult.recordset[0]?.name || ''
+
         // 1. Get all members of the group
         const membersResult = await pool.request()
             .input('groupId', sql.Int, groupId)
@@ -653,7 +661,7 @@ export async function getTeamStandupStatus(groupId: number, dateString?: string)
             }
         })
 
-        return { success: true, data: teamStatus }
+        return { success: true, data: teamStatus, groupName }
 
     } catch (error) {
         console.error('getTeamStandupStatus error:', error)
@@ -740,8 +748,9 @@ export async function generateTeamSummaryAction(groupId: number, dateString?: st
 
     const data = res.data
     const date = dateString || new Date().toISOString().split('T')[0]
+    const groupName = res.groupName || 'Team'
 
-    let summary = `## Daily Stand-up Summary (${date})\n\n`
+    let summary = `## Daily Stand-up Summary - ${groupName} (${date})\n\n`
 
     // Overview
     const totalMembers = data.length
