@@ -28,10 +28,11 @@ import { reassignTask } from '@/lib/actions/workload-actions'
 // ============================================
 
 const HOUR_WIDTH = 60 // pixels per hour
-const ROW_HEIGHT = 70 // Increased for more task details
+const TASK_HEIGHT = 50 // Height per task row (increased 10%)
+const MIN_ROW_HEIGHT = 60 // Minimum row height when no tasks
 const HEADER_HEIGHT = 40 // Reduced since no hour labels
 const START_HOUR = 8 // Start at 8:00
-const EMPLOYEE_COL_WIDTH = 200 // Wider employee column
+const EMPLOYEE_COL_WIDTH = 135 // Increased 10%
 
 // ============================================
 // TYPES
@@ -73,7 +74,7 @@ function DraggableTask({ task, children }: { task: TaskBlock, children: React.Re
             ref={setNodeRef}
             {...listeners}
             {...attributes}
-            className={cn("touch-none", isDragging && "opacity-50")}
+            className={cn("touch-none w-full", isDragging && "opacity-50")}
             style={{ cursor: task.isLocked ? 'not-allowed' : 'grab' }}
         >
             {children}
@@ -130,8 +131,7 @@ function TaskBar({
         low: 'bg-slate-400 border-slate-500'
     }
 
-    const barWidth = Math.max(task.hours * HOUR_WIDTH - 4, 50) // Min 50px
-    const barHeight = ROW_HEIGHT - 10 // Leave some padding
+    const barHeight = TASK_HEIGHT - 6 // Leave some padding
 
     // Dynamic Color based on SA (Reviewer)
     const bgColor = task.reviewerId ? stringToColor(task.reviewerId) : null
@@ -156,21 +156,11 @@ function TaskBar({
             }}
             className={cn(
                 "rounded-md border flex flex-col justify-center px-2 py-1 text-xs font-medium shadow-sm transition-all group overflow-hidden relative cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-100",
-                !bgColor && (priorityColors[task.priority] || priorityColors.medium), // Fallback if we were using priority colors, but code below overrides it usually contextually? 
-                // Wait, previous code used priorityColors OR ... actually it put priorityColors in className which might clash. 
-                // The original code used priorityColors[task.priority]. Let's check original.
-                // Original: priorityColors[task.priority] || priorityColors.medium
-                // But wait, my previous read showed it using status colors in `baseClasses` logic? 
-                // Actually, looking at the file read: 
-                // line 141: priorityColors[task.priority] || priorityColors.medium
-                // So it was using priority colors (red/amber/blue) for background? 
-                // User asked for "Color by SA". 
-                // So if SA exists, use SA color. If not, use Priority color.
                 !bgColor && (priorityColors[task.priority] || priorityColors.medium),
                 task.isLocked && "opacity-60 cursor-not-allowed"
             )}
             style={{
-                width: barWidth,
+                width: '100%',
                 height: barHeight,
                 backgroundColor: bgColor || undefined,
                 borderColor: bgColor ? bgColor.replace('85%)', '75%)') : undefined,
@@ -183,7 +173,7 @@ function TaskBar({
                 <span className="font-bold text-[11px] truncate flex-1 mr-1" title={task.projectName}>
                     {task.projectCode} {task.projectName ? `- ${task.projectName}` : ''}
                 </span>
-                <span className="bg-white/20 px-1 rounded text-[10px] shrink-0">
+                <span className="bg-white/30 px-1.5 py-0.5 rounded text-xs font-bold shrink-0">
                     {task.hours}h
                 </span>
             </div>
@@ -347,6 +337,23 @@ export function GanttResourceView() {
         }))
     }
 
+    // Calculate max tasks in any single day for an employee (for dynamic row height)
+    const getMaxTasksForEmployee = (employee: EmployeeWorkload): number => {
+        let maxTasks = 0
+        dates.forEach(date => {
+            const dateStr = date.toISOString().split('T')[0]
+            const tasks = getTasksForEmployeeDate(employee, dateStr)
+            if (tasks.length > maxTasks) maxTasks = tasks.length
+        })
+        return maxTasks
+    }
+
+    // Calculate dynamic row height based on max tasks
+    const getEmployeeRowHeight = (employee: EmployeeWorkload): number => {
+        const maxTasks = getMaxTasksForEmployee(employee)
+        return Math.max(maxTasks * TASK_HEIGHT, MIN_ROW_HEIGHT)
+    }
+
     // Generate Legend Data
     const saLegend = useMemo(() => {
         const uniqueReviewers = new Map<string, string>()
@@ -436,7 +443,7 @@ export function GanttResourceView() {
     }, [config])
 
     // Calculate total width
-    const totalDayWidth = hours.length * HOUR_WIDTH
+    const totalDayWidth = Math.round(hours.length * HOUR_WIDTH * 0.5) // Reduced to 50%
 
     // Left Panel - Resource Demand
     const leftPanel = (
@@ -611,34 +618,29 @@ export function GanttResourceView() {
                             </div>
 
                             {/* Employee Rows */}
-                            {filteredEmployees.map(emp => (
+                            {filteredEmployees.map(emp => {
+                                const rowHeight = getEmployeeRowHeight(emp)
+                                return (
                                 <div key={emp.employee_id} className="flex border-b bg-white hover:bg-slate-50/30 transition-colors group/row">
                                     {/* Employee Info - Fixed */}
                                     <div
-                                        className="sticky left-0 z-10 bg-white border-r group-hover/row:bg-slate-50/30 flex items-center gap-3 px-3 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                                        style={{ width: EMPLOYEE_COL_WIDTH, height: ROW_HEIGHT }}
+                                        className="sticky left-0 z-10 bg-white border-r group-hover/row:bg-slate-50/30 flex items-center px-2 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                                        style={{ width: EMPLOYEE_COL_WIDTH, minHeight: rowHeight }}
                                     >
-                                        <div className={cn(
-                                            "w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm border-2 border-white",
-                                            emp.position_code === 'SA' ? 'bg-green-500' :
-                                                emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
-                                        )}>
-                                            {(emp.nickname || emp.employee_name || '?').charAt(0)}
-                                        </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="font-semibold text-sm text-slate-800 truncate">
                                                 {emp.nickname || emp.employee_name}
                                             </div>
                                             <div className="flex items-center gap-1.5 mt-0.5">
                                                 <span className={cn(
-                                                    "px-1.5 py-0 rounded text-[9px] font-bold text-white shadow-sm",
+                                                    "px-1.5 py-0 rounded text-[10px] font-bold text-white",
                                                     emp.position_code === 'SA' ? 'bg-green-500' :
                                                         emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
                                                 )}>
                                                     {emp.position_code}
                                                 </span>
                                                 <span className={cn(
-                                                    "text-[10px] font-medium px-1.5 py-0 rounded-full border",
+                                                    "text-[11px] font-medium px-1.5 rounded-full border",
                                                     emp.average_workload_percent > 100 ? "text-red-600 bg-red-50 border-red-100" :
                                                         emp.average_workload_percent > 80 ? "text-amber-600 bg-amber-50 border-amber-100" : "text-green-600 bg-green-50 border-green-100"
                                                 )}>
@@ -664,7 +666,7 @@ export function GanttResourceView() {
                                                         "relative border-r box-content transition-colors",
                                                         isToday ? "bg-blue-50/20" : ""
                                                     )}
-                                                    style={{ width: totalDayWidth, height: ROW_HEIGHT }}
+                                                    style={{ width: totalDayWidth, minHeight: rowHeight }}
                                                 >
                                                     {/* Hour reference lines */}
                                                     <div className="absolute inset-0 flex pointer-events-none z-[1]">
@@ -675,43 +677,35 @@ export function GanttResourceView() {
                                                                     "h-full border-r border-slate-100",
                                                                     idx === hours.length - 1 && "border-r-0"
                                                                 )}
-                                                                style={{ width: HOUR_WIDTH }}
+                                                                style={{ width: Math.round(HOUR_WIDTH * 0.5) }}
                                                             />
                                                         ))}
                                                     </div>
 
-                                                    {/* Task bars */}
-                                                    <div className="absolute inset-0 flex items-center px-1 z-10 pointer-events-none">
-                                                        {tasks.map((task, idx) => {
-                                                            // Calculate horizontal position - stack tasks horizontally
-                                                            let leftOffset = 0
-                                                            for (let i = 0; i < idx; i++) {
-                                                                leftOffset += tasks[i].hours * HOUR_WIDTH
-                                                            }
-
-                                                            return (
-                                                                <div
-                                                                    key={task.id}
-                                                                    className="absolute pointer-events-auto"
-                                                                    style={{ left: leftOffset }}
-                                                                >
-                                                                    <DraggableTask task={task}>
-                                                                        <TaskBar
-                                                                            task={task}
-                                                                            onUnassign={handleUnassignTask}
-                                                                            onClick={handleTaskClick}
-                                                                        />
-                                                                    </DraggableTask>
-                                                                </div>
-                                                            )
-                                                        })}
+                                                    {/* Task bars - stacked vertically, full width */}
+                                                    <div className="absolute inset-0 flex flex-col py-1 px-2 z-10 pointer-events-none">
+                                                        {tasks.map((task, idx) => (
+                                                            <div
+                                                                key={task.id}
+                                                                className="pointer-events-auto w-full"
+                                                                style={{ marginBottom: idx < tasks.length - 1 ? 2 : 0 }}
+                                                            >
+                                                                <DraggableTask task={task}>
+                                                                    <TaskBar
+                                                                        task={task}
+                                                                        onUnassign={handleUnassignTask}
+                                                                        onClick={handleTaskClick}
+                                                                    />
+                                                                </DraggableTask>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </DroppableCell>
                                             )
                                         })}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     )}
                 </div>
