@@ -2,17 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, Calendar as CalendarIcon, Loader2, Paperclip, Pencil, Trash2 } from 'lucide-react'
+import { Search, Plus, Calendar as CalendarIcon, Loader2, Paperclip, Pencil, Trash2, RefreshCw, CheckCircle2, XCircle, X, Phone } from 'lucide-react'
 import { createCustomerContactRecord, updateCustomerContactRecord, deleteCustomerContactRecord, getPresaleProjects, Attachment } from '@/lib/actions/presale-kpi-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { SmartCombobox } from '@/components/ui/smart-combobox'
 import FileUpload from '@/components/ui/FileUpload'
+import { format } from 'date-fns'
+import { th } from 'date-fns/locale'
 
 
 interface Record {
@@ -66,6 +67,13 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
     const filteredData = initialData.filter(d =>
         d.project_name.toLowerCase().includes(searchTerm.toLowerCase())
     )
+
+    // Calculate KPI stats
+    const totalRecords = filteredData.length
+    const passedRecords = filteredData.filter(d => d.is_pass).length
+    const failedRecords = totalRecords - passedRecords
+    const passRate = totalRecords > 0 ? Math.round((passedRecords / totalRecords) * 100) : 100
+    const isKpiPassed = passRate >= 85
 
     const resetForm = () => {
         setFormData({ project_name: '', sales_handover_date: '', customer_contact_date: '', remark: '', attachments: [] })
@@ -150,112 +158,213 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
         }
     }
 
+    const clearFilters = () => {
+        setSearchTerm('')
+    }
+
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
+        <div className="p-6 w-full">
+            {/* Page Header */}
+            <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Contact Customer Records</h2>
-                    <p className="text-muted-foreground">
-                        Track response time for new project assessments (Target: within 2 days)
-                    </p>
+                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <Phone className="w-6 h-6 text-blue-600" />
+                        Contact Customer Records
+                    </h1>
+                    <p className="text-slate-500 text-sm mt-1">ติดต่อลูกค้าหลังจากได้รับข้อมูลจาก Sales - Target: ภายใน 2 วัน</p>
                 </div>
-                <Button onClick={() => { resetForm(); setOpen(true); }}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Record
-                </Button>
+                <button
+                    onClick={() => { resetForm(); setOpen(true); }}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
+                >
+                    <Plus size={16} />
+                    New Record
+                </button>
             </div>
 
-            <Card>
-                <CardHeader className="pb-3">
-                    <div className="flex justify-between items-center">
-                        <CardTitle>Records ({currentYear})</CardTitle>
-                        <div className="relative w-64">
-                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search Project..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-8"
-                            />
-                        </div>
+            {/* KPI Summary */}
+            <div className={`rounded-xl border p-4 mb-6 ${isKpiPassed ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-semibold text-slate-800">KPI Summary {currentYear}</h3>
+                    <span className="text-sm text-slate-500">Target: &ge; 85% Pass</span>
+                </div>
+
+                <div className="flex items-center gap-6">
+                    <div>
+                        <span className="text-slate-500 text-sm">Total:</span>
+                        <span className="font-bold ml-2 text-slate-800">{totalRecords} records</span>
                     </div>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
+                    <div className="flex items-center gap-1">
+                        <CheckCircle2 size={16} className="text-green-600" />
+                        <span className="text-sm text-green-600">Pass:</span>
+                        <span className="font-bold text-green-600">{passedRecords}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <XCircle size={16} className="text-red-600" />
+                        <span className="text-sm text-red-600">Fail:</span>
+                        <span className="font-bold text-red-600">{failedRecords}</span>
+                    </div>
+                    <div>
+                        <span className="text-slate-500 text-sm">Rate:</span>
+                        <span className="font-bold ml-2">{passRate}%</span>
+                    </div>
+                    <div className={`font-bold px-3 py-1 rounded-full text-sm ${isKpiPassed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {isKpiPassed ? '✅ KPI Passed' : '❌ KPI Failed'}
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                    {/* Search */}
+                    <div className="relative flex-1 min-w-[200px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search project name..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                        />
+                    </div>
+
+                    {/* Refresh */}
+                    <button
+                        onClick={() => router.refresh()}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Refresh"
+                    >
+                        <RefreshCw size={18} />
+                    </button>
+
+                    {/* Clear Filters */}
+                    {searchTerm && (
+                        <button
+                            onClick={clearFilters}
+                            className="flex items-center gap-1 px-3 py-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                            <X size={16} />
+                            Clear
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-slate-50">
+                            <TableHead className="font-semibold">Project Name</TableHead>
+                            <TableHead className="font-semibold">Handover Date</TableHead>
+                            <TableHead className="font-semibold">Contact Date</TableHead>
+                            <TableHead className="font-semibold text-center">Days Taken</TableHead>
+                            <TableHead className="font-semibold text-center">Status</TableHead>
+                            <TableHead className="font-semibold">Remark</TableHead>
+                            <TableHead className="font-semibold text-center">Files</TableHead>
+                            <TableHead className="w-[100px]"></TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredData.length === 0 ? (
                             <TableRow>
-                                <TableHead>Project Name</TableHead>
-                                <TableHead>Handover Date</TableHead>
-                                <TableHead>Contact Date</TableHead>
-                                <TableHead>Days Taken</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Remark</TableHead>
-                                <TableHead>Attachments</TableHead>
-                                <TableHead className="w-[100px]">Actions</TableHead>
+                                <TableCell colSpan={8} className="text-center py-12 text-slate-400">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <Phone className="w-8 h-8 text-slate-300" />
+                                        <span>No records found</span>
+                                    </div>
+                                </TableCell>
                             </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {filteredData.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                                        No records found
+                        ) : (
+                            filteredData.map((record) => (
+                                <TableRow key={record.id} className="hover:bg-slate-50/50">
+                                    <TableCell className="font-medium text-slate-700">{record.project_name}</TableCell>
+                                    <TableCell className="text-slate-600">
+                                        {format(new Date(record.sales_handover_date), 'd MMM yyyy', { locale: th })}
+                                    </TableCell>
+                                    <TableCell className="text-slate-600">
+                                        {format(new Date(record.customer_contact_date), 'd MMM yyyy', { locale: th })}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <span className={`inline-flex items-center justify-center min-w-[40px] px-2 py-1 rounded-full text-xs font-bold ${
+                                            record.is_pass
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-red-100 text-red-700'
+                                        }`}>
+                                            {record.days_taken} Days
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        {record.is_pass ? (
+                                            <span className="inline-flex items-center gap-1 text-green-600">
+                                                <CheckCircle2 size={16} />
+                                                <span className="text-xs font-medium">Pass</span>
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 text-red-600">
+                                                <XCircle size={16} />
+                                                <span className="text-xs font-medium">Fail</span>
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="text-slate-500 max-w-[200px] truncate" title={record.remark || '-'}>
+                                        {record.remark || '-'}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        {record.attachments && record.attachments.length > 0 ? (
+                                            <div className="flex gap-1 justify-center">
+                                                {record.attachments.map((file, i) => (
+                                                    <a
+                                                        href={`/api/files/${file.path}`}
+                                                        key={i}
+                                                        target="_blank"
+                                                        className="text-blue-600 hover:text-blue-800"
+                                                        title={file.name}
+                                                    >
+                                                        <Paperclip className="h-4 w-4" />
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-slate-300">-</span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-1 justify-end">
+                                            <button
+                                                onClick={() => handleEdit(record)}
+                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Pencil size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => setDeleteId(record.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
-                            ) : (
-                                filteredData.map((record) => (
-                                    <TableRow key={record.id}>
-                                        <TableCell className="font-medium">{record.project_name}</TableCell>
-                                        <TableCell>{new Date(record.sales_handover_date).toLocaleDateString()}</TableCell>
-                                        <TableCell>{new Date(record.customer_contact_date).toLocaleDateString()}</TableCell>
-                                        <TableCell>{record.days_taken} Days</TableCell>
-                                        <TableCell>
-                                            {record.is_pass ? (
-                                                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">PASS</Badge>
-                                            ) : (
-                                                <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200">FAIL</Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">{record.remark || '-'}</TableCell>
-                                        <TableCell>
-                                            {record.attachments && record.attachments.length > 0 ? (
-                                                <div className="flex gap-1">
-                                                    {record.attachments.map((file, i) => (
-                                                        <a
-                                                            href={`/api/files/${file.path}`}
-                                                            key={i}
-                                                            target="_blank"
-                                                            className="text-purple-600 hover:text-purple-800"
-                                                            title={file.name}
-                                                        >
-                                                            <Paperclip className="h-4 w-4" />
-                                                        </a>
-                                                    ))}
-                                                </div>
-                                            ) : '-'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-2">
-                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" onClick={() => handleEdit(record)}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => setDeleteId(record.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
 
+            {/* Add/Edit Dialog */}
             <Dialog open={open} onOpenChange={(val: boolean) => { if (!val) resetForm(); else setOpen(true); }}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>{editingId ? 'Edit Record' : 'Add Contact Customer Record'}</DialogTitle>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Phone className="w-5 h-5 text-blue-600" />
+                            {editingId ? 'Edit Record' : 'Add Contact Customer Record'}
+                        </DialogTitle>
                         <DialogDescription>
-                            Record the date you received data and the date you contacted the customer.
+                            บันทึกวันที่ได้รับข้อมูลจาก Sales และวันที่ติดต่อลูกค้า (Target: ภายใน 2 วัน)
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -279,7 +388,7 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                                     onChange={e => setFormData({ ...formData, sales_handover_date: e.target.value })}
                                     required
                                 />
-                                <p className="text-[10px] text-muted-foreground">Date received from sales</p>
+                                <p className="text-[10px] text-muted-foreground">วันที่ได้รับข้อมูลจาก Sales</p>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Contact Date</label>
@@ -289,7 +398,7 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                                     onChange={e => setFormData({ ...formData, customer_contact_date: e.target.value })}
                                     required
                                 />
-                                <p className="text-[10px] text-muted-foreground">Date you contacted customer</p>
+                                <p className="text-[10px] text-muted-foreground">วันที่ติดต่อลูกค้า</p>
                             </div>
                         </div>
                         <div className="space-y-2">
@@ -314,7 +423,7 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700">
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 {editingId ? 'Update' : 'Save'} Record
                             </Button>
@@ -323,7 +432,23 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                 </DialogContent>
             </Dialog>
 
-
+            {/* Delete Confirmation */}
+            {deleteId && (
+                <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+                    <DialogContent className="max-w-sm">
+                        <DialogHeader>
+                            <DialogTitle className="text-red-600">Confirm Delete</DialogTitle>
+                            <DialogDescription>
+                                Are you sure you want to delete this record? This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
+                            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
         </div>
     )
 }
