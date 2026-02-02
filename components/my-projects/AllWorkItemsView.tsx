@@ -59,7 +59,7 @@ export function AllWorkItemsView({ data, filters, onRefresh }: AllWorkItemsViewP
                             </h2>
 
                         </div>
-                        <div className="flex-1 overflow-hidden p-0">
+                        <div className="flex-1 overflow-hidden min-h-0">
                             <ProjectDetailTwoPanel projectId={selectedProject.projectId} />
                         </div>
                     </div>

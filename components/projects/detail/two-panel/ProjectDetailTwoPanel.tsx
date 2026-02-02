@@ -90,7 +90,7 @@ export function ProjectDetailTwoPanel({ projectId, currentUserId }: ProjectDetai
     }
 
     return (
-        <div className="flex h-[calc(100vh-280px)] min-h-[600px] border rounded-lg shadow-sm overflow-hidden bg-white">
+        <div className="flex h-full border rounded-lg shadow-sm overflow-hidden bg-white">
             {/* Left Panel (40%) */}
             <div className="w-[40%] min-w-[320px] max-w-[450px] border-r border-slate-200">
                 <MilestoneStoryTree
@@ -102,7 +102,7 @@ export function ProjectDetailTwoPanel({ projectId, currentUserId }: ProjectDetai
             </div>
 
             {/* Right Panel (60%) */}
-            <div className="flex-1 min-w-0 bg-slate-50/50">
+            <div className="flex-1 min-w-0 bg-slate-50/50 h-full overflow-hidden">
                 <RightPanel
                     projectId={projectId}
                     selectedStory={selectedStory}

@@ -721,6 +721,7 @@ export async function createProject(data: ProjectFormData) {
             .input('description', data.description || null)
             .input('customer_id', data.customer_id || null)
             .input('project_manager_id', data.project_manager_id || null)
+            .input('project_owner_id', data.project_owner_id || null)
             .input('project_type_id', data.project_type_id || null)
             .input('sold_mandays', data.sold_mandays)
             .input('manday_rate', data.manday_rate)
@@ -733,21 +734,21 @@ export async function createProject(data: ProjectFormData) {
             projectResult = await projectRequest.query(`
                 INSERT INTO pms.projects
                 (project_code, project_year, name, name_th, description, customer_id,
-                 project_manager_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
+                 project_manager_id, project_owner_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
                 OUTPUT INSERTED.id
                 VALUES
                 (@project_code, @project_year, @name, @name_th, @description, @customer_id,
-                 @project_manager_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
+                 @project_manager_id, @project_owner_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
             `)
         } else {
             projectResult = await projectRequest.query(`
                 INSERT INTO pms.projects
                 (project_code, project_year, name, description, customer_id,
-                 project_manager_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
+                 project_manager_id, project_owner_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
                 OUTPUT INSERTED.id
                 VALUES
                 (@project_code, @project_year, @name, @description, @customer_id,
-                 @project_manager_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
+                 @project_manager_id, @project_owner_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
             `)
         }
 
