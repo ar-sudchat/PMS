@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, FileText, Check, AlertCircle, Paperclip } from 'lucide-react'
+import { toast } from 'sonner'
 import { Project, ProjectFormData, MilestoneRow } from '@/types/project'
 import {
     getCustomers,
@@ -403,11 +404,13 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                 }
             }
 
+            toast.success(mode === 'create' ? 'สร้างโครงการสำเร็จ' : 'บันทึกโครงการสำเร็จ')
             onSuccess()
             onClose()
         } catch (error) {
             console.error('Failed to save:', error)
-            setErrors({ submit: 'Failed to save project' })
+            const errorMessage = error instanceof Error ? error.message : 'ไม่สามารถบันทึกโครงการได้'
+            toast.error(errorMessage)
         } finally {
             setIsLoading(false)
         }
@@ -802,12 +805,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between px-6 py-4 border-t bg-slate-50 shrink-0">
-                    <div>
-                        {errors.submit && (
-                            <p className="text-red-500 text-sm">{errors.submit}</p>
-                        )}
-                    </div>
+                <div className="flex items-center justify-end px-6 py-4 border-t bg-slate-50 shrink-0">
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
