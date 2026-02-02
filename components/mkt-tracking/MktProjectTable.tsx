@@ -77,13 +77,8 @@ export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
                                     {project.project_code}
                                 </TableCell>
                                 <TableCell>
-                                    <div className="max-w-[200px]">
-                                        <div className="font-medium truncate">{project.title}</div>
-                                        {project.project_manager_name && (
-                                            <div className="text-xs text-muted-foreground">
-                                                PM: {project.project_manager_name}
-                                            </div>
-                                        )}
+                                    <div className="max-w-[200px] font-medium truncate">
+                                        {project.title}
                                     </div>
                                 </TableCell>
                                 <TableCell>{project.client_name || '-'}</TableCell>
