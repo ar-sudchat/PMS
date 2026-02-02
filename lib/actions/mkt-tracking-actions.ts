@@ -812,6 +812,7 @@ export interface MktFilterOptions {
     customers: { id: string; name: string }[]
     projects: { id: string; project_code: string; name: string }[]
     owners: { id: string; full_name: string }[]
+    pms: { id: string; full_name: string }[]
 }
 
 export async function fetchMktFilterOptions(): Promise<{
@@ -865,13 +866,26 @@ export async function fetchMktFilterOptions(): Promise<{
                 ORDER BY full_name
             `)
 
+        // Fetch PMs that are assigned to MKT projects
+        const pmsResult = await pool.request()
+            .query(`
+                SELECT DISTINCT e.id,
+                    COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) as full_name
+                FROM pms.employees e
+                INNER JOIN pms.projects p ON p.project_manager_id = e.id
+                INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
+                WHERE pt.code = 'MKT' AND e.is_active = 1
+                ORDER BY full_name
+            `)
+
         return {
             success: true,
             data: {
                 years: yearsResult.recordset.map((r: { year: number }) => r.year),
                 customers: customersResult.recordset,
                 projects: projectsResult.recordset,
-                owners: ownersResult.recordset
+                owners: ownersResult.recordset,
+                pms: pmsResult.recordset
             }
         }
     } catch (error) {

@@ -33,6 +33,7 @@ export default function MktTrackingPage() {
     const [selectedCustomer, setSelectedCustomer] = useState<Option | null>(null)
     const [selectedProject, setSelectedProject] = useState<Option | null>(null)
     const [selectedOwner, setSelectedOwner] = useState<Option | null>(null)
+    const [selectedPM, setSelectedPM] = useState<Option | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
 
     // Dialog states
@@ -63,6 +64,7 @@ export default function MktTrackingPage() {
                     customerId: selectedCustomer?.value as string | undefined,
                     projectId: selectedProject?.value as string | undefined,
                     ownerId: selectedOwner?.value as string | undefined,
+                    projectManagerId: selectedPM?.value as string | undefined,
                     search: searchTerm || undefined,
                 }),
                 fetchMktStageSummary(),
@@ -79,7 +81,7 @@ export default function MktTrackingPage() {
         } finally {
             setIsLoading(false)
         }
-    }, [selectedStage, selectedYear, selectedCustomer, selectedProject, selectedOwner, searchTerm])
+    }, [selectedStage, selectedYear, selectedCustomer, selectedProject, selectedOwner, selectedPM, searchTerm])
 
     useEffect(() => {
         loadData()
@@ -104,9 +106,18 @@ export default function MktTrackingPage() {
             {/* Main Content */}
             <Card>
                 <CardContent className="pt-4">
+                    {/* Header with Button */}
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold">MKT Tracking</h2>
+                        <Button onClick={() => setCreateDialogOpen(true)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Create Project
+                        </Button>
+                    </div>
+
                     {/* Filters */}
-                    <div className="flex flex-wrap items-center gap-4 mb-4">
-                        <div className="relative flex-1 min-w-[200px]">
+                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                        <div className="relative flex-1 min-w-[250px]">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="ค้นหา รหัส, ชื่อ, ลูกค้า..."
@@ -127,7 +138,7 @@ export default function MktTrackingPage() {
                                 searchable={false}
                             />
                         </div>
-                        <div className="w-[180px]">
+                        <div className="w-[260px]">
                             <SmartCombobox
                                 placeholder="ลูกค้า..."
                                 options={filterOptions?.customers.map(c => ({
@@ -138,7 +149,7 @@ export default function MktTrackingPage() {
                                 onChange={setSelectedCustomer}
                             />
                         </div>
-                        <div className="w-[200px]">
+                        <div className="w-[320px]">
                             <SmartCombobox
                                 placeholder="โครงการ..."
                                 options={filterOptions?.projects.map(p => ({
@@ -160,10 +171,17 @@ export default function MktTrackingPage() {
                                 onChange={setSelectedOwner}
                             />
                         </div>
-                        <Button onClick={() => setCreateDialogOpen(true)}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            สร้าง MKT
-                        </Button>
+                        <div className="w-[180px]">
+                            <SmartCombobox
+                                placeholder="PM..."
+                                options={filterOptions?.pms?.map(pm => ({
+                                    value: pm.id,
+                                    label: pm.full_name
+                                })) || []}
+                                value={selectedPM}
+                                onChange={setSelectedPM}
+                            />
+                        </div>
                     </div>
 
                     {isLoading ? (
