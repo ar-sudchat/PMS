@@ -466,6 +466,7 @@ export interface WeeklyTaskEntry {
     task_title: string
     estimated_hours: number
     status: string
+    reviewer_id?: string
 }
 
 export interface EmployeeDayWorkload {
@@ -593,6 +594,7 @@ export async function getWeeklyWorkloadByEmployee(
                 t.status,
                 t.assignee_id,
                 t.due_date,
+                t.reviewer_id,
                 proj.project_code,
                 proj.name as project_name
             FROM pms.tasks t
@@ -623,10 +625,11 @@ export async function getWeeklyWorkloadByEmployee(
 
         const tasksResult = await taskRequest.query(taskQuery)
         const allTasks = tasksResult.recordset
+        console.log(`[WeeklyWorkload] Found ${allTasks.length} tasks for range ${startDate.toISOString()} - ${endDate.toISOString()}`)
 
         // Build employee workload data
         const employeeWorkloads: EmployeeWeeklyWorkload[] = employees.map(emp => {
-            const empTasks = allTasks.filter(t => t.assignee_id === emp.employee_id)
+            const empTasks = allTasks.filter(t => String(t.assignee_id).toLowerCase() === String(emp.employee_id).toLowerCase())
 
             const days: EmployeeDayWorkload[] = dateHeaders.map(dh => {
                 const dayTasks = empTasks
@@ -640,7 +643,8 @@ export async function getWeeklyWorkloadByEmployee(
                         task_code: t.task_code,
                         task_title: t.task_title,
                         estimated_hours: t.estimated_hours,
-                        status: t.status
+                        status: t.status,
+                        reviewer_id: t.reviewer_id
                     }))
 
                 return {

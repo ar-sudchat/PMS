@@ -30,6 +30,8 @@ export interface DailyWorkload {
         project_name: string
         milestone_locked: boolean
         reviewer_id?: string
+        reviewer_name?: string
+        customer_name?: string
     }[]
 }
 
@@ -172,7 +174,7 @@ export async function getTeamWorkloadForDateRange(
 
             // Note: Using LEFT JOIN to get all tasks assigned to these employees in range
             const taskQuery = `
-                SELECT 
+                SELECT
                     t.id,
                     t.task_code,
                     t.title,
@@ -182,16 +184,21 @@ export async function getTeamWorkloadForDateRange(
                     t.priority,
                     t.assignee_id,
                     t.reviewer_id,
+                    ISNULL(NULLIF(CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th), ' '), CONCAT(reviewer.first_name, ' ', reviewer.last_name)) as reviewer_name,
                     p.project_code,
                     p.name as project_name,
+                    c.name as customer_name,
                     ISNULL(pm.is_locked, 0) as milestone_locked
                 FROM pms.tasks t
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.projects p ON s.project_id = p.id
+                LEFT JOIN pms.customers c ON p.customer_id = c.id
                 LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+                LEFT JOIN pms.employees reviewer ON t.reviewer_id = reviewer.id
                 WHERE t.assignee_id IN (${employeeIds})
                   AND t.due_date BETWEEN @startDate AND @endDate
                   AND t.status NOT IN ('done', 'cancelled')
+                  AND ISNULL(t.estimated_hours, 0) > 0
             `
 
             const tasksResult = await pool.request()
@@ -232,7 +239,9 @@ export async function getTeamWorkloadForDateRange(
                     project_code: t.project_code,
                     project_name: t.project_name,
                     milestone_locked: !!t.milestone_locked,
-                    reviewer_id: t.reviewer_id
+                    reviewer_id: t.reviewer_id,
+                    reviewer_name: t.reviewer_name,
+                    customer_name: t.customer_name
                 }))
 
                 const assignedHours = dayTasks.reduce((sum: number, t: any) => sum + t.estimated_hours, 0)
@@ -732,6 +741,7 @@ export interface UnassignedTask {
     assignee_position_code: string | null  // PG, SA, BA
     reviewer_id: string | null
     reviewer_name: string | null  // SA = Reviewer = คนที่สร้าง/ขอ task
+    customer_name: string | null  // ลูกค้า
 }
 
 export async function getUnassignedTasks(
@@ -786,10 +796,12 @@ export async function getUnassignedTasks(
                 ISNULL(NULLIF(CONCAT(assignee.first_name_th, ' ', assignee.last_name_th), ' '), CONCAT(assignee.first_name, ' ', assignee.last_name)) as assignee_name,
                 assignee_pos.code as assignee_position_code,
                 t.reviewer_id,
-                ISNULL(NULLIF(CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th), ' '), CONCAT(reviewer.first_name, ' ', reviewer.last_name)) as reviewer_name
+                ISNULL(NULLIF(CONCAT(reviewer.first_name_th, ' ', reviewer.last_name_th), ' '), CONCAT(reviewer.first_name, ' ', reviewer.last_name)) as reviewer_name,
+                c.name as customer_name
             FROM pms.tasks t
             INNER JOIN pms.stories s ON t.story_id = s.id
             INNER JOIN pms.projects p ON s.project_id = p.id
+            LEFT JOIN pms.customers c ON p.customer_id = c.id
             LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
             LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
             LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
@@ -800,6 +812,7 @@ export async function getUnassignedTasks(
             WHERE t.is_active = 1
               AND t.status NOT IN ('done', 'cancelled', 'done_not_planned')
               AND ISNULL(pm.is_locked, 0) = 0
+              AND ISNULL(t.estimated_hours, 0) > 0
         `
 
         // Filter by assignment status
@@ -1077,11 +1090,12 @@ export async function getAllEmployeesForPlanning() {
     try {
         const pool = await getConnection()
         const result = await pool.request().query(`
-            SELECT 
+            SELECT
                 e.id,
                 ISNULL(NULLIF(ISNULL(e.first_name_th, '') + ' ' + ISNULL(e.last_name_th, ''), ' '), ISNULL(e.first_name, '') + ' ' + ISNULL(e.last_name, '')) as name,
                 e.nickname,
-                CASE 
+                CASE
+                    WHEN r.name LIKE '%Project Manager%' THEN 'PM'
                     WHEN r.name LIKE '%System Analyst%' THEN 'SA'
                     WHEN r.name LIKE '%Business Analyst%' THEN 'BA'
                     WHEN r.name LIKE '%Programmer%' OR r.name LIKE '%Developer%' THEN 'PG'
@@ -1090,7 +1104,7 @@ export async function getAllEmployeesForPlanning() {
             FROM pms.employees e
             LEFT JOIN pms.positions r ON e.position_id = r.id
             WHERE e.is_active = 1
-            AND (r.name LIKE '%System Analyst%' OR r.name LIKE '%Business Analyst%' OR r.name LIKE '%Programmer%' OR r.name LIKE '%Developer%')
+            AND (r.name LIKE '%Project Manager%' OR r.name LIKE '%System Analyst%' OR r.name LIKE '%Business Analyst%' OR r.name LIKE '%Programmer%' OR r.name LIKE '%Developer%')
             ORDER BY r.name, e.first_name_th
         `)
 
@@ -1106,7 +1120,7 @@ export async function getAllEmployeesForPlanning() {
 export async function updateTaskPlanning(data: {
     taskId: string
     assigneeId?: string | null // PG
-    reviewerId?: string | null // SA
+    reviewerId?: string | null // SA/BA/PM (Reviewer)
     startDate: string
     dueDate: string
 }) {
@@ -1149,7 +1163,7 @@ export async function updateTaskPlanning(data: {
         // Return change summary for UI toast/log
         const changes = []
         if (task.assignee_id !== data.assigneeId) changes.push(`PG changed`)
-        if (task.reviewer_id !== data.reviewerId) changes.push(`SA changed`)
+        if (task.reviewer_id !== data.reviewerId) changes.push(`Reviewer changed`)
         if (new Date(task.start_date).toISOString() !== new Date(data.startDate).toISOString()) changes.push('Date updated')
 
         return { success: true, changes }

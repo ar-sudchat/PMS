@@ -158,19 +158,25 @@ export function KPIDetailModal({
               )}
               {kpiName === 'Defect Ratio' && (
                 <>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Done</th>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Not Planned</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Total MD</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Defect MD</th>
                 </>
               )}
               {kpiName === 'Post Go-live Rework' && (
                 <>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Rework Tasks</th>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Total Tasks</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Total MD</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Rework MD</th>
                 </>
               )}
-              {(kpiName === 'Deploy Success Rate' || kpiName === 'Pre-deploy Backup') && (
+              {kpiName === 'Deploy Success Rate' && (
                 <>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Success/Backup</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Success</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Total</th>
+                </>
+              )}
+              {kpiName === 'Pre-deploy Backup' && (
+                <>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">ผ่าน</th>
                   <th className="text-center py-3 px-4 font-semibold text-slate-600">Total</th>
                 </>
               )}
@@ -195,14 +201,18 @@ export function KPIDetailModal({
                 )}
                 {kpiName === 'Defect Ratio' && (
                   <>
-                    <td className="text-center py-3 px-4 text-slate-600">{item.done_count || 0}</td>
-                    <td className="text-center py-3 px-4 text-slate-600">{item.done_not_planned_count || 0}</td>
+                    <td className="text-center py-3 px-4 text-blue-600 font-medium">{item.total_mandays?.toFixed(1) || 0}</td>
+                    <td className="text-center py-3 px-4 text-rose-600 font-medium">{item.defect_mandays?.toFixed(1) || 0}</td>
                   </>
                 )}
                 {kpiName === 'Post Go-live Rework' && (
                   <>
-                    <td className="text-center py-3 px-4 text-slate-600">{item.post_golive_tasks || 0}</td>
-                    <td className="text-center py-3 px-4 text-slate-600">{item.total_tasks || 0}</td>
+                    <td className="text-center py-3 px-4 text-blue-600 font-medium">
+                      {item.total_mandays != null ? Number(item.total_mandays).toFixed(1) : '-'}
+                    </td>
+                    <td className="text-center py-3 px-4 text-orange-600 font-medium">
+                      {item.rework_mandays != null ? Number(item.rework_mandays).toFixed(1) : '-'}
+                    </td>
                   </>
                 )}
                 {kpiName === 'Deploy Success Rate' && (
@@ -213,8 +223,8 @@ export function KPIDetailModal({
                 )}
                 {kpiName === 'Pre-deploy Backup' && (
                   <>
-                    <td className="text-center py-3 px-4 text-slate-600">{item.backup_count || 0}</td>
-                    <td className="text-center py-3 px-4 text-slate-600">{item.total_deploys || 0}</td>
+                    <td className="text-center py-3 px-4 text-emerald-600 font-medium">{item.pass_count || 0}</td>
+                    <td className="text-center py-3 px-4 text-slate-600">{item.total_backups || 0}</td>
                   </>
                 )}
                 <td className="text-center py-3 px-4">
@@ -238,6 +248,70 @@ export function KPIDetailModal({
               </tr>
             ))}
           </tbody>
+          {/* Summary Footer for Defect Ratio - Sticky at bottom */}
+          {kpiName === 'Defect Ratio' && data.details.length > 0 && (
+            <tfoot className="bg-slate-100 border-t-2 border-slate-300 sticky bottom-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+              <tr>
+                <td className="py-3 px-4 font-bold text-slate-700">รวมทั้งหมด</td>
+                <td className="text-center py-3 px-4 text-blue-600 font-bold">
+                  {data.details.reduce((sum: number, item: any) => sum + (parseFloat(item.total_mandays) || 0), 0).toFixed(1)}
+                </td>
+                <td className="text-center py-3 px-4 text-rose-600 font-bold">
+                  {data.details.reduce((sum: number, item: any) => sum + (parseFloat(item.defect_mandays) || 0), 0).toFixed(1)}
+                </td>
+                <td className="text-center py-3 px-4">
+                  <span className={`font-bold text-lg ${data.isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {data.actualValue}%
+                  </span>
+                </td>
+                <td className="text-center py-3 px-4">
+                  {data.isPass ? (
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold">
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      ผ่าน
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-rose-500 text-white text-xs font-bold">
+                      <XCircle className="h-3.5 w-3.5" />
+                      ไม่ผ่าน
+                    </span>
+                  )}
+                </td>
+              </tr>
+            </tfoot>
+          )}
+          {/* Summary Footer for Post Go-live Rework - Sticky at bottom */}
+          {kpiName === 'Post Go-live Rework' && data.details.length > 0 && (
+            <tfoot className="bg-slate-100 border-t-2 border-slate-300 sticky bottom-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+              <tr>
+                <td className="py-3 px-4 font-bold text-slate-700">รวมทั้งหมด</td>
+                <td className="text-center py-3 px-4 text-blue-600 font-bold">
+                  {data.details.reduce((sum: number, item: any) => sum + (parseFloat(item.total_mandays) || 0), 0).toFixed(1)}
+                </td>
+                <td className="text-center py-3 px-4 text-orange-600 font-bold">
+                  {data.details.reduce((sum: number, item: any) => sum + (parseFloat(item.rework_mandays) || 0), 0).toFixed(1)}
+                </td>
+                <td className="text-center py-3 px-4">
+                  <span className={`font-bold text-lg ${data.isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {data.actualValue}%
+                  </span>
+                </td>
+                <td className="text-center py-3 px-4">
+                  {data.isPass ? (
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold">
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      ผ่าน
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-rose-500 text-white text-xs font-bold">
+                      <XCircle className="h-3.5 w-3.5" />
+                      ไม่ผ่าน
+                    </span>
+                  )}
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       )
     }

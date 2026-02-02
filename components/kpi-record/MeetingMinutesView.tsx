@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, AlertCircle, FileText, Users, Send } from "lucide-react"
-import { getMeetingMinutesRecords, deleteMeetingMinutesRecord, getMeetingMinutesKPI, getMeetingMinutesKPIByOrganizer, MeetingMinutesRecord, OrganizerKPI, submitMeetingMinutesForApproval } from "@/lib/actions/meeting-minutes-actions"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, AlertCircle, FileText, Users } from "lucide-react"
+import { getMeetingMinutesRecords, deleteMeetingMinutesRecord, getMeetingMinutesKPI, getMeetingMinutesKPIByOrganizer, MeetingMinutesRecord, OrganizerKPI, approveAllPendingMeetingMinutes } from "@/lib/actions/meeting-minutes-actions"
 import { getActiveEmployees } from "@/lib/actions/employee-actions"
 import { MEETING_TYPES } from "@/lib/constants/kpi-record"
 import { MeetingMinutesModal } from "@/components/kpi-record/MeetingMinutesModal"
@@ -140,22 +140,22 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
         fetchData()
     }
 
-    const handleSubmitForApproval = async (record: MeetingMinutesRecord) => {
+    const handleApproveAllPending = async () => {
         try {
-            const result = await submitMeetingMinutesForApproval(
-                record.id,
-                `MoM - ${record.meeting_title}`
-            )
+            const result = await approveAllPendingMeetingMinutes()
             if (result.success) {
-                toast.success('Submitted for approval')
+                toast.success(`Approved ${result.count || 0} pending records`)
                 fetchData()
             } else {
-                toast.error(result.error || 'Failed to submit')
+                toast.error(result.error || 'Failed to approve')
             }
         } catch (error) {
             toast.error('An error occurred')
         }
     }
+
+    // Count pending records
+    const pendingCount = data.filter(d => (d as any).approval_status === 'PENDING').length
 
     const clearFilters = () => {
         setSearchQuery('')
@@ -342,16 +342,6 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                 const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
-                        {/* Submit for approval button - only for DRAFT status */}
-                        {status === 'DRAFT' && (
-                            <button
-                                onClick={() => handleSubmitForApproval(record)}
-                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
-                                title="Submit for Approval"
-                            >
-                                <Send size={16} />
-                            </button>
-                        )}
                         <button
                             onClick={() => handleEdit(record)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -386,13 +376,24 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                     </div>
                 )}
                 {embedded && <div className="text-sm text-slate-500">Target: ≤ 24 hours, Late ≤ 3/year</div>}
-                <button
-                    onClick={handleCreate}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
-                >
-                    <Plus size={16} />
-                    New Meeting
-                </button>
+                <div className="flex items-center gap-2">
+                    {pendingCount > 0 && (
+                        <button
+                            onClick={handleApproveAllPending}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20 font-medium text-sm"
+                        >
+                            <CheckCircle2 size={16} />
+                            Approve All ({pendingCount})
+                        </button>
+                    )}
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
+                    >
+                        <Plus size={16} />
+                        New Meeting
+                    </button>
+                </div>
             </div >
 
             {/* KPI Summary Cards */}

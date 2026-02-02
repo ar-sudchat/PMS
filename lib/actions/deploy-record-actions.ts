@@ -178,9 +178,9 @@ export async function createDeployRecord(data: {
             .input('created_by', data.created_by)
             .query(`
                 INSERT INTO pms.deploy_success_records
-                (id, customer_id, week_start_date, year, week_number, deploy_count, rollback_count, notes, attachments, created_by, created_at)
+                (id, customer_id, week_start_date, year, week_number, deploy_count, rollback_count, notes, attachments, created_by, created_at, approval_status)
                 OUTPUT INSERTED.id
-                VALUES (NEWID(), @customer_id, @week_start_date, @year, @week_number, @deploy_count, @rollback_count, @notes, @attachments, @created_by, GETDATE())
+                VALUES (NEWID(), @customer_id, @week_start_date, @year, @week_number, @deploy_count, @rollback_count, @notes, @attachments, @created_by, GETDATE(), 'APPROVED')
             `)
 
         revalidatePath('/kpi-record/deploy-success')
@@ -389,6 +389,46 @@ export async function updateDeployRecordApprovalStatus(
 
     } catch (error: any) {
         console.error('Error updating approval status:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Batch approve all pending Deploy Success records
+export async function approveAllPendingDeployRecords() {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // Update all PENDING records to APPROVED
+        const result = await pool.request()
+            .query(`
+                UPDATE pms.deploy_success_records
+                SET approval_status = 'APPROVED'
+                WHERE approval_status = 'PENDING'
+            `)
+
+        // Also complete any related approval instances
+        await pool.request()
+            .input('userId', user.id)
+            .query(`
+                UPDATE ai
+                SET ai.status = 'COMPLETED', ai.completion_date = GETDATE()
+                FROM pms.approval_instances ai
+                INNER JOIN pms.deploy_success_records ds ON ai.document_id = ds.id
+                WHERE ai.module_code = 'KPI'
+                AND ai.document_type = 'DEPLOY_SUCCESS'
+                AND ai.status IN ('PENDING', 'IN_PROGRESS')
+            `)
+
+        revalidatePath('/kpi-record/deploy-success')
+        return { success: true, count: result.rowsAffected[0] }
+
+    } catch (error: any) {
+        console.error('Error approving pending deploy records:', error)
         return { success: false, error: error.message }
     }
 }

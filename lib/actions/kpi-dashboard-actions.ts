@@ -551,14 +551,14 @@ export async function getKPIDetail(
       'Defect Ratio': {
         category: 'Quality',
         target: '≤15%',
-        description: 'สัดส่วนของ Tasks ที่ทำเสร็จแต่ไม่ตรงตามแผน (Done Not Planned)',
-        formula: '(Done Not Planned Tasks / Total Done Tasks) × 100'
+        description: 'ควบคุมคุณภาพงานพัฒนา โดยวัด Man-day ที่ใช้แก้ไข Bug/Defect เทียบกับ Man-day ทั้งหมด เพื่อลดการแก้ไขซ้ำและการสูญเสียทรัพยากร',
+        formula: '(Manday แก้ Defect / Manday พัฒนาทั้งหมด) × 100'
       },
       'Post Go-live Rework': {
         category: 'Quality',
         target: '≤8%',
-        description: 'สัดส่วนของ Tasks ที่ต้องแก้ไขหลัง Go-Live',
-        formula: '(Post Go-live Tasks / Total Tasks) × 100'
+        description: 'วัด Man-day ที่ใช้แก้ไข Bug/Defect หลัง Go-Live เทียบกับ Man-day ทั้งหมด เพื่อควบคุมคุณภาพหลังส่งมอบ',
+        formula: '(Manday แก้ไขหลัง Go-Live / Manday ทั้งหมด) × 100'
       },
       'Deploy Success Rate': {
         category: 'Availability',
@@ -569,8 +569,8 @@ export async function getKPIDetail(
       'Pre-deploy Backup': {
         category: 'Availability',
         target: '100%',
-        description: 'อัตราการทำ Backup ก่อน Deploy',
-        formula: '(Deploys with Backup / Total Deploys) × 100'
+        description: 'อัตราการทำ Pre-deploy Backup ที่ผ่านการตรวจสอบ (ต้องมี 5 Version)',
+        formula: '(Backups ผ่าน / Total Backups) × 100'
       },
       'On-time Meeting Minutes': {
         category: 'Personal',
@@ -655,16 +655,19 @@ export async function getKPIDetail(
               project_code,
               project_name,
               defect_ratio_percent as actual_percent,
-              defect_mandays as done_not_planned_count,
-              total_mandays as done_count,
+              defect_mandays,
+              total_mandays,
               CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
             FROM pms.vw_kpi_defect_ratio
             ${whereClause}
             ORDER BY defect_ratio_percent ASC
           `)
         details = result.recordset
-        actualValue = details.length > 0
-          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+        // Calculate from totals: (Sum Defect MD / Sum Total MD) × 100
+        const totalDefectMD = details.reduce((sum, d) => sum + parseFloat(d.defect_mandays || 0), 0)
+        const totalMD = details.reduce((sum, d) => sum + parseFloat(d.total_mandays || 0), 0)
+        actualValue = totalMD > 0
+          ? Math.round(totalDefectMD * 100 / totalMD * 100) / 100
           : 0
         break
       }
@@ -678,16 +681,19 @@ export async function getKPIDetail(
               project_code,
               project_name,
               rework_ratio_percent as actual_percent,
-              rework_mandays as post_golive_tasks,
-              total_mandays as total_tasks,
+              rework_mandays,
+              total_mandays,
               CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
             FROM pms.vw_kpi_post_golive_rework
             ${whereClause}
             ORDER BY rework_ratio_percent ASC
           `)
         details = result.recordset
-        actualValue = details.length > 0
-          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+        // Calculate from totals: (Sum Rework MD / Sum Total MD) × 100
+        const totalReworkMD = details.reduce((sum, d) => sum + parseFloat(d.rework_mandays || 0), 0)
+        const totalMDRework = details.reduce((sum, d) => sum + parseFloat(d.total_mandays || 0), 0)
+        actualValue = totalMDRework > 0
+          ? Math.round(totalReworkMD * 100 / totalMDRework * 100) / 100
           : 0
         break
       }
@@ -724,8 +730,8 @@ export async function getKPIDetail(
               source_code as project_code,
               source_name as project_name,
               backup_compliance_percent as actual_percent,
-              verified_backups as backup_count,
-              total_backups as total_deploys,
+              passed_backups as pass_count,
+              total_backups,
               CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
             FROM pms.vw_kpi_predeploy_backup
             ${whereClause}

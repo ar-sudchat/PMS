@@ -37,10 +37,13 @@ export function StandupContainer({ user, groups, activeGroup }: StandupContainer
     const [webhookUrl, setWebhookUrl] = useState('')
     const [loading, setLoading] = useState(false)
 
-    const groupOptions = groups.map(g => ({
-        value: g.id.toString(),
-        label: g.name
-    }))
+    const groupOptions = [
+        { value: '0', label: 'All Teams' },
+        ...groups.map(g => ({
+            value: g.id.toString(),
+            label: g.name
+        }))
+    ]
 
     const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.value) {

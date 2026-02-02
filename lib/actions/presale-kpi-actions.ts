@@ -65,15 +65,17 @@ function getDaysDiff(start: string | Date, end: string | Date): number {
 export async function getPresaleProjects() {
     try {
         const pool = await getConnection()
-        // Fetch active projects for the combobox
+        // Fetch active projects for the combobox (exclude cancelled)
         const result = await pool.request().query(`
-            SELECT DISTINCT 
-                p.id, 
-                p.project_code, 
+            SELECT DISTINCT
+                p.id,
+                p.project_code,
                 p.name,
                 CONCAT(p.project_code, ': ', p.name) as label
             FROM pms.projects p
+            LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
             WHERE p.is_active = 1
+              AND (psc.code IS NULL OR psc.code NOT IN ('CANCELLED'))
             ORDER BY p.project_code DESC
         `)
 

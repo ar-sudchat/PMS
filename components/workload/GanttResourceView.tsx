@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, RefreshCw, Maximize2, Minimize2 } from 'lucide-react'
 import { getTeamWorkloadForDateRange, EmployeeWorkload, unassignTask } from '@/lib/actions/workload-actions'
 import { getWorkloadConfig, WorkloadConfig } from '@/lib/actions/config-actions'
-import { cn } from '@/lib/utils'
+import { cn, stringToColor } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ResourceDemandPanel } from './ResourceDemandPanel'
 import { ResizablePanelLayout } from './ResizablePanelLayout'
@@ -28,10 +28,11 @@ import { reassignTask } from '@/lib/actions/workload-actions'
 // ============================================
 
 const HOUR_WIDTH = 60 // pixels per hour
-const ROW_HEIGHT = 70 // Increased for more task details
+const TASK_HEIGHT = 50 // Height per task row (increased 10%)
+const MIN_ROW_HEIGHT = 60 // Minimum row height when no tasks
 const HEADER_HEIGHT = 40 // Reduced since no hour labels
 const START_HOUR = 8 // Start at 8:00
-const EMPLOYEE_COL_WIDTH = 200 // Wider employee column
+const EMPLOYEE_COL_WIDTH = 135 // Increased 10%
 
 // ============================================
 // TYPES
@@ -50,6 +51,9 @@ interface TaskBlock {
     date: string
     startHour?: number // Optional: for future time-based positioning
     reviewerId?: string
+    reviewerName?: string
+    projectName?: string
+    customerName?: string
 }
 
 type PositionFilter = 'all' | 'SA' | 'BA' | 'PG'
@@ -70,7 +74,7 @@ function DraggableTask({ task, children }: { task: TaskBlock, children: React.Re
             ref={setNodeRef}
             {...listeners}
             {...attributes}
-            className={cn("touch-none", isDragging && "opacity-50")}
+            className={cn("touch-none w-full", isDragging && "opacity-50")}
             style={{ cursor: task.isLocked ? 'not-allowed' : 'grab' }}
         >
             {children}
@@ -127,8 +131,22 @@ function TaskBar({
         low: 'bg-slate-400 border-slate-500'
     }
 
-    const barWidth = Math.max(task.hours * HOUR_WIDTH - 4, 50) // Min 50px
-    const barHeight = ROW_HEIGHT - 10 // Leave some padding
+    const barHeight = TASK_HEIGHT - 6 // Leave some padding
+
+    // Dynamic Color based on SA (Reviewer)
+    const bgColor = task.reviewerId ? stringToColor(task.reviewerId) : null
+
+    // Base classes
+    let colorClasses = ""
+    if (!bgColor) {
+        if (task.status === 'done' || task.status === 'done_not_planned') {
+            colorClasses = "bg-emerald-100 text-emerald-700 border-emerald-200"
+        } else if (task.status === 'in_progress') {
+            colorClasses = "bg-blue-100 text-blue-700 border-blue-200"
+        } else {
+            colorClasses = "bg-white text-slate-600 border-slate-200"
+        }
+    }
 
     return (
         <div
@@ -137,17 +155,25 @@ function TaskBar({
                 onClick?.(task)
             }}
             className={cn(
-                "rounded-md border-2 flex flex-col justify-center px-2 py-1 text-white text-xs font-medium shadow-sm transition-all group overflow-hidden relative cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-100",
-                priorityColors[task.priority] || priorityColors.medium,
+                "rounded-md border flex flex-col justify-center px-2 py-1 text-xs font-medium shadow-sm transition-all group overflow-hidden relative cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-100",
+                !bgColor && (priorityColors[task.priority] || priorityColors.medium),
                 task.isLocked && "opacity-60 cursor-not-allowed"
             )}
-            style={{ width: barWidth, height: barHeight }}
+            style={{
+                width: '100%',
+                height: barHeight,
+                backgroundColor: bgColor || undefined,
+                borderColor: bgColor ? bgColor.replace('85%)', '75%)') : undefined,
+                color: bgColor ? '#334155' : undefined
+            }}
             title={`${task.projectCode} - ${task.title} (${task.hours}h)`}
         >
             {/* Top row: Project code + hours */}
             <div className="flex items-center justify-between">
-                <span className="font-bold text-[11px]">{task.projectCode}</span>
-                <span className="bg-white/20 px-1 rounded text-[10px]">
+                <span className="font-bold text-[11px] truncate flex-1 mr-1" title={task.projectName}>
+                    {task.projectCode} {task.projectName ? `- ${task.projectName}` : ''}
+                </span>
+                <span className="bg-white/30 px-1.5 py-0.5 rounded text-xs font-bold shrink-0">
                     {task.hours}h
                 </span>
             </div>
@@ -195,7 +221,7 @@ export function GanttResourceView() {
     const [employees, setEmployees] = useState<EmployeeWorkload[]>([])
     const [config, setConfig] = useState<WorkloadConfig | null>(null)
     const [isLoading, setIsLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState<PositionFilter>('all')
+    const [activeTab, setActiveTab] = useState<PositionFilter>('PG')
     const [activeDragTask, setActiveDragTask] = useState<TaskBlock | null>(null)
 
     const sensors = useSensors(
@@ -221,6 +247,7 @@ export function GanttResourceView() {
         title: string
         projectCode: string
         projectName?: string
+        customerName?: string
         hours: number
         start: string
         end: string
@@ -303,9 +330,54 @@ export function GanttResourceView() {
             isLocked: t.milestone_locked,
             employeeId: employee.employee_id,
             date: dateStr,
-            reviewerId: t.reviewer_id
+            reviewerId: t.reviewer_id,
+            reviewerName: t.reviewer_name,
+            projectName: t.project_name,
+            customerName: t.customer_name
         }))
     }
+
+    // Calculate max tasks in any single day for an employee (for dynamic row height)
+    const getMaxTasksForEmployee = (employee: EmployeeWorkload): number => {
+        let maxTasks = 0
+        dates.forEach(date => {
+            const dateStr = date.toISOString().split('T')[0]
+            const tasks = getTasksForEmployeeDate(employee, dateStr)
+            if (tasks.length > maxTasks) maxTasks = tasks.length
+        })
+        return maxTasks
+    }
+
+    // Calculate dynamic row height based on max tasks
+    const getEmployeeRowHeight = (employee: EmployeeWorkload): number => {
+        const maxTasks = getMaxTasksForEmployee(employee)
+        return Math.max(maxTasks * TASK_HEIGHT, MIN_ROW_HEIGHT)
+    }
+
+    // Generate Legend Data
+    const saLegend = useMemo(() => {
+        const uniqueReviewers = new Map<string, string>()
+        employees.forEach(emp => {
+            emp.daily_workload.forEach(day => {
+                day.tasks.forEach(t => {
+                    if (t.reviewer_id && t.reviewer_id.toLowerCase() !== 'null') { // Check for string 'null' just in case
+                        // We might not have reviewer name directly in task if it wasn't joined well, but daily-workload-actions does join it.
+                        // Let's rely on what we have. 
+                        // Wait, daily-workload-actions.ts `getTeamWorkloadForDateRange` DOES NOT fetch reviewer_name!
+                        // It only fetches reviewer_id.
+                        // I need to update backend to fetch reviewer_name if I want to show names.
+                        // For now I will show reviewer_id if name missing, but I should fix backend.
+                        uniqueReviewers.set(t.reviewer_id, t.reviewer_name || t.reviewer_id)
+                    }
+                })
+            })
+        })
+        return Array.from(uniqueReviewers.entries()).map(([id, name]) => ({
+            id,
+            name,
+            color: stringToColor(id)
+        }))
+    }, [employees])
 
     // Unassign handler - no confirmation, just unassign with toast notification
     const handleUnassignTask = async (taskId: string) => {
@@ -330,6 +402,8 @@ export function GanttResourceView() {
                 id: task.id,
                 title: task.title,
                 projectCode: task.projectCode,
+                projectName: task.projectName,
+                customerName: task.customerName,
                 hours: task.hours,
                 start: task.date,
                 end: task.date,
@@ -343,6 +417,7 @@ export function GanttResourceView() {
                 title: task.title,
                 projectCode: task.project_code || task.projectCode,
                 projectName: task.project_name || task.projectName,
+                customerName: task.customer_name || task.customerName,
                 hours: task.estimated_hours || task.hours || 0,
                 start: task.start_date ? new Date(task.start_date).toISOString().split('T')[0] : (task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : (task.start || '')),
                 end: task.due_date ? new Date(task.due_date).toISOString().split('T')[0] : (task.end || ''),
@@ -368,7 +443,7 @@ export function GanttResourceView() {
     }, [config])
 
     // Calculate total width
-    const totalDayWidth = hours.length * HOUR_WIDTH
+    const totalDayWidth = Math.round(hours.length * HOUR_WIDTH * 0.5) // Reduced to 50%
 
     // Left Panel - Resource Demand
     const leftPanel = (
@@ -390,17 +465,18 @@ export function GanttResourceView() {
 
         if (!over) return
 
-        const activeTask = active.data.current as TaskBlock
+        const activeTask = active.data.current as TaskBlock & { fromDemandPanel?: boolean }
         const overData = over.data.current as { date: string, employeeId: string }
 
         if (!activeTask || !overData) return
 
-        // Check if changed
-        if (activeTask.employeeId === overData.employeeId && activeTask.date === overData.date) {
+        // Check if changed (skip check for tasks from demand panel - always allow assignment)
+        const isFromDemandPanel = activeTask.fromDemandPanel
+        if (!isFromDemandPanel && activeTask.employeeId === overData.employeeId && activeTask.date === overData.date) {
             return
         }
 
-        const toastId = toast.loading("Saving changes...")
+        const toastId = toast.loading(isFromDemandPanel ? "กำลังจ่ายงาน..." : "Saving changes...")
 
         try {
             // Optimistic update could go here, but for now we wait for server
@@ -408,17 +484,17 @@ export function GanttResourceView() {
                 activeTask.id,
                 overData.employeeId,
                 overData.date, // This becomes the new Due Date (and Start Date due to sync logic)
-                "Drag and Drop",
-                "Moved via Gantt"
+                isFromDemandPanel ? "Assigned from Demand Panel" : "Drag and Drop",
+                isFromDemandPanel ? "Assigned via Drag & Drop" : "Moved via Gantt"
             )
 
             if (result.success) {
-                toast.success("Task moved successfully", { id: toastId })
+                toast.success(isFromDemandPanel ? "จ่ายงานสำเร็จ" : "Task moved successfully", { id: toastId })
                 if (result.warning) toast.warning(result.warning)
                 loadData(true) // Silent reload
                 setDemandRefreshKey(k => k + 1)
             } else {
-                toast.error(result.error || "Failed to move task", { id: toastId })
+                toast.error(result.error || "Failed to assign task", { id: toastId })
             }
         } catch (error) {
             toast.error("An error occurred", { id: toastId })
@@ -431,11 +507,6 @@ export function GanttResourceView() {
 
     // Right Panel - Gantt Chart
     const rightPanel = (
-        <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-        >
             <div className={cn(
                 "h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden",
                 isFullscreen && "fixed inset-0 z-50 rounded-none w-screen h-screen"
@@ -547,34 +618,29 @@ export function GanttResourceView() {
                             </div>
 
                             {/* Employee Rows */}
-                            {filteredEmployees.map(emp => (
+                            {filteredEmployees.map(emp => {
+                                const rowHeight = getEmployeeRowHeight(emp)
+                                return (
                                 <div key={emp.employee_id} className="flex border-b bg-white hover:bg-slate-50/30 transition-colors group/row">
                                     {/* Employee Info - Fixed */}
                                     <div
-                                        className="sticky left-0 z-10 bg-white border-r group-hover/row:bg-slate-50/30 flex items-center gap-3 px-3 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                                        style={{ width: EMPLOYEE_COL_WIDTH, height: ROW_HEIGHT }}
+                                        className="sticky left-0 z-10 bg-white border-r group-hover/row:bg-slate-50/30 flex items-center px-2 transition-colors shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                                        style={{ width: EMPLOYEE_COL_WIDTH, minHeight: rowHeight }}
                                     >
-                                        <div className={cn(
-                                            "w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm border-2 border-white",
-                                            emp.position_code === 'SA' ? 'bg-green-500' :
-                                                emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
-                                        )}>
-                                            {(emp.nickname || emp.employee_name || '?').charAt(0)}
-                                        </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="font-semibold text-sm text-slate-800 truncate">
                                                 {emp.nickname || emp.employee_name}
                                             </div>
                                             <div className="flex items-center gap-1.5 mt-0.5">
                                                 <span className={cn(
-                                                    "px-1.5 py-0 rounded text-[9px] font-bold text-white shadow-sm",
+                                                    "px-1.5 py-0 rounded text-[10px] font-bold text-white",
                                                     emp.position_code === 'SA' ? 'bg-green-500' :
                                                         emp.position_code === 'BA' ? 'bg-purple-500' : 'bg-blue-500'
                                                 )}>
                                                     {emp.position_code}
                                                 </span>
                                                 <span className={cn(
-                                                    "text-[10px] font-medium px-1.5 py-0 rounded-full border",
+                                                    "text-[11px] font-medium px-1.5 rounded-full border",
                                                     emp.average_workload_percent > 100 ? "text-red-600 bg-red-50 border-red-100" :
                                                         emp.average_workload_percent > 80 ? "text-amber-600 bg-amber-50 border-amber-100" : "text-green-600 bg-green-50 border-green-100"
                                                 )}>
@@ -600,7 +666,7 @@ export function GanttResourceView() {
                                                         "relative border-r box-content transition-colors",
                                                         isToday ? "bg-blue-50/20" : ""
                                                     )}
-                                                    style={{ width: totalDayWidth, height: ROW_HEIGHT }}
+                                                    style={{ width: totalDayWidth, minHeight: rowHeight }}
                                                 >
                                                     {/* Hour reference lines */}
                                                     <div className="absolute inset-0 flex pointer-events-none z-[1]">
@@ -611,62 +677,68 @@ export function GanttResourceView() {
                                                                     "h-full border-r border-slate-100",
                                                                     idx === hours.length - 1 && "border-r-0"
                                                                 )}
-                                                                style={{ width: HOUR_WIDTH }}
+                                                                style={{ width: Math.round(HOUR_WIDTH * 0.5) }}
                                                             />
                                                         ))}
                                                     </div>
 
-                                                    {/* Task bars */}
-                                                    <div className="absolute inset-0 flex items-center px-1 z-10 pointer-events-none">
-                                                        {tasks.map((task, idx) => {
-                                                            // Calculate horizontal position - stack tasks horizontally
-                                                            let leftOffset = 0
-                                                            for (let i = 0; i < idx; i++) {
-                                                                leftOffset += tasks[i].hours * HOUR_WIDTH
-                                                            }
-
-                                                            return (
-                                                                <div
-                                                                    key={task.id}
-                                                                    className="absolute pointer-events-auto"
-                                                                    style={{ left: leftOffset }}
-                                                                >
-                                                                    <DraggableTask task={task}>
-                                                                        <TaskBar
-                                                                            task={task}
-                                                                            onUnassign={handleUnassignTask}
-                                                                            onClick={handleTaskClick}
-                                                                        />
-                                                                    </DraggableTask>
-                                                                </div>
-                                                            )
-                                                        })}
+                                                    {/* Task bars - stacked vertically, full width */}
+                                                    <div className="absolute inset-0 flex flex-col py-1 px-2 z-10 pointer-events-none">
+                                                        {tasks.map((task, idx) => (
+                                                            <div
+                                                                key={task.id}
+                                                                className="pointer-events-auto w-full"
+                                                                style={{ marginBottom: idx < tasks.length - 1 ? 2 : 0 }}
+                                                            >
+                                                                <DraggableTask task={task}>
+                                                                    <TaskBar
+                                                                        task={task}
+                                                                        onUnassign={handleUnassignTask}
+                                                                        onClick={handleTaskClick}
+                                                                    />
+                                                                </DraggableTask>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </DroppableCell>
                                             )
                                         })}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     )}
                 </div>
-                <DragOverlay>
-                    {activeDragTask ? (
-                        <div style={{ transform: 'none' }}>
-                            <TaskBar
-                                task={activeDragTask}
-                            // No interactivity while dragging overlay
-                            />
+
+                {/* Legend Bar */}
+                {saLegend.length > 0 && (
+                    <div className="border-t bg-white px-4 py-2 flex items-center gap-4 shrink-0 overflow-x-auto">
+                        <span className="text-xs font-semibold text-slate-500 shrink-0">SA Legend:</span>
+                        <div className="flex items-center gap-3">
+                            {saLegend.map(sa => (
+                                <div key={sa.id} className="flex items-center gap-1.5">
+                                    <div
+                                        className="w-3 h-3 rounded-full border shadow-sm"
+                                        style={{ backgroundColor: sa.color, borderColor: sa.color.replace('0.2)', '1)') }}
+                                    />
+                                    <span className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                                        {sa.name || 'SA'}
+                                    </span>
+                                </div>
+                            ))}
                         </div>
-                    ) : null}
-                </DragOverlay>
+                    </div>
+                )}
+
             </div>
-        </DndContext>
     )
 
     return (
-        <>
+        <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+        >
             <ResizablePanelLayout
                 leftPanel={leftPanel}
                 rightPanel={rightPanel}
@@ -681,6 +753,25 @@ export function GanttResourceView() {
                 task={editingTask}
                 onSaved={handleTaskSaved}
             />
-        </>
+
+            <DragOverlay dropAnimation={null}>
+                {activeDragTask ? (
+                    <div
+                        className="bg-white rounded-lg border-2 border-blue-500 shadow-2xl px-3 py-2 min-w-[180px] max-w-[250px]"
+                        style={{ transform: 'rotate(2deg)' }}
+                    >
+                        <div className="font-bold text-blue-600 text-xs truncate">
+                            {activeDragTask.projectCode}
+                        </div>
+                        <div className="text-slate-700 text-[11px] truncate mt-0.5">
+                            {activeDragTask.title}
+                        </div>
+                        <div className="text-slate-500 text-[10px] mt-1">
+                            {activeDragTask.hours}h
+                        </div>
+                    </div>
+                ) : null}
+            </DragOverlay>
+        </DndContext>
     )
 }

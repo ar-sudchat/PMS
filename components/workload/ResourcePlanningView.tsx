@@ -188,24 +188,24 @@ export function ResourcePlanningView() {
         }
     }, [employees])
 
-    // Summary calculation for Team Workload
     const summary = useMemo(() => {
-        if (!filteredEmployees.length || !config) return null
+        if (!employees || employees.length === 0) return null
 
-        const hoursPerDay = config.workingHoursPerDay || 8
-        const totalDays = dates.length
-        const totalCapacity = filteredEmployees.length * hoursPerDay * totalDays
-
+        let totalCapacity = 0
         let totalAllocated = 0
         let overloadedCount = 0
 
-        filteredEmployees.forEach(emp => {
-            emp.daily_workload?.forEach(day => {
-                totalAllocated += day.assigned_hours || 0
-                if ((day.assigned_hours || 0) > hoursPerDay) {
-                    overloadedCount++
-                }
-            })
+        employees.forEach(emp => {
+            // Calculate capacity for this employee for the selected range
+            const wCap = emp.daily_workload.reduce((sum, d) => sum + d.capacity_hours, 0)
+            const wAlloc = emp.total_assigned_hours
+
+            totalCapacity += wCap
+            totalAllocated += wAlloc
+
+            if (emp.average_workload_percent > 100) {
+                overloadedCount++
+            }
         })
 
         const totalAvailable = Math.max(0, totalCapacity - totalAllocated)
@@ -218,7 +218,7 @@ export function ResourcePlanningView() {
             allocatedPercent,
             overloadedCount
         }
-    }, [filteredEmployees, config, dates])
+    }, [employees])
 
     // Edit Modal State
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -226,12 +226,13 @@ export function ResourcePlanningView() {
 
     const handleTaskClick = (task: any) => {
         // Map incoming task to TaskEditModal format
-        // TaskEditModal expects: { id, title, projectCode, projectName, hours, start, end, employeeId, reviewerId }
+        // TaskEditModal expects: { id, title, projectCode, projectName, customerName, hours, start, end, employeeId, reviewerId }
         const mappedTask = {
             id: task.id,
             title: task.title,
             projectCode: task.project_code || task.projectCode,
             projectName: task.project_name || task.projectName,
+            customerName: task.customer_name || task.customerName,
             hours: task.estimated_hours || task.hours || 0,
             start: task.start_date || task.start || '',
             end: task.due_date || task.end || '',

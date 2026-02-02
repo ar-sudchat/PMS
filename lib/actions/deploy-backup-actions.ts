@@ -223,8 +223,8 @@ export async function createDeployBackupRecord(data: {
             .input('created_at', new Date())
             .query(`
                 INSERT INTO pms.deploy_backup_records
-                (id, backup_source_id, backup_date, deploy_record_id, backup_type, backup_location, backup_size, version_number, is_verified, verified_by, verified_at, is_passed, failed_reason, notes, attachments, created_by, created_at)
-                VALUES (@id, @backup_source_id, @backup_date, @deploy_record_id, @backup_type, @backup_location, @backup_size, @version_number, @is_verified, @verified_by, @verified_at, @is_passed, @failed_reason, @notes, @attachments, @created_by, @created_at)
+                (id, backup_source_id, backup_date, deploy_record_id, backup_type, backup_location, backup_size, version_number, is_verified, verified_by, verified_at, is_passed, failed_reason, notes, attachments, created_by, created_at, approval_status)
+                VALUES (@id, @backup_source_id, @backup_date, @deploy_record_id, @backup_type, @backup_location, @backup_size, @version_number, @is_verified, @verified_by, @verified_at, @is_passed, @failed_reason, @notes, @attachments, @created_by, @created_at, 'APPROVED')
             `)
 
         revalidatePath('/kpi-record/deploy-backup')
@@ -428,6 +428,46 @@ export async function updateDeployBackupApprovalStatus(
 
     } catch (error: any) {
         console.error('Error updating approval status:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Batch approve all pending Deploy Backup records
+export async function approveAllPendingDeployBackups() {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // Update all PENDING records to APPROVED
+        const result = await pool.request()
+            .query(`
+                UPDATE pms.deploy_backup_records
+                SET approval_status = 'APPROVED'
+                WHERE approval_status = 'PENDING'
+            `)
+
+        // Also complete any related approval instances
+        await pool.request()
+            .input('userId', user.id)
+            .query(`
+                UPDATE ai
+                SET ai.status = 'COMPLETED', ai.completion_date = GETDATE()
+                FROM pms.approval_instances ai
+                INNER JOIN pms.deploy_backup_records db ON ai.document_id = db.id
+                WHERE ai.module_code = 'KPI'
+                AND ai.document_type = 'DEPLOY_BACKUP'
+                AND ai.status IN ('PENDING', 'IN_PROGRESS')
+            `)
+
+        revalidatePath('/kpi-record/deploy-backup')
+        return { success: true, count: result.rowsAffected[0] }
+
+    } catch (error: any) {
+        console.error('Error approving pending records:', error)
         return { success: false, error: error.message }
     }
 }

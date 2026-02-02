@@ -242,9 +242,9 @@ export async function createMeetingMinutesRecord(data: {
             .input('created_at', new Date())
             .query(`
                 INSERT INTO pms.meeting_minutes_records
-                (id, project_id, meeting_date, meeting_end_time, meeting_type, meeting_title, organized_by, attendees, mom_sent_at, is_on_time, hours_to_send, sent_by, mom_file_path, notes, attachments, created_by, created_at)
+                (id, project_id, meeting_date, meeting_end_time, meeting_type, meeting_title, organized_by, attendees, mom_sent_at, is_on_time, hours_to_send, sent_by, mom_file_path, notes, attachments, created_by, created_at, approval_status)
                 OUTPUT INSERTED.id
-                VALUES (NEWID(), @project_id, @meeting_date, @meeting_end_time, @meeting_type, @meeting_title, @organized_by, @attendees, @mom_sent_at, @is_on_time, @hours_to_send, @sent_by, @mom_file_path, @notes, @attachments, @created_by, @created_at)
+                VALUES (NEWID(), @project_id, @meeting_date, @meeting_end_time, @meeting_type, @meeting_title, @organized_by, @attendees, @mom_sent_at, @is_on_time, @hours_to_send, @sent_by, @mom_file_path, @notes, @attachments, @created_by, @created_at, 'APPROVED')
             `)
 
         revalidatePath('/kpi-record/meeting-minutes')
@@ -526,6 +526,46 @@ export async function updateMeetingMinutesApprovalStatus(
 
     } catch (error: any) {
         console.error('Error updating approval status:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// Batch approve all pending Meeting Minutes records
+export async function approveAllPendingMeetingMinutes() {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        const pool = await getConnection()
+
+        // Update all PENDING records to APPROVED
+        const result = await pool.request()
+            .query(`
+                UPDATE pms.meeting_minutes_records
+                SET approval_status = 'APPROVED'
+                WHERE approval_status = 'PENDING'
+            `)
+
+        // Also complete any related approval instances
+        await pool.request()
+            .input('userId', user.id)
+            .query(`
+                UPDATE ai
+                SET ai.status = 'COMPLETED', ai.completion_date = GETDATE()
+                FROM pms.approval_instances ai
+                INNER JOIN pms.meeting_minutes_records mm ON ai.document_id = mm.id
+                WHERE ai.module_code = 'KPI'
+                AND ai.document_type = 'MEETING_MINUTES'
+                AND ai.status IN ('PENDING', 'IN_PROGRESS')
+            `)
+
+        revalidatePath('/kpi-record/meeting-minutes')
+        return { success: true, count: result.rowsAffected[0] }
+
+    } catch (error: any) {
+        console.error('Error approving pending meeting minutes:', error)
         return { success: false, error: error.message }
     }
 }
