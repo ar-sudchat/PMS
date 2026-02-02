@@ -29,9 +29,10 @@ interface ProjectModalProps {
     mode: 'create' | 'edit'
     project?: Project | null
     onSuccess: () => void
+    defaultProjectTypeCode?: string // Pre-select project type by code (e.g., 'MKT', 'DEV')
 }
 
-export function ProjectModal({ open, onClose, mode, project, onSuccess }: ProjectModalProps) {
+export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultProjectTypeCode }: ProjectModalProps) {
     // Active Tab
     const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables' | 'attachments'>('info')
 
@@ -231,9 +232,11 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
             // Load project types
             if (typesResult.success && typesResult.data) {
                 setProjectTypes(typesResult.data)
-                // Set default project type (first active one, typically DEV) for create mode
+                // Set default project type for create mode
                 if (mode === 'create' && !formData.project_type_id && typesResult.data.length > 0) {
-                    const defaultType = typesResult.data.find(t => t.code === 'DEV') || typesResult.data[0]
+                    // Use defaultProjectTypeCode if provided, otherwise fallback to DEV
+                    const typeCode = defaultProjectTypeCode || 'DEV'
+                    const defaultType = typesResult.data.find(t => t.code === typeCode) || typesResult.data[0]
                     setFormData(prev => ({ ...prev, project_type_id: defaultType.id }))
                 }
             }
@@ -252,8 +255,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess }: Projec
     }
 
     const resetForm = () => {
-        // Get default project type
-        const defaultType = projectTypes.find(t => t.code === 'DEV') || projectTypes[0]
+        // Get default project type - use defaultProjectTypeCode if provided
+        const typeCode = defaultProjectTypeCode || 'DEV'
+        const defaultType = projectTypes.find(t => t.code === typeCode) || projectTypes[0]
         setFormData({
             project_year: new Date().getFullYear(),
             project_code: '',
