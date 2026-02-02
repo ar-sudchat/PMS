@@ -1,16 +1,15 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Loader2, TrendingUp, Search } from 'lucide-react'
+import { Loader2, Search, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MktStageFilter } from '@/components/mkt-tracking/MktStageFilter'
 import { MktProjectTable } from '@/components/mkt-tracking/MktProjectTable'
 import { MktDetailDialog } from '@/components/mkt-tracking/MktDetailDialog'
 import { MktHistoryPanel } from '@/components/mkt-tracking/MktHistoryPanel'
 import { ProjectModal } from '@/components/modals/ProjectModal'
-import { Plus } from 'lucide-react'
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 import { MktStageCode } from '@/lib/constants/mkt-stages'
 import {
@@ -101,36 +100,13 @@ export default function MktTrackingPage() {
     }
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <TrendingUp className="h-6 w-6" />
-                        MKT Tracking
-                    </h1>
-                    <p className="text-muted-foreground">
-                        ติดตามโครงการ Marketing / Sales Pipeline
-                    </p>
-                </div>
-                <Button onClick={() => setCreateDialogOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    สร้างโครงการ MKT
-                </Button>
-            </div>
-
+        <div className="container mx-auto py-4 space-y-4">
             {/* Main Content */}
             <Card>
-                <CardHeader>
-                    <CardTitle>รายการโครงการ MKT</CardTitle>
-                    <CardDescription>
-                        ติดตามและจัดการโครงการในขั้นตอน Marketing
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
+                <CardContent className="pt-4">
                     {/* Filters */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-                        <div className="relative">
+                    <div className="flex flex-wrap items-center gap-4 mb-4">
+                        <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="ค้นหา รหัส, ชื่อ, ลูกค้า..."
@@ -139,43 +115,55 @@ export default function MktTrackingPage() {
                                 className="pl-9"
                             />
                         </div>
-                        <SmartCombobox
-                            placeholder="เลือกปี..."
-                            options={filterOptions?.years.map(year => ({
-                                value: year,
-                                label: String(year)
-                            })) || []}
-                            value={selectedYear}
-                            onChange={setSelectedYear}
-                            searchable={false}
-                        />
-                        <SmartCombobox
-                            placeholder="เลือกลูกค้า..."
-                            options={filterOptions?.customers.map(c => ({
-                                value: c.id,
-                                label: c.name
-                            })) || []}
-                            value={selectedCustomer}
-                            onChange={setSelectedCustomer}
-                        />
-                        <SmartCombobox
-                            placeholder="เลือกโครงการ..."
-                            options={filterOptions?.projects.map(p => ({
-                                value: p.id,
-                                label: `${p.project_code} - ${p.name}`
-                            })) || []}
-                            value={selectedProject}
-                            onChange={setSelectedProject}
-                        />
-                        <SmartCombobox
-                            placeholder="เลือก Owner..."
-                            options={filterOptions?.owners.map(o => ({
-                                value: o.id,
-                                label: o.full_name
-                            })) || []}
-                            value={selectedOwner}
-                            onChange={setSelectedOwner}
-                        />
+                        <div className="w-[120px]">
+                            <SmartCombobox
+                                placeholder="ปี..."
+                                options={filterOptions?.years.map(year => ({
+                                    value: year,
+                                    label: String(year)
+                                })) || []}
+                                value={selectedYear}
+                                onChange={setSelectedYear}
+                                searchable={false}
+                            />
+                        </div>
+                        <div className="w-[180px]">
+                            <SmartCombobox
+                                placeholder="ลูกค้า..."
+                                options={filterOptions?.customers.map(c => ({
+                                    value: c.id,
+                                    label: c.name
+                                })) || []}
+                                value={selectedCustomer}
+                                onChange={setSelectedCustomer}
+                            />
+                        </div>
+                        <div className="w-[200px]">
+                            <SmartCombobox
+                                placeholder="โครงการ..."
+                                options={filterOptions?.projects.map(p => ({
+                                    value: p.id,
+                                    label: `${p.project_code} - ${p.name}`
+                                })) || []}
+                                value={selectedProject}
+                                onChange={setSelectedProject}
+                            />
+                        </div>
+                        <div className="w-[180px]">
+                            <SmartCombobox
+                                placeholder="Owner..."
+                                options={filterOptions?.owners.map(o => ({
+                                    value: o.id,
+                                    label: o.full_name
+                                })) || []}
+                                value={selectedOwner}
+                                onChange={setSelectedOwner}
+                            />
+                        </div>
+                        <Button onClick={() => setCreateDialogOpen(true)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            สร้าง MKT
+                        </Button>
                     </div>
 
                     {isLoading ? (
