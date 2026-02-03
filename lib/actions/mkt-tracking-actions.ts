@@ -34,6 +34,8 @@ export interface MktProject {
     mkt_notes?: string
     project_manager_id?: string
     project_manager_name?: string
+    project_owner_id?: string
+    project_owner_name?: string
     status: string
     created_at: string
     created_by?: string
@@ -89,7 +91,7 @@ export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
                 ISNULL(p.mkt_stage, 'NEW') AS mkt_stage,
                 p.mkt_stage_changed_at,
                 p.mkt_stage_changed_by,
-                changed_by.first_name + ' ' + changed_by.last_name AS stage_changed_by_name,
+                COALESCE(changed_by.first_name_th + ' ' + changed_by.last_name_th, changed_by.first_name + ' ' + changed_by.last_name) AS stage_changed_by_name,
                 p.mkt_expected_value,
                 p.mkt_mandays,
                 p.mkt_expected_close_date,
@@ -101,17 +103,20 @@ export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
                 p.mkt_quote_sent_date,
                 p.mkt_notes,
                 p.project_manager_id,
-                pm.first_name + ' ' + pm.last_name AS project_manager_name,
+                COALESCE(pm.first_name_th + ' ' + pm.last_name_th, pm.first_name + ' ' + pm.last_name) AS project_manager_name,
+                p.project_owner_id,
+                COALESCE(owner.first_name_th + ' ' + owner.last_name_th, owner.first_name + ' ' + owner.last_name) AS project_owner_name,
                 p.status_id AS status,
                 p.created_at,
                 p.created_by,
-                creator.first_name + ' ' + creator.last_name AS created_by_name,
+                COALESCE(creator.first_name_th + ' ' + creator.last_name_th, creator.first_name + ' ' + creator.last_name) AS created_by_name,
                 DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) AS days_in_stage
             FROM pms.projects p
             INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
             LEFT JOIN pms.customers c ON c.id = p.customer_id
             LEFT JOIN pms.employees changed_by ON changed_by.id = p.mkt_stage_changed_by
             LEFT JOIN pms.employees pm ON pm.id = p.project_manager_id
+            LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
             LEFT JOIN pms.employees creator ON creator.id = p.created_by
             LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
             WHERE pt.code = 'MKT'
@@ -197,7 +202,7 @@ export async function fetchMktProjectById(projectId: string): Promise<{
                     ISNULL(p.mkt_stage, 'NEW') AS mkt_stage,
                     p.mkt_stage_changed_at,
                     p.mkt_stage_changed_by,
-                    changed_by.first_name + ' ' + changed_by.last_name AS stage_changed_by_name,
+                    COALESCE(changed_by.first_name_th + ' ' + changed_by.last_name_th, changed_by.first_name + ' ' + changed_by.last_name) AS stage_changed_by_name,
                     p.mkt_expected_value,
                     p.mkt_mandays,
                     p.mkt_expected_close_date,
@@ -209,11 +214,11 @@ export async function fetchMktProjectById(projectId: string): Promise<{
                     p.mkt_quote_sent_date,
                     p.mkt_notes,
                     p.project_manager_id,
-                    pm.first_name + ' ' + pm.last_name AS project_manager_name,
+                    COALESCE(pm.first_name_th + ' ' + pm.last_name_th, pm.first_name + ' ' + pm.last_name) AS project_manager_name,
                     p.status_id AS status,
                     p.created_at,
                     p.created_by,
-                    creator.first_name + ' ' + creator.last_name AS created_by_name,
+                    COALESCE(creator.first_name_th + ' ' + creator.last_name_th, creator.first_name + ' ' + creator.last_name) AS created_by_name,
                     DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) AS days_in_stage
                 FROM pms.projects p
                 INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
@@ -475,7 +480,7 @@ export async function fetchMktTrackingLogs(projectId: string): Promise<{
                     l.to_stage,
                     l.notes,
                     l.created_by,
-                    e.first_name + ' ' + e.last_name AS created_by_name,
+                    COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) AS created_by_name,
                     l.created_at
                 FROM pms.mkt_tracking_logs l
                 LEFT JOIN pms.employees e ON e.id = l.created_by
@@ -812,6 +817,7 @@ export interface MktFilterOptions {
     customers: { id: string; name: string }[]
     projects: { id: string; project_code: string; name: string }[]
     owners: { id: string; full_name: string }[]
+    pms: { id: string; full_name: string }[]
 }
 
 export async function fetchMktFilterOptions(): Promise<{
@@ -843,13 +849,15 @@ export async function fetchMktFilterOptions(): Promise<{
                 ORDER BY c.name
             `)
 
-        // Fetch MKT projects for filter
+        // Fetch MKT projects for filter (exclude cancelled)
         const projectsResult = await pool.request()
             .query(`
                 SELECT p.id, p.project_code, p.name
                 FROM pms.projects p
                 INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
+                LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
                 WHERE pt.code = 'MKT'
+                AND (psc.code IS NULL OR psc.code != 'CANCELLED')
                 ORDER BY p.project_code DESC
             `)
 
@@ -865,13 +873,26 @@ export async function fetchMktFilterOptions(): Promise<{
                 ORDER BY full_name
             `)
 
+        // Fetch PMs that are assigned to MKT projects
+        const pmsResult = await pool.request()
+            .query(`
+                SELECT DISTINCT e.id,
+                    COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name) as full_name
+                FROM pms.employees e
+                INNER JOIN pms.projects p ON p.project_manager_id = e.id
+                INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
+                WHERE pt.code = 'MKT' AND e.is_active = 1
+                ORDER BY full_name
+            `)
+
         return {
             success: true,
             data: {
                 years: yearsResult.recordset.map((r: { year: number }) => r.year),
                 customers: customersResult.recordset,
                 projects: projectsResult.recordset,
-                owners: ownersResult.recordset
+                owners: ownersResult.recordset,
+                pms: pmsResult.recordset
             }
         }
     } catch (error) {
