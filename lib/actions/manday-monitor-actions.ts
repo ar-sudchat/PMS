@@ -95,6 +95,7 @@ export interface FilterParams {
     employeeId?: string
     departmentId?: string
     projectTypeCode?: string
+    ownerId?: string
 }
 
 export interface DepartmentOption {
@@ -110,6 +111,11 @@ export interface ProjectOption {
 
 export interface ProjectTypeOption {
     code: string
+    name: string
+}
+
+export interface OwnerOption {
+    id: string
     name: string
 }
 
@@ -188,6 +194,10 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
             additionalWhere += ' AND pt.code = @projectTypeCode'
             request.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode)
         }
+        if (filters.ownerId) {
+            additionalWhere += ' AND p.project_owner_id = @ownerId'
+            request.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
+        }
 
         const result = await request.query(`
             SELECT
@@ -206,9 +216,12 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
         `)
 
         // Get total budget
-        const budgetResult = await pool.request()
-            .input('projectTypeCode', sql.NVarChar, filters.projectTypeCode || '')
-            .query(`
+        const budgetRequest = pool.request()
+        budgetRequest.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode || '')
+        if (filters.ownerId) {
+            budgetRequest.input('budgetOwnerId', sql.UniqueIdentifier, filters.ownerId)
+        }
+        const budgetResult = await budgetRequest.query(`
                 SELECT ISNULL(SUM(ISNULL(p.sold_mandays, 0)), 0) AS total_budget
                 FROM pms.projects p
                 LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
@@ -216,6 +229,7 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
                 WHERE p.is_active = 1
                 AND (ps.code IS NULL OR ps.code NOT IN ('CANCELLED', 'COMPLETED', 'CLOSED'))
                 ${filters.projectTypeCode ? 'AND pt.code = @projectTypeCode' : ''}
+                ${filters.ownerId ? 'AND p.project_owner_id = @budgetOwnerId' : ''}
             `)
 
         // Get previous period for comparison
@@ -298,6 +312,10 @@ export async function getMandayByProject(
         if (filters.projectTypeCode) {
             additionalWhere += ' AND pt.code = @projectTypeCode'
             request.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode)
+        }
+        if (filters.ownerId) {
+            additionalWhere += ' AND p.project_owner_id = @ownerId'
+            request.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
         }
 
         const result = await request.query(`
@@ -749,6 +767,37 @@ export async function getProjectTypeOptions(): Promise<{
         return { success: true, data: result.recordset }
     } catch (error: any) {
         console.error('getProjectTypeOptions error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+export async function getOwnerOptions(): Promise<{
+    success: boolean
+    data?: OwnerOption[]
+    error?: string
+}> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+        const result = await pool.request()
+            .query(`
+                SELECT DISTINCT
+                    e.id,
+                    COALESCE(
+                        CONCAT(e.first_name_th, ' ', e.last_name_th),
+                        CONCAT(e.first_name, ' ', e.last_name)
+                    ) AS name
+                FROM pms.employees e
+                INNER JOIN pms.projects p ON p.project_owner_id = e.id
+                WHERE e.is_active = 1 AND p.is_active = 1
+                ORDER BY name
+            `)
+
+        return { success: true, data: result.recordset }
+    } catch (error: any) {
+        console.error('getOwnerOptions error:', error)
         return { success: false, error: error.message }
     }
 }

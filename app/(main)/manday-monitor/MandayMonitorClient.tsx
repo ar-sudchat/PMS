@@ -38,7 +38,8 @@ import {
     MandayByEmployee,
     MandayTrend,
     ProjectOption,
-    ProjectTypeOption
+    ProjectTypeOption,
+    OwnerOption
 } from '@/lib/actions/manday-monitor-actions'
 import { ProjectMandayDetailDialog } from './ProjectMandayDetailDialog'
 
@@ -66,6 +67,7 @@ interface MandayMonitorClientProps {
     filters: FilterParams
     projectOptions: ProjectOption[]
     projectTypeOptions: ProjectTypeOption[]
+    ownerOptions: OwnerOption[]
 }
 
 const MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
@@ -75,7 +77,8 @@ export function MandayMonitorClient({
     initialData,
     filters,
     projectOptions,
-    projectTypeOptions
+    projectTypeOptions,
+    ownerOptions
 }: MandayMonitorClientProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -108,6 +111,9 @@ export function MandayMonitorClient({
         }
         if (newFilters.projectTypeCode) {
             params.set('projectType', newFilters.projectTypeCode)
+        }
+        if (newFilters.ownerId) {
+            params.set('owner', newFilters.ownerId)
         }
 
         router.push(`/manday-monitor?${params.toString()}`)
@@ -380,6 +386,22 @@ export function MandayMonitorClient({
                                     })()
                                 } : null}
                                 onChange={(opt) => updateFilters({ projectId: opt?.value as string || undefined })}
+                            />
+                        </div>
+
+                        {/* Owner Filter */}
+                        <div className="w-[200px]">
+                            <SmartCombobox
+                                placeholder="Owner..."
+                                options={ownerOptions.map(o => ({
+                                    value: o.id,
+                                    label: o.name
+                                }))}
+                                value={filters.ownerId ? {
+                                    value: filters.ownerId,
+                                    label: ownerOptions.find(o => o.id === filters.ownerId)?.name || ''
+                                } : null}
+                                onChange={(opt) => updateFilters({ ownerId: opt?.value as string || undefined })}
                             />
                         </div>
 

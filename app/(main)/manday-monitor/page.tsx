@@ -7,6 +7,7 @@ import {
     getMandayDashboardData,
     getProjectOptions,
     getProjectTypeOptions,
+    getOwnerOptions,
     FilterParams
 } from '@/lib/actions/manday-monitor-actions'
 
@@ -23,6 +24,7 @@ export default async function MandayMonitorPage({
         quarter?: string
         project?: string
         projectType?: string
+        owner?: string
     }>
 }) {
     const user = await getCurrentUser()
@@ -40,14 +42,16 @@ export default async function MandayMonitorPage({
         month: params.month ? parseInt(params.month) : now.getMonth() + 1,
         quarter: params.quarter ? parseInt(params.quarter) : Math.ceil((now.getMonth() + 1) / 3),
         projectId: params.project || undefined,
-        projectTypeCode: params.projectType || undefined
+        projectTypeCode: params.projectType || undefined,
+        ownerId: params.owner || undefined
     }
 
     // Fetch all data in parallel
-    const [dashboardData, projectOptions, projectTypeOptions] = await Promise.all([
+    const [dashboardData, projectOptions, projectTypeOptions, ownerOptions] = await Promise.all([
         getMandayDashboardData(filters),
         getProjectOptions(),
-        getProjectTypeOptions()
+        getProjectTypeOptions(),
+        getOwnerOptions()
     ])
 
     return (
@@ -62,6 +66,7 @@ export default async function MandayMonitorPage({
                     filters={filters}
                     projectOptions={projectOptions.data || []}
                     projectTypeOptions={projectTypeOptions.data || []}
+                    ownerOptions={ownerOptions.data || []}
                 />
             </Suspense>
         </div>

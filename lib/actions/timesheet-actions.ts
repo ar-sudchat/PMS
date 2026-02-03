@@ -331,19 +331,58 @@ async function updateMilestoneActualMandays(pool: sql.ConnectionPool, taskId: st
           pm.updated_at = GETDATE()
       FROM pms.project_milestones pm
       INNER JOIN (
-        SELECT 
+        SELECT
           s.milestone_id,
           ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS total_mandays
         FROM pms.tasks t
         INNER JOIN pms.stories s ON t.story_id = s.id
         LEFT JOIN pms.timesheet_entries te ON te.task_id = t.id AND te.is_active = 1
         WHERE s.milestone_id = (SELECT milestone_id FROM pms.stories s2 JOIN pms.tasks t2 ON s2.id = t2.story_id WHERE t2.id = @taskId)
+          AND t.is_active = 1
+          AND t.status != 'cancelled'
+          AND s.is_active = 1
         GROUP BY s.milestone_id
       ) calc ON pm.id = calc.milestone_id
     `)
   // Note: The subquery `calc` complexity: need to group ALL tasks in that milestone, not just the single task.
   // The query above filters by `WHERE s.milestone_id = ...`.
   // It sums hours for ALL tasks in that milestone. This is correct.
+}
+
+// Recalculate actual_mandays for ALL milestones (excluding cancelled tasks)
+export async function recalculateAllMilestoneMandays(): Promise<{ success: boolean; updated: number; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { success: false, updated: 0, error: 'Unauthorized' }
+
+  try {
+    const pool = await getConnection()
+
+    const result = await pool.request().query(`
+      -- Recalculate actual_mandays for all milestones, excluding cancelled/inactive tasks
+      UPDATE pm
+      SET pm.actual_mandays = ISNULL(calc.total_mandays, 0),
+          pm.updated_at = GETDATE()
+      FROM pms.project_milestones pm
+      LEFT JOIN (
+        SELECT
+          s.milestone_id,
+          ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS total_mandays
+        FROM pms.tasks t
+        INNER JOIN pms.stories s ON t.story_id = s.id
+        LEFT JOIN pms.timesheet_entries te ON te.task_id = t.id AND te.is_active = 1
+        WHERE t.is_active = 1
+          AND t.status != 'cancelled'
+          AND s.is_active = 1
+          AND s.milestone_id IS NOT NULL
+        GROUP BY s.milestone_id
+      ) calc ON pm.id = calc.milestone_id
+    `)
+
+    return { success: true, updated: result.rowsAffected[0] || 0 }
+  } catch (error: any) {
+    console.error('Error recalculating milestone mandays:', error)
+    return { success: false, updated: 0, error: error.message }
+  }
 }
 
 // Get available tasks for timesheet (to add new task row)
