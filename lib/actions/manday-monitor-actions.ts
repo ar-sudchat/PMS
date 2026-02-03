@@ -412,10 +412,18 @@ export async function getMandayByEmployee(
 
         // Build subquery filters (for timesheet/project data)
         let subqueryWhere = ''
+        let needProjectJoin = false
         if (filters.projectId) {
             subqueryWhere += ' AND s.project_id = @projectId'
             request.input('projectId', sql.UniqueIdentifier, filters.projectId)
         }
+        if (filters.ownerId) {
+            subqueryWhere += ' AND p.project_owner_id = @ownerId'
+            request.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
+            needProjectJoin = true
+        }
+
+        const projectJoin = needProjectJoin ? 'INNER JOIN pms.projects p ON s.project_id = p.id' : ''
 
         const result = await request.query(`
             SELECT
@@ -456,6 +464,7 @@ export async function getMandayByEmployee(
                 FROM pms.timesheet_entries te
                 INNER JOIN pms.tasks t ON te.task_id = t.id
                 INNER JOIN pms.stories s ON t.story_id = s.id
+                ${projectJoin}
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND ${whereClause}
                 ${subqueryWhere}
