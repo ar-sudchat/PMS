@@ -9,13 +9,7 @@ import {
     TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import {
-    Phone,
-    Mail,
-    Calendar,
-} from 'lucide-react'
 import { format } from 'date-fns'
-import { th } from 'date-fns/locale'
 import { MKT_STAGES } from '@/lib/constants/mkt-stages'
 import { MktProject } from '@/lib/actions/mkt-tracking-actions'
 
@@ -32,14 +26,15 @@ const stageColors: Record<string, string> = {
 }
 
 export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
-    const formatCurrency = (value: number | null | undefined) => {
-        if (!value) return '-'
-        return new Intl.NumberFormat('th-TH').format(value) + ' บาท'
-    }
-
     const formatDate = (date: string | Date | null | undefined) => {
         if (!date) return '-'
-        return format(new Date(date), 'dd MMM yyyy', { locale: th })
+        return format(new Date(date), 'dd-MM-yy')
+    }
+
+    // Extract first name only
+    const getFirstName = (fullName: string | null | undefined) => {
+        if (!fullName) return '-'
+        return fullName.split(' ')[0]
     }
 
     return (
@@ -51,8 +46,8 @@ export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
                         <TableHead>ชื่อโครงการ</TableHead>
                         <TableHead>ลูกค้า</TableHead>
                         <TableHead>Stage</TableHead>
-                        <TableHead>มูลค่า</TableHead>
-                        <TableHead>ผู้ติดต่อ</TableHead>
+                        <TableHead>ผู้จัดการ</TableHead>
+                        <TableHead>เจ้าของ</TableHead>
                         <TableHead>วันนัดประชุม</TableHead>
                         <TableHead>วันประชุมล่าสุด</TableHead>
                         <TableHead>วันส่งราคา</TableHead>
@@ -81,48 +76,29 @@ export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
                                         {project.title}
                                     </div>
                                 </TableCell>
-                                <TableCell>{project.client_name || '-'}</TableCell>
+                                <TableCell>
+                                    <span className="truncate block max-w-[150px]">
+                                        {project.client_name || '-'}
+                                    </span>
+                                </TableCell>
                                 <TableCell>
                                     <Badge className={stageColors[project.mkt_stage] || 'bg-gray-100'}>
                                         {MKT_STAGES.find(s => s.code === project.mkt_stage)?.label || project.mkt_stage}
                                     </Badge>
                                 </TableCell>
-                                <TableCell className="text-right">
-                                    {formatCurrency(project.mkt_expected_value)}
+                                <TableCell>
+                                    {getFirstName(project.project_manager_name)}
                                 </TableCell>
                                 <TableCell>
-                                    {project.mkt_contact_person && (
-                                        <div className="space-y-1">
-                                            <div className="text-sm">{project.mkt_contact_person}</div>
-                                            {project.mkt_contact_phone && (
-                                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                                    <Phone className="h-3 w-3" />
-                                                    {project.mkt_contact_phone}
-                                                </div>
-                                            )}
-                                            {project.mkt_contact_email && (
-                                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                                    <Mail className="h-3 w-3" />
-                                                    {project.mkt_contact_email}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {!project.mkt_contact_person && '-'}
+                                    {getFirstName(project.project_owner_name)}
                                 </TableCell>
-                                <TableCell>
-                                    {project.mkt_meeting_date && (
-                                        <div className="flex items-center gap-1 text-sm">
-                                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                                            {formatDate(project.mkt_meeting_date)}
-                                        </div>
-                                    )}
-                                    {!project.mkt_meeting_date && '-'}
+                                <TableCell className="whitespace-nowrap">
+                                    {formatDate(project.mkt_meeting_date)}
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="whitespace-nowrap">
                                     {formatDate(project.mkt_last_meeting_date)}
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="whitespace-nowrap">
                                     {formatDate(project.mkt_quote_sent_date)}
                                 </TableCell>
                                 <TableCell className="text-center">

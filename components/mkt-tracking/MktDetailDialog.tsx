@@ -17,6 +17,8 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { MktProject, updateMktDetails, updateMktStage, convertMktToDev, cancelMktProject } from '@/lib/actions/mkt-tracking-actions'
 import { MKT_STAGES, MktStageCode } from '@/lib/constants/mkt-stages'
+import { getProjectAttachments, updateProjectAttachments, Attachment } from '@/lib/actions/attachment-actions'
+import FileUpload from '@/components/ui/FileUpload'
 import { toast } from 'sonner'
 import {
     Loader2,
@@ -25,7 +27,6 @@ import {
     User,
     Phone,
     Mail,
-    Calendar,
     CalendarCheck,
     CalendarClock,
     Send,
@@ -35,6 +36,7 @@ import {
     XCircle,
     History,
     Clock,
+    Paperclip,
 } from 'lucide-react'
 import {
     AlertDialog,
@@ -73,6 +75,8 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
     const [isLoading, setIsLoading] = useState(false)
     const [isStageLoading, setIsStageLoading] = useState(false)
     const [confirmDialog, setConfirmDialog] = useState<'won' | 'cancel' | null>(null)
+    const [attachments, setAttachments] = useState<Attachment[]>([])
+    const [activeTab, setActiveTab] = useState<'details' | 'attachments'>('details')
     const [formData, setFormData] = useState({
         mkt_mandays: '',
         mkt_expected_value: '',
@@ -112,8 +116,19 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                 mkt_quote_sent_date: toDateString(project.mkt_quote_sent_date),
                 mkt_notes: project.mkt_notes || '',
             })
+            // Load attachments
+            loadAttachments(project.id)
+        } else {
+            setAttachments([])
         }
     }, [project])
+
+    const loadAttachments = async (projectId: string) => {
+        const result = await getProjectAttachments(projectId)
+        if (result.success) {
+            setAttachments(result.data)
+        }
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -139,6 +154,12 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
 
             const result = await updateMktDetails(project.id, payload)
             console.log('Update result:', result)
+
+            // Save attachments
+            const attachmentResult = await updateProjectAttachments(project.id, attachments)
+            if (!attachmentResult.success) {
+                console.error('Attachment save failed:', attachmentResult.error)
+            }
 
             if (result.success) {
                 toast.success('บันทึกข้อมูลสำเร็จ')
@@ -243,7 +264,7 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
 
                     <form onSubmit={handleSubmit}>
                         {/* Stage Selection */}
-                        <div className="mb-6">
+                        <div className="mb-4">
                             <div className="flex flex-wrap gap-2">
                                 {MKT_STAGES.map(stage => (
                                     <button
@@ -264,189 +285,235 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                             </div>
                         </div>
 
-                        <Separator className="my-4" />
-
-                        {/* Value Section */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            <div className="space-y-2">
-                                <Label htmlFor="mandays" className="flex items-center gap-2 text-sm font-medium">
-                                    <Clock className="h-4 w-4 text-blue-600" />
-                                    Manday (ประมาณการ)
-                                </Label>
-                                <div className="relative">
-                                    <Input
-                                        id="mandays"
-                                        type="number"
-                                        step="0.5"
-                                        value={formData.mkt_mandays}
-                                        onChange={(e) => setFormData({ ...formData, mkt_mandays: e.target.value })}
-                                        placeholder="0"
-                                        className="pr-16"
-                                    />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                                        วัน
+                        {/* Custom Tabs - styled like ProjectModal */}
+                        <div className="flex border-b mb-4">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('details')}
+                                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                                    activeTab === 'details'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <FileText className="h-4 w-4" />
+                                รายละเอียด
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('attachments')}
+                                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                                    activeTab === 'attachments'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Paperclip className="h-4 w-4" />
+                                เอกสารแนบ
+                                {attachments.length > 0 && (
+                                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                        {attachments.length}
                                     </span>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="expected_value" className="flex items-center gap-2 text-sm font-medium">
-                                    <Banknote className="h-4 w-4 text-green-600" />
-                                    มูลค่า (Sale)
-                                </Label>
-                                <div className="relative">
-                                    <Input
-                                        id="expected_value"
-                                        type="number"
-                                        value={formData.mkt_expected_value}
-                                        onChange={(e) => setFormData({ ...formData, mkt_expected_value: e.target.value })}
-                                        placeholder="0"
-                                        className="pr-12"
-                                    />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                                        บาท
-                                    </span>
-                                </div>
-                                {formData.mkt_expected_value && (
-                                    <p className="text-xs text-muted-foreground">
-                                        {formatCurrency(formData.mkt_expected_value)} บาท
-                                    </p>
                                 )}
+                            </button>
+                        </div>
+
+                        {/* Tab Content Container - Fixed height to prevent resize on tab switch */}
+                        <div className="min-h-[420px]">
+                            {/* Tab: Details */}
+                            <div className={`${activeTab === 'details' ? 'block' : 'hidden'} space-y-4`}>
+                                {/* Value Section */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="mandays" className="flex items-center gap-2 text-sm font-medium">
+                                            <Clock className="h-4 w-4 text-blue-600" />
+                                            Manday (ประมาณการ)
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="mandays"
+                                                type="number"
+                                                step="0.5"
+                                                value={formData.mkt_mandays}
+                                                onChange={(e) => setFormData({ ...formData, mkt_mandays: e.target.value })}
+                                                placeholder="0"
+                                                className="pr-16"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                                                วัน
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="expected_value" className="flex items-center gap-2 text-sm font-medium">
+                                            <Banknote className="h-4 w-4 text-green-600" />
+                                            มูลค่า (Sale)
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="expected_value"
+                                                type="number"
+                                                value={formData.mkt_expected_value}
+                                                onChange={(e) => setFormData({ ...formData, mkt_expected_value: e.target.value })}
+                                                placeholder="0"
+                                                className="pr-12"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                                                บาท
+                                            </span>
+                                        </div>
+                                        {formData.mkt_expected_value && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {formatCurrency(formData.mkt_expected_value)} บาท
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="close_date" className="flex items-center gap-2 text-sm font-medium">
+                                            <CalendarDays className="h-4 w-4 text-orange-600" />
+                                            วันที่คาดปิด
+                                        </Label>
+                                        <Input
+                                            id="close_date"
+                                            type="date"
+                                            value={formData.mkt_expected_close_date}
+                                            onChange={(e) => setFormData({ ...formData, mkt_expected_close_date: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <Separator />
+
+                                {/* Contact Info Section */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="contact_person" className="flex items-center gap-2 text-sm">
+                                            <User className="h-4 w-4 text-gray-500" />
+                                            ชื่อผู้ติดต่อ
+                                        </Label>
+                                        <Input
+                                            id="contact_person"
+                                            value={formData.mkt_contact_person}
+                                            onChange={(e) => setFormData({ ...formData, mkt_contact_person: e.target.value })}
+                                            placeholder="ชื่อ-นามสกุล"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="contact_phone" className="flex items-center gap-2 text-sm">
+                                            <Phone className="h-4 w-4 text-gray-500" />
+                                            เบอร์โทรศัพท์
+                                        </Label>
+                                        <Input
+                                            id="contact_phone"
+                                            value={formData.mkt_contact_phone}
+                                            onChange={(e) => setFormData({ ...formData, mkt_contact_phone: e.target.value })}
+                                            placeholder="08x-xxx-xxxx"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="contact_email" className="flex items-center gap-2 text-sm">
+                                            <Mail className="h-4 w-4 text-gray-500" />
+                                            อีเมล
+                                        </Label>
+                                        <Input
+                                            id="contact_email"
+                                            type="email"
+                                            value={formData.mkt_contact_email}
+                                            onChange={(e) => setFormData({ ...formData, mkt_contact_email: e.target.value })}
+                                            placeholder="email@example.com"
+                                        />
+                                    </div>
+                                </div>
+
+                                <Separator />
+
+                                {/* Meeting & Quote Section */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="meeting_date" className="flex items-center gap-2 text-sm">
+                                            <CalendarClock className="h-4 w-4 text-purple-600" />
+                                            วันนัดประชุม
+                                        </Label>
+                                        <Input
+                                            id="meeting_date"
+                                            type="date"
+                                            value={formData.mkt_meeting_date}
+                                            onChange={(e) => setFormData({ ...formData, mkt_meeting_date: e.target.value })}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="last_meeting_date" className="flex items-center gap-2 text-sm">
+                                            <CalendarCheck className="h-4 w-4 text-green-600" />
+                                            วันประชุมครั้งสุดท้าย
+                                        </Label>
+                                        <Input
+                                            id="last_meeting_date"
+                                            type="date"
+                                            value={formData.mkt_last_meeting_date}
+                                            onChange={(e) => setFormData({ ...formData, mkt_last_meeting_date: e.target.value })}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="quote_sent_date" className="flex items-center gap-2 text-sm">
+                                            <Send className="h-4 w-4 text-blue-600" />
+                                            วันที่ส่งราคา
+                                        </Label>
+                                        <Input
+                                            id="quote_sent_date"
+                                            type="date"
+                                            value={formData.mkt_quote_sent_date}
+                                            onChange={(e) => setFormData({ ...formData, mkt_quote_sent_date: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <Separator />
+
+                                {/* Notes & Days in Stage */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div className="md:col-span-3 space-y-2">
+                                        <Label htmlFor="notes" className="flex items-center gap-2 text-sm font-medium">
+                                            <FileText className="h-4 w-4 text-gray-500" />
+                                            หมายเหตุ
+                                        </Label>
+                                        <Textarea
+                                            id="notes"
+                                            rows={3}
+                                            value={formData.mkt_notes}
+                                            onChange={(e) => setFormData({ ...formData, mkt_notes: e.target.value })}
+                                            placeholder="บันทึกรายละเอียดเพิ่มเติม..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                                            อยู่ในสถานะนี้
+                                        </Label>
+                                        <div className="flex items-center justify-center h-[76px] bg-muted/30 rounded-md">
+                                            <Badge variant="outline" className="text-2xl px-4 py-2">
+                                                {project?.days_in_stage || 0} วัน
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="close_date" className="flex items-center gap-2 text-sm font-medium">
-                                    <CalendarDays className="h-4 w-4 text-orange-600" />
-                                    วันที่คาดปิด
-                                </Label>
-                                <Input
-                                    id="close_date"
-                                    type="date"
-                                    value={formData.mkt_expected_close_date}
-                                    onChange={(e) => setFormData({ ...formData, mkt_expected_close_date: e.target.value })}
+                            {/* Tab: Attachments */}
+                            <div className={`${activeTab === 'attachments' ? 'block' : 'hidden'}`}>
+                                <FileUpload
+                                    value={attachments}
+                                    onChange={setAttachments}
+                                    maxFiles={10}
+                                    maxSizeMB={20}
+                                    subFolder={`mkt-projects/${project?.id}`}
+                                    label="อัพโหลดเอกสาร"
+                                    helperText="รองรับไฟล์ รูปภาพ, PDF, Word, Excel (สูงสุด 10 ไฟล์, ไฟล์ละไม่เกิน 20MB)"
                                 />
-                            </div>
-                        </div>
-
-                        <Separator className="my-4" />
-
-                        {/* Contact Info Section */}
-                        <div className="mb-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="contact_person" className="flex items-center gap-2 text-sm">
-                                        <User className="h-4 w-4 text-gray-500" />
-                                        ชื่อผู้ติดต่อ
-                                    </Label>
-                                    <Input
-                                        id="contact_person"
-                                        value={formData.mkt_contact_person}
-                                        onChange={(e) => setFormData({ ...formData, mkt_contact_person: e.target.value })}
-                                        placeholder="ชื่อ-นามสกุล"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="contact_phone" className="flex items-center gap-2 text-sm">
-                                        <Phone className="h-4 w-4 text-gray-500" />
-                                        เบอร์โทรศัพท์
-                                    </Label>
-                                    <Input
-                                        id="contact_phone"
-                                        value={formData.mkt_contact_phone}
-                                        onChange={(e) => setFormData({ ...formData, mkt_contact_phone: e.target.value })}
-                                        placeholder="08x-xxx-xxxx"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="contact_email" className="flex items-center gap-2 text-sm">
-                                        <Mail className="h-4 w-4 text-gray-500" />
-                                        อีเมล
-                                    </Label>
-                                    <Input
-                                        id="contact_email"
-                                        type="email"
-                                        value={formData.mkt_contact_email}
-                                        onChange={(e) => setFormData({ ...formData, mkt_contact_email: e.target.value })}
-                                        placeholder="email@example.com"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <Separator className="my-4" />
-
-                        {/* Meeting & Quote Section */}
-                        <div className="mb-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="meeting_date" className="flex items-center gap-2 text-sm">
-                                        <CalendarClock className="h-4 w-4 text-purple-600" />
-                                        วันนัดประชุม
-                                    </Label>
-                                    <Input
-                                        id="meeting_date"
-                                        type="date"
-                                        value={formData.mkt_meeting_date}
-                                        onChange={(e) => setFormData({ ...formData, mkt_meeting_date: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="last_meeting_date" className="flex items-center gap-2 text-sm">
-                                        <CalendarCheck className="h-4 w-4 text-green-600" />
-                                        วันประชุมครั้งสุดท้าย
-                                    </Label>
-                                    <Input
-                                        id="last_meeting_date"
-                                        type="date"
-                                        value={formData.mkt_last_meeting_date}
-                                        onChange={(e) => setFormData({ ...formData, mkt_last_meeting_date: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="quote_sent_date" className="flex items-center gap-2 text-sm">
-                                        <Send className="h-4 w-4 text-blue-600" />
-                                        วันที่ส่งราคา
-                                    </Label>
-                                    <Input
-                                        id="quote_sent_date"
-                                        type="date"
-                                        value={formData.mkt_quote_sent_date}
-                                        onChange={(e) => setFormData({ ...formData, mkt_quote_sent_date: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <Separator className="my-4" />
-
-                        {/* Notes & Days in Stage */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                            <div className="md:col-span-3 space-y-2">
-                                <Label htmlFor="notes" className="flex items-center gap-2 text-sm font-medium">
-                                    <FileText className="h-4 w-4 text-gray-500" />
-                                    หมายเหตุ
-                                </Label>
-                                <Textarea
-                                    id="notes"
-                                    rows={3}
-                                    value={formData.mkt_notes}
-                                    onChange={(e) => setFormData({ ...formData, mkt_notes: e.target.value })}
-                                    placeholder="บันทึกรายละเอียดเพิ่มเติม..."
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                                    อยู่ในสถานะนี้
-                                </Label>
-                                <div className="flex items-center justify-center h-[76px] bg-muted/30 rounded-md">
-                                    <Badge variant="outline" className="text-2xl px-4 py-2">
-                                        {project?.days_in_stage || 0} วัน
-                                    </Badge>
-                                </div>
                             </div>
                         </div>
 

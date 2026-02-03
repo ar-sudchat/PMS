@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Loader2, Search, Plus } from 'lucide-react'
+import { Loader2, Search, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MktStageFilter } from '@/components/mkt-tracking/MktStageFilter'
 import { MktProjectTable } from '@/components/mkt-tracking/MktProjectTable'
@@ -29,7 +29,11 @@ export default function MktTrackingPage() {
 
     // Filter states
     const [filterOptions, setFilterOptions] = useState<MktFilterOptions | null>(null)
-    const [selectedYear, setSelectedYear] = useState<Option | null>(null)
+    const currentYear = new Date().getFullYear()
+    const [selectedYear, setSelectedYear] = useState<Option | null>({
+        value: currentYear,
+        label: String(currentYear)
+    })
     const [selectedCustomer, setSelectedCustomer] = useState<Option | null>(null)
     const [selectedProject, setSelectedProject] = useState<Option | null>(null)
     const [selectedOwner, setSelectedOwner] = useState<Option | null>(null)
@@ -99,6 +103,16 @@ export default function MktTrackingPage() {
     const handleViewHistory = (project: MktProject) => {
         setHistoryProject(project)
         setHistoryPanelOpen(true)
+    }
+
+    const handleClearFilters = () => {
+        setSelectedYear({ value: currentYear, label: String(currentYear) })
+        setSelectedCustomer(null)
+        setSelectedProject(null)
+        setSelectedOwner(null)
+        setSelectedPM(null)
+        setSearchTerm('')
+        setSelectedStage('ALL')
     }
 
     return (
@@ -182,6 +196,14 @@ export default function MktTrackingPage() {
                                 onChange={setSelectedPM}
                             />
                         </div>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleClearFilters}
+                            title="ล้างตัวกรอง"
+                        >
+                            <RotateCcw className="h-4 w-4" />
+                        </Button>
                     </div>
 
                     {isLoading ? (

@@ -1079,6 +1079,11 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('ms_id', delId)
                     .query('UPDATE pms.stories SET milestone_id = NULL WHERE milestone_id = @ms_id')
 
+                // Delete linked deliverables (cascade delete)
+                await transaction.request()
+                    .input('ms_id', delId)
+                    .query('DELETE FROM pms.project_deliverables WHERE project_milestone_id = @ms_id')
+
                 // Delete milestone
                 await transaction.request()
                     .input('id', delId)

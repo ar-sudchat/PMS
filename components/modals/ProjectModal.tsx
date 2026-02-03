@@ -346,7 +346,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         if (!formData.name) newErrors.name = 'Project name is required'
         if (!formData.customer_id) newErrors.customer_id = 'Customer is required'
         if (!formData.project_manager_id) newErrors.project_manager_id = 'PM is required'
-        if (!formData.sold_mandays) newErrors.sold_mandays = 'Sold mandays is required'
+        // MKT projects don't require sold_mandays
+        const isMktProject = selectedProjectType?.code === 'MKT'
+        if (!isMktProject && !formData.sold_mandays) newErrors.sold_mandays = 'Sold mandays is required'
         if (!formData.manday_rate) newErrors.manday_rate = 'Rate is required'
         // if (!formData.status_id) newErrors.status_id = 'Status is required' // Removing strict check if not critical for creation
 
