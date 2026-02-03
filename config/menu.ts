@@ -82,6 +82,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'project-onhand', label: 'Project Onhand', labelTh: 'โครงการในมือ (Project Onhand)', path: '/project-onhand', icon: TrendingUp },
           { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
           { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
+          { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
         ]
       }
     ]
@@ -103,11 +104,11 @@ export const MENU_CONFIG: MenuModule[] = [
         ]
       },
       {
-        id: 'requests',
-        title: 'Requests',
-        titleTh: 'คำขอโครงการ',
+        id: 'mkt-tracking',
+        title: 'MKT Tracking',
+        titleTh: 'ติดตาม MKT',
         children: [
-          { id: 'project-requests', label: 'Project Requests', labelTh: 'รายการคำขอ', path: '/project-requests', icon: FilePlus },
+          { id: 'mkt-tracking', label: 'MKT Tracking', labelTh: 'ติดตามโครงการ MKT', path: '/mkt-tracking', icon: TrendingUp },
         ]
       },
       {

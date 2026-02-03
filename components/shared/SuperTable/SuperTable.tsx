@@ -123,6 +123,9 @@ export interface ContextMenuItem<TData> {
 const styles = {
     container: {
         width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column" as const,
     },
     toolbar: {
         display: "flex",
@@ -194,9 +197,14 @@ const styles = {
         borderRadius: "12px",
         background: "white",
         overflow: "hidden",
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column" as const,
     },
     tableScroll: {
-        overflowX: "auto" as const,
+        flex: 1,
+        overflow: "auto" as const,
     },
     table: {
         width: "100%",

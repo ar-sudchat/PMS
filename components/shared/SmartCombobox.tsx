@@ -91,7 +91,7 @@ export function SmartCombobox({
                         <PopoverButton
                             disabled={disabled}
                             className={cn(
-                                "w-full px-3 py-2 text-left border rounded-md bg-background",
+                                "w-full px-3 py-2 text-left border rounded-md bg-white text-gray-900",
                                 "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
                                 "data-[state=open]:ring-2 data-[state=open]:ring-ring data-[state=open]:ring-offset-2",
                                 error && "border-destructive",
@@ -100,8 +100,8 @@ export function SmartCombobox({
                             )}
                         >
                             <span className={cn(
-                                "block truncate text-sm",
-                                !value && "text-muted-foreground"
+                                "block truncate text-sm text-gray-900",
+                                !value && "text-gray-400"
                             )}>
                                 {value ? value.label : placeholder}
                             </span>
