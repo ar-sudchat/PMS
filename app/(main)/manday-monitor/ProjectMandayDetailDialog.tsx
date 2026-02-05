@@ -301,8 +301,8 @@ export function ProjectMandayDetailDialog({
                                                     paddingAngle={2}
                                                     dataKey="mandays"
                                                     nameKey="employee_name"
-                                                    label={({ percent }) =>
-                                                        percent > 5 ? `${percent}%` : ''
+                                                    label={({ percent }: { percent?: number }) =>
+                                                        (percent ?? 0) > 5 ? `${percent}%` : ''
                                                     }
                                                     labelLine={false}
                                                 >

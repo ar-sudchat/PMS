@@ -527,8 +527,8 @@ export function MandayMonitorClient({
                                 <XAxis dataKey="monthName" />
                                 <YAxis />
                                 <Tooltip
-                                    formatter={(value: number, name: string) => [
-                                        `${value} MD`,
+                                    formatter={(value, name) => [
+                                        `${value ?? 0} MD`,
                                         name === 'actual_mandays' ? 'Actual' : 'Target'
                                     ]}
                                     labelFormatter={(label) => `เดือน ${label}`}

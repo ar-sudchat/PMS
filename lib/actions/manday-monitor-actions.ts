@@ -794,6 +794,7 @@ export interface MandayByMilestone {
 }
 
 export interface MandayByEmployeeInProject {
+    [key: string]: string | number | null
     employee_id: string
     employee_code: string
     employee_name: string
