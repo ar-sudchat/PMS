@@ -3,6 +3,14 @@
 import { useState, useTransition, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
@@ -349,10 +357,7 @@ export function MandayMonitorClient({
             cell: ({ row }) => {
                 const hasIssue = row.original.missing_count > 0 || row.original.low_hours_count > 0
                 return (
-                    <button
-                        onClick={() => handleMissingEmployeeClick(row.original)}
-                        className="flex items-center gap-2 hover:text-blue-600 transition-colors group text-left"
-                    >
+                    <div className="flex items-center gap-2">
                         {!hasIssue ? (
                             <CheckCircle className="h-4 w-4 text-emerald-600" />
                         ) : row.original.missing_count >= 5 ? (
@@ -360,9 +365,8 @@ export function MandayMonitorClient({
                         ) : (
                             <AlertCircle className="h-4 w-4 text-orange-600" />
                         )}
-                        <span className="font-medium group-hover:underline">{row.original.employee_name}</span>
-                        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </button>
+                        <span className="font-medium">{row.original.employee_name}</span>
+                    </div>
                 )
             },
         },
@@ -1089,6 +1093,7 @@ export function MandayMonitorClient({
                                         showPagination={true}
                                         showPageSizeSelector={true}
                                         emptyMessage="ไม่พบข้อมูลพนักงาน"
+                                        onRowClick={handleMissingEmployeeClick}
                                     />
 
                                     {/* Legend */}
@@ -1185,51 +1190,90 @@ export function MandayMonitorClient({
                                 </div>
                             </div>
 
-                            {/* Missing Dates */}
+                            {/* Missing Dates Table */}
                             {selectedMissingEmployee.missing_count > 0 && (
                                 <div className="space-y-2">
                                     <h4 className="font-medium text-red-700 flex items-center gap-2">
                                         <AlertTriangle className="h-4 w-4" />
                                         วันที่ไม่ได้คีย์เวลา ({selectedMissingEmployee.missing_count} วัน)
                                     </h4>
-                                    <div className="flex flex-wrap gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
-                                        {selectedMissingEmployee.missing_dates.map(date => (
-                                            <Badge key={date} className="bg-red-100 text-red-700 border-red-300">
-                                                {new Date(date).toLocaleDateString('th-TH', {
-                                                    weekday: 'short',
-                                                    day: 'numeric',
-                                                    month: 'short',
-                                                    year: '2-digit'
+                                    <div className="border border-red-200 rounded-lg overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-red-50">
+                                                    <TableHead className="w-12 text-center">#</TableHead>
+                                                    <TableHead>วัน</TableHead>
+                                                    <TableHead>วันที่</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {selectedMissingEmployee.missing_dates.map((date, idx) => {
+                                                    const d = new Date(date)
+                                                    return (
+                                                        <TableRow key={date} className="hover:bg-red-50/50">
+                                                            <TableCell className="text-center text-gray-500">{idx + 1}</TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', { weekday: 'long' })}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', {
+                                                                    day: 'numeric',
+                                                                    month: 'long',
+                                                                    year: 'numeric'
+                                                                })}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
                                                 })}
-                                            </Badge>
-                                        ))}
+                                            </TableBody>
+                                        </Table>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Low Hours Dates */}
+                            {/* Low Hours Dates Table */}
                             {selectedMissingEmployee.low_hours_count > 0 && (
                                 <div className="space-y-2">
                                     <h4 className="font-medium text-amber-700 flex items-center gap-2">
                                         <AlertCircle className="h-4 w-4" />
                                         วันที่คีย์น้อยกว่า 5 ชม. ({selectedMissingEmployee.low_hours_count} วัน)
                                     </h4>
-                                    <div className="space-y-1 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                                        {selectedMissingEmployee.low_hours_dates.map(entry => (
-                                            <div key={entry.date} className="flex items-center justify-between py-1">
-                                                <span className="text-amber-700">
-                                                    {new Date(entry.date).toLocaleDateString('th-TH', {
-                                                        weekday: 'short',
-                                                        day: 'numeric',
-                                                        month: 'short',
-                                                        year: '2-digit'
-                                                    })}
-                                                </span>
-                                                <Badge className="bg-amber-100 text-amber-700 border-amber-300">
-                                                    {entry.hours} ชม.
-                                                </Badge>
-                                            </div>
-                                        ))}
+                                    <div className="border border-amber-200 rounded-lg overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-amber-50">
+                                                    <TableHead className="w-12 text-center">#</TableHead>
+                                                    <TableHead>วัน</TableHead>
+                                                    <TableHead>วันที่</TableHead>
+                                                    <TableHead className="text-right">ชั่วโมง</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {selectedMissingEmployee.low_hours_dates.map((entry, idx) => {
+                                                    const d = new Date(entry.date)
+                                                    return (
+                                                        <TableRow key={entry.date} className="hover:bg-amber-50/50">
+                                                            <TableCell className="text-center text-gray-500">{idx + 1}</TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', { weekday: 'long' })}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', {
+                                                                    day: 'numeric',
+                                                                    month: 'long',
+                                                                    year: 'numeric'
+                                                                })}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <Badge className="bg-amber-100 text-amber-700 border-amber-300">
+                                                                    {entry.hours} ชม.
+                                                                </Badge>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
                                     </div>
                                 </div>
                             )}
