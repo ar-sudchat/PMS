@@ -138,21 +138,21 @@ export function TaskTypeConfigModal({ open, onClose, mode, data, onSuccess }: Ta
                         <span className="text-sm font-medium">Defect (งานแก้ไขบั๊ก?)</span>
                         <Switch
                             checked={formData.is_defect}
-                            onChange={(checked) => setFormData({ ...formData, is_defect: checked })}
+                            onCheckedChange={(checked) => setFormData({ ...formData, is_defect: checked })}
                         />
                     </div>
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">นับใน KPI?</span>
                         <Switch
                             checked={formData.is_countable_for_kpi}
-                            onChange={(checked) => setFormData({ ...formData, is_countable_for_kpi: checked })}
+                            onCheckedChange={(checked) => setFormData({ ...formData, is_countable_for_kpi: checked })}
                         />
                     </div>
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Status (ใช้งาน)</span>
                         <Switch
                             checked={formData.is_active}
-                            onChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                            onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                         />
                     </div>
                 </div>

@@ -601,7 +601,7 @@ export function WorkflowTemplateSettings({ templates }: WorkflowTemplateSettings
                             <Label>ตั้งเป็น Default</Label>
                             <Switch
                                 checked={templateForm.is_default}
-                                onChange={(checked) => setTemplateForm(prev => ({ ...prev, is_default: checked }))}
+                                onCheckedChange={(checked) => setTemplateForm(prev => ({ ...prev, is_default: checked }))}
                             />
                         </div>
                     </div>
@@ -690,21 +690,21 @@ export function WorkflowTemplateSettings({ templates }: WorkflowTemplateSettings
                                 <Label className="text-xs">จำเป็น</Label>
                                 <Switch
                                     checked={stepForm.is_required}
-                                    onChange={(checked) => setStepForm(prev => ({ ...prev, is_required: checked }))}
+                                    onCheckedChange={(checked) => setStepForm(prev => ({ ...prev, is_required: checked }))}
                                 />
                             </div>
                             <div className="flex items-center justify-between border rounded-lg p-3">
                                 <Label className="text-xs">ข้ามได้</Label>
                                 <Switch
                                     checked={stepForm.can_skip}
-                                    onChange={(checked) => setStepForm(prev => ({ ...prev, can_skip: checked }))}
+                                    onCheckedChange={(checked) => setStepForm(prev => ({ ...prev, can_skip: checked }))}
                                 />
                             </div>
                             <div className="flex items-center justify-between border rounded-lg p-3">
                                 <Label className="text-xs">จบก่อนได้</Label>
                                 <Switch
                                     checked={stepForm.can_complete_early}
-                                    onChange={(checked) => setStepForm(prev => ({ ...prev, can_complete_early: checked }))}
+                                    onCheckedChange={(checked) => setStepForm(prev => ({ ...prev, can_complete_early: checked }))}
                                 />
                             </div>
                         </div>

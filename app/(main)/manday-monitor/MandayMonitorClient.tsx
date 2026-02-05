@@ -1,11 +1,25 @@
 'use client'
 
-import { useState, useTransition, useMemo } from 'react'
+import { useState, useTransition, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 import {
     Select,
     SelectContent,
@@ -16,6 +30,8 @@ import {
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 import { DataTable } from '@/components/shared/DataTable'
 import { ColumnDef } from '@tanstack/react-table'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
     Clock,
     Target,
@@ -28,17 +44,27 @@ import {
     BarChart3,
     PieChart,
     RotateCcw,
-    ExternalLink
+    ExternalLink,
+    AlertTriangle,
+    CheckCircle,
+    CalendarX,
+    Calendar,
+    Search,
+    AlertCircle
 } from 'lucide-react'
 import {
     getMandayDashboardData,
+    getMissingTimesheet,
     FilterParams,
     MandaySummary,
     MandayByProject,
     MandayByEmployee,
     MandayTrend,
     ProjectOption,
-    ProjectTypeOption
+    ProjectTypeOption,
+    OwnerOption,
+    MissingTimesheetResult,
+    MissingTimesheetEmployee
 } from '@/lib/actions/manday-monitor-actions'
 import { ProjectMandayDetailDialog } from './ProjectMandayDetailDialog'
 
@@ -66,6 +92,7 @@ interface MandayMonitorClientProps {
     filters: FilterParams
     projectOptions: ProjectOption[]
     projectTypeOptions: ProjectTypeOption[]
+    ownerOptions: OwnerOption[]
 }
 
 const MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
@@ -75,14 +102,59 @@ export function MandayMonitorClient({
     initialData,
     filters,
     projectOptions,
-    projectTypeOptions
+    projectTypeOptions,
+    ownerOptions
 }: MandayMonitorClientProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [data, setData] = useState(initialData)
-    const [activeTab, setActiveTab] = useState<'projects' | 'employees'>('projects')
+    const [activeTab, setActiveTab] = useState<'projects' | 'employees' | 'missing'>('projects')
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
     const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+    const [missingData, setMissingData] = useState<MissingTimesheetResult | null>(null)
+    const [isMissingLoading, setIsMissingLoading] = useState(false)
+    const [selectedMissingEmployee, setSelectedMissingEmployee] = useState<MissingTimesheetEmployee | null>(null)
+    const [missingDetailDialogOpen, setMissingDetailDialogOpen] = useState(false)
+
+    // Missing timesheet date range
+    const getDefaultDateRange = () => {
+        const now = new Date()
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+        const today = now
+        return {
+            start: firstDay.toISOString().split('T')[0],
+            end: today.toISOString().split('T')[0]
+        }
+    }
+    const defaultDates = getDefaultDateRange()
+    const [missingStartDate, setMissingStartDate] = useState(defaultDates.start)
+    const [missingEndDate, setMissingEndDate] = useState(defaultDates.end)
+
+    // Sync local data with initialData when filters change (via URL)
+    useEffect(() => {
+        setData(initialData)
+    }, [initialData])
+
+    // Load missing timesheet data
+    const loadMissingData = async () => {
+        if (!missingStartDate || !missingEndDate) return
+        setIsMissingLoading(true)
+        try {
+            const result = await getMissingTimesheet(missingStartDate, missingEndDate)
+            if (result.success && result.data) {
+                setMissingData(result.data)
+            }
+        } finally {
+            setIsMissingLoading(false)
+        }
+    }
+
+    // Auto-load when tab becomes active
+    useEffect(() => {
+        if (activeTab === 'missing' && !missingData) {
+            loadMissingData()
+        }
+    }, [activeTab])
 
     const handleProjectClick = (projectId: string) => {
         setSelectedProjectId(projectId)
@@ -108,6 +180,9 @@ export function MandayMonitorClient({
         }
         if (newFilters.projectTypeCode) {
             params.set('projectType', newFilters.projectTypeCode)
+        }
+        if (newFilters.ownerId) {
+            params.set('owner', newFilters.ownerId)
         }
 
         router.push(`/manday-monitor?${params.toString()}`)
@@ -268,6 +343,140 @@ export function MandayMonitorClient({
         },
     ], [])
 
+    // Handle click on missing timesheet employee
+    const handleMissingEmployeeClick = (employee: MissingTimesheetEmployee) => {
+        setSelectedMissingEmployee(employee)
+        setMissingDetailDialogOpen(true)
+    }
+
+    // Missing Timesheet Table Columns
+    const missingTimesheetColumns: ColumnDef<MissingTimesheetEmployee>[] = useMemo(() => [
+        {
+            accessorKey: 'employee_name',
+            header: 'พนักงาน',
+            cell: ({ row }) => {
+                const hasIssue = row.original.missing_count > 0 || row.original.low_hours_count > 0
+                return (
+                    <div className="flex items-center gap-2">
+                        {!hasIssue ? (
+                            <CheckCircle className="h-4 w-4 text-emerald-600" />
+                        ) : row.original.missing_count >= 5 ? (
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                        ) : (
+                            <AlertCircle className="h-4 w-4 text-orange-600" />
+                        )}
+                        <span className="font-medium">{row.original.employee_name}</span>
+                    </div>
+                )
+            },
+        },
+        {
+            accessorKey: 'position_code',
+            header: 'ตำแหน่ง',
+            cell: ({ row }) => (
+                <Badge variant="outline">{row.original.position_code || '-'}</Badge>
+            ),
+        },
+        {
+            accessorKey: 'logged_count',
+            header: () => <div className="text-center">คีย์แล้ว</div>,
+            cell: ({ row }) => (
+                <div className="text-center">
+                    <span className="font-medium">{row.original.logged_count}</span>
+                    <span className="text-gray-400">/{row.original.total_working_days}</span>
+                </div>
+            ),
+        },
+        {
+            accessorKey: 'missing_count',
+            header: () => <div className="text-center">ไม่คีย์</div>,
+            cell: ({ row }) => {
+                const count = row.original.missing_count
+                if (count === 0) {
+                    return <div className="text-center text-gray-400">-</div>
+                }
+                return (
+                    <div className="text-center">
+                        <Badge className={count >= 5 ? 'bg-red-100 text-red-700 border-red-300' : 'bg-orange-100 text-orange-700 border-orange-300'}>
+                            {count} วัน
+                        </Badge>
+                    </div>
+                )
+            },
+        },
+        {
+            accessorKey: 'low_hours_count',
+            header: () => <div className="text-center">&lt;5 ชม.</div>,
+            cell: ({ row }) => {
+                const count = row.original.low_hours_count
+                if (count === 0) {
+                    return <div className="text-center text-gray-400">-</div>
+                }
+                return (
+                    <div className="text-center">
+                        <Badge className="bg-amber-100 text-amber-700 border-amber-300">
+                            {count} วัน
+                        </Badge>
+                    </div>
+                )
+            },
+        },
+        {
+            accessorKey: 'missing_dates',
+            header: 'วันที่ไม่คีย์',
+            cell: ({ row }) => {
+                const dates = row.original.missing_dates
+                if (dates.length === 0) {
+                    return <span className="text-gray-400">-</span>
+                }
+                return (
+                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {dates.slice(0, 3).map(date => (
+                            <Badge key={date} variant="secondary" className="text-xs bg-red-50 text-red-700">
+                                {new Date(date).toLocaleDateString('th-TH', {
+                                    day: 'numeric',
+                                    month: 'short'
+                                })}
+                            </Badge>
+                        ))}
+                        {dates.length > 3 && (
+                            <Badge variant="secondary" className="text-xs bg-gray-200">
+                                +{dates.length - 3}
+                            </Badge>
+                        )}
+                    </div>
+                )
+            },
+        },
+        {
+            accessorKey: 'low_hours_dates',
+            header: 'วันที่ <5 ชม.',
+            cell: ({ row }) => {
+                const entries = row.original.low_hours_dates
+                if (!entries || entries.length === 0) {
+                    return <span className="text-gray-400">-</span>
+                }
+                return (
+                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {entries.slice(0, 3).map(entry => (
+                            <Badge key={entry.date} variant="secondary" className="text-xs bg-amber-50 text-amber-700">
+                                {new Date(entry.date).toLocaleDateString('th-TH', {
+                                    day: 'numeric',
+                                    month: 'short'
+                                })} ({entry.hours}h)
+                            </Badge>
+                        ))}
+                        {entries.length > 3 && (
+                            <Badge variant="secondary" className="text-xs bg-gray-200">
+                                +{entries.length - 3}
+                            </Badge>
+                        )}
+                    </div>
+                )
+            },
+        },
+    ], [])
+
     return (
         <div className="space-y-6">
             {/* Loading Overlay */}
@@ -380,6 +589,22 @@ export function MandayMonitorClient({
                                     })()
                                 } : null}
                                 onChange={(opt) => updateFilters({ projectId: opt?.value as string || undefined })}
+                            />
+                        </div>
+
+                        {/* Owner Filter */}
+                        <div className="w-[200px]">
+                            <SmartCombobox
+                                placeholder="Owner..."
+                                options={ownerOptions.map(o => ({
+                                    value: o.id,
+                                    label: o.name
+                                }))}
+                                value={filters.ownerId ? {
+                                    value: filters.ownerId,
+                                    label: ownerOptions.find(o => o.id === filters.ownerId)?.name || ''
+                                } : null}
+                                onChange={(opt) => updateFilters({ ownerId: opt?.value as string || undefined })}
                             />
                         </div>
 
@@ -689,6 +914,22 @@ export function MandayMonitorClient({
                                 Employee Workload
                                 <Badge variant="secondary" className="ml-1">{data.employees.length}</Badge>
                             </button>
+                            <button
+                                onClick={() => setActiveTab('missing')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'missing'
+                                        ? 'bg-white text-orange-600 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                            >
+                                <CalendarX className="h-4 w-4" />
+                                ตรวจสอบการคีย์เวลา
+                                {missingData && missingData.summary.employees_with_missing > 0 && (
+                                    <Badge variant="destructive" className="ml-1">
+                                        {missingData.summary.employees_with_missing}
+                                    </Badge>
+                                )}
+                            </button>
                         </div>
                     </div>
                 </CardHeader>
@@ -736,6 +977,157 @@ export function MandayMonitorClient({
                             </div>
                         </div>
                     )}
+
+                    {/* Missing Timesheet Tab */}
+                    {activeTab === 'missing' && (
+                        <div className="space-y-4">
+                            {/* Date Range Search */}
+                            <div className="flex flex-wrap items-end gap-4 p-4 bg-gray-50 rounded-lg">
+                                <div className="space-y-1">
+                                    <Label className="text-sm flex items-center gap-1">
+                                        <Calendar className="h-3 w-3" />
+                                        วันที่เริ่มต้น
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={missingStartDate}
+                                        onChange={(e) => setMissingStartDate(e.target.value)}
+                                        className="w-[160px]"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-sm flex items-center gap-1">
+                                        <Calendar className="h-3 w-3" />
+                                        วันที่สิ้นสุด
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={missingEndDate}
+                                        onChange={(e) => setMissingEndDate(e.target.value)}
+                                        className="w-[160px]"
+                                    />
+                                </div>
+                                <Button
+                                    onClick={loadMissingData}
+                                    disabled={isMissingLoading || !missingStartDate || !missingEndDate}
+                                    className="gap-2"
+                                >
+                                    {isMissingLoading ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Search className="h-4 w-4" />
+                                    )}
+                                    ค้นหา
+                                </Button>
+                            </div>
+
+                            {isMissingLoading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                                    <span className="ml-2 text-gray-500">กำลังโหลด...</span>
+                                </div>
+                            ) : missingData ? (
+                                <div className="space-y-4">
+                                    {/* Summary Cards */}
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                        <div className="bg-blue-50 rounded-lg p-4">
+                                            <div className="text-sm text-blue-600">พนักงาน SA/BA/PG</div>
+                                            <div className="text-2xl font-bold text-blue-900">{missingData.summary.total_employees}</div>
+                                        </div>
+                                        <div className="bg-red-50 rounded-lg p-4">
+                                            <div className="text-sm text-red-600">ไม่คีย์</div>
+                                            <div className="text-2xl font-bold text-red-900">{missingData.summary.employees_with_missing}</div>
+                                            <div className="text-xs text-red-500">({missingData.summary.total_missing_entries} วัน)</div>
+                                        </div>
+                                        <div className="bg-amber-50 rounded-lg p-4">
+                                            <div className="text-sm text-amber-600">&lt;5 ชม.</div>
+                                            <div className="text-2xl font-bold text-amber-900">{missingData.summary.employees_with_low_hours}</div>
+                                            <div className="text-xs text-amber-500">({missingData.summary.total_low_hours_entries} วัน)</div>
+                                        </div>
+                                        <div className="bg-emerald-50 rounded-lg p-4">
+                                            <div className="text-sm text-emerald-600">คีย์ครบ</div>
+                                            <div className="text-2xl font-bold text-emerald-900">
+                                                {missingData.summary.total_employees - missingData.summary.employees_with_missing - missingData.summary.employees_with_low_hours +
+                                                    missingData.employees.filter(e => e.missing_count > 0 && e.low_hours_count > 0).length}
+                                            </div>
+                                        </div>
+                                        <div className="bg-purple-50 rounded-lg p-4">
+                                            <div className="text-sm text-purple-600">วันหยุด</div>
+                                            <div className="text-2xl font-bold text-purple-900">{missingData.summary.holidays.length}</div>
+                                            <div className="text-xs text-purple-500">ไม่มีใครคีย์</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Holidays Display */}
+                                    {missingData.summary.holidays.length > 0 && (
+                                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                            <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
+                                                <CalendarX className="h-4 w-4" />
+                                                วันหยุด (ไม่มี SA/BA/PG คนใดคีย์เวลา)
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {missingData.summary.holidays.map(date => (
+                                                    <Badge key={date} className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
+                                                        {new Date(date).toLocaleDateString('th-TH', {
+                                                            weekday: 'short',
+                                                            day: 'numeric',
+                                                            month: 'short'
+                                                        })}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Period Info */}
+                                    <div className="text-sm text-gray-500">
+                                        ตรวจสอบช่วง: {missingData.summary.period_start} - {missingData.summary.period_end}
+                                        <span className="ml-2 text-gray-400">(ไม่รวมวันเสาร์-อาทิตย์ และวันหยุด)</span>
+                                    </div>
+
+                                    {/* Employee Table */}
+                                    <DataTable
+                                        columns={missingTimesheetColumns}
+                                        data={missingData.employees}
+                                        pageSize={15}
+                                        showPagination={true}
+                                        showPageSizeSelector={true}
+                                        emptyMessage="ไม่พบข้อมูลพนักงาน"
+                                        onRowClick={handleMissingEmployeeClick}
+                                    />
+
+                                    {/* Legend */}
+                                    <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-500">
+                                        <span className="flex items-center gap-1">
+                                            <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                            คีย์ครบแล้ว
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <AlertCircle className="h-3 w-3 text-orange-600" />
+                                            มีปัญหา
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <AlertTriangle className="h-3 w-3 text-red-600" />
+                                            ขาด 5+ วัน
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Badge className="h-4 bg-red-50 text-red-700 text-[10px]">ไม่คีย์</Badge>
+                                            วันที่ไม่ได้คีย์เลย
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Badge className="h-4 bg-amber-50 text-amber-700 text-[10px]">&lt;5h</Badge>
+                                            คีย์ไม่ครบ 5 ชม.
+                                        </span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center text-gray-500 py-8">
+                                    <Calendar className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                                    <p>เลือกช่วงวันที่แล้วกด "ค้นหา"</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -746,6 +1138,158 @@ export function MandayMonitorClient({
                 projectId={selectedProjectId}
                 filters={filters}
             />
+
+            {/* Missing Timesheet Detail Dialog */}
+            <Dialog open={missingDetailDialogOpen} onOpenChange={setMissingDetailDialogOpen}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <CalendarX className="h-5 w-5 text-orange-600" />
+                            รายละเอียดการคีย์เวลา
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {selectedMissingEmployee && (
+                        <div className="space-y-6">
+                            {/* Employee Info */}
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                <div>
+                                    <h3 className="font-semibold text-lg">{selectedMissingEmployee.employee_name}</h3>
+                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                        <Badge variant="outline">{selectedMissingEmployee.position_code}</Badge>
+                                        {selectedMissingEmployee.department_name && (
+                                            <span>{selectedMissingEmployee.department_name}</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm text-gray-500">คีย์แล้ว</div>
+                                    <div className="font-bold text-lg">
+                                        {selectedMissingEmployee.logged_count}/{selectedMissingEmployee.total_working_days} วัน
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Summary */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className={`p-4 rounded-lg ${selectedMissingEmployee.missing_count > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                                    <div className={`text-sm ${selectedMissingEmployee.missing_count > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                        วันที่ไม่ได้คีย์
+                                    </div>
+                                    <div className={`text-2xl font-bold ${selectedMissingEmployee.missing_count > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                                        {selectedMissingEmployee.missing_count} วัน
+                                    </div>
+                                </div>
+                                <div className={`p-4 rounded-lg ${selectedMissingEmployee.low_hours_count > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+                                    <div className={`text-sm ${selectedMissingEmployee.low_hours_count > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                        วันที่คีย์น้อยกว่า 5 ชม.
+                                    </div>
+                                    <div className={`text-2xl font-bold ${selectedMissingEmployee.low_hours_count > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                        {selectedMissingEmployee.low_hours_count} วัน
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Missing Dates Table */}
+                            {selectedMissingEmployee.missing_count > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="font-medium text-red-700 flex items-center gap-2">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        วันที่ไม่ได้คีย์เวลา ({selectedMissingEmployee.missing_count} วัน)
+                                    </h4>
+                                    <div className="border border-red-200 rounded-lg overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-red-50">
+                                                    <TableHead className="w-12 text-center">#</TableHead>
+                                                    <TableHead>วัน</TableHead>
+                                                    <TableHead>วันที่</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {selectedMissingEmployee.missing_dates.map((date, idx) => {
+                                                    const d = new Date(date)
+                                                    return (
+                                                        <TableRow key={date} className="hover:bg-red-50/50">
+                                                            <TableCell className="text-center text-gray-500">{idx + 1}</TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', { weekday: 'long' })}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', {
+                                                                    day: 'numeric',
+                                                                    month: 'long',
+                                                                    year: 'numeric'
+                                                                })}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Low Hours Dates Table */}
+                            {selectedMissingEmployee.low_hours_count > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="font-medium text-amber-700 flex items-center gap-2">
+                                        <AlertCircle className="h-4 w-4" />
+                                        วันที่คีย์น้อยกว่า 5 ชม. ({selectedMissingEmployee.low_hours_count} วัน)
+                                    </h4>
+                                    <div className="border border-amber-200 rounded-lg overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="bg-amber-50">
+                                                    <TableHead className="w-12 text-center">#</TableHead>
+                                                    <TableHead>วัน</TableHead>
+                                                    <TableHead>วันที่</TableHead>
+                                                    <TableHead className="text-right">ชั่วโมง</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {selectedMissingEmployee.low_hours_dates.map((entry, idx) => {
+                                                    const d = new Date(entry.date)
+                                                    return (
+                                                        <TableRow key={entry.date} className="hover:bg-amber-50/50">
+                                                            <TableCell className="text-center text-gray-500">{idx + 1}</TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', { weekday: 'long' })}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {d.toLocaleDateString('th-TH', {
+                                                                    day: 'numeric',
+                                                                    month: 'long',
+                                                                    year: 'numeric'
+                                                                })}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <Badge className="bg-amber-100 text-amber-700 border-amber-300">
+                                                                    {entry.hours} ชม.
+                                                                </Badge>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* All Good */}
+                            {selectedMissingEmployee.missing_count === 0 && selectedMissingEmployee.low_hours_count === 0 && (
+                                <div className="p-6 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
+                                    <CheckCircle className="h-12 w-12 mx-auto text-emerald-600 mb-2" />
+                                    <h4 className="font-medium text-emerald-700">คีย์เวลาครบถ้วน</h4>
+                                    <p className="text-sm text-emerald-600">ไม่มีวันที่มีปัญหา</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

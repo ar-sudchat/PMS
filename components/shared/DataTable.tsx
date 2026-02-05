@@ -41,6 +41,7 @@ interface DataTableProps<TData, TValue> {
     emptyMessage?: string
     stickyHeader?: boolean
     maxHeight?: string
+    onRowClick?: (row: TData) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -52,6 +53,7 @@ export function DataTable<TData, TValue>({
     emptyMessage = "ไม่พบข้อมูล",
     stickyHeader = false,
     maxHeight,
+    onRowClick,
 }: DataTableProps<TData, TValue>) {
     const [sorting, setSorting] = React.useState<SortingState>([])
     const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -167,6 +169,8 @@ export function DataTable<TData, TValue>({
                                 <TableRow
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
+                                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                                    className={onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}
                                 >
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell key={cell.id}>

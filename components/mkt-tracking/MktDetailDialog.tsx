@@ -23,7 +23,6 @@ import { toast } from 'sonner'
 import {
     Loader2,
     Banknote,
-    CalendarDays,
     User,
     Phone,
     Mail,
@@ -35,7 +34,6 @@ import {
     Trophy,
     XCircle,
     History,
-    Clock,
     Paperclip,
 } from 'lucide-react'
 import {
@@ -79,8 +77,11 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
     const [activeTab, setActiveTab] = useState<'details' | 'attachments'>('details')
     const [formData, setFormData] = useState({
         mkt_mandays: '',
+        mkt_mandays_sa: '',
+        mkt_mandays_pg: '',
+        mkt_mandays_pm: '',
         mkt_expected_value: '',
-        mkt_expected_close_date: '',
+        mkt_discount: '',
         mkt_contact_person: '',
         mkt_contact_phone: '',
         mkt_contact_email: '',
@@ -106,8 +107,11 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
         if (project) {
             setFormData({
                 mkt_mandays: project.mkt_mandays?.toString() || '',
+                mkt_mandays_sa: project.mkt_mandays_sa?.toString() || '',
+                mkt_mandays_pg: project.mkt_mandays_pg?.toString() || '',
+                mkt_mandays_pm: project.mkt_mandays_pm?.toString() || '',
                 mkt_expected_value: project.mkt_expected_value?.toString() || '',
-                mkt_expected_close_date: toDateString(project.mkt_expected_close_date),
+                mkt_discount: project.mkt_discount?.toString() || '',
                 mkt_contact_person: project.mkt_contact_person || '',
                 mkt_contact_phone: project.mkt_contact_phone || '',
                 mkt_contact_email: project.mkt_contact_email || '',
@@ -141,8 +145,11 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
         try {
             const payload = {
                 mkt_mandays: formData.mkt_mandays ? parseFloat(formData.mkt_mandays) : null,
+                mkt_mandays_sa: formData.mkt_mandays_sa ? parseFloat(formData.mkt_mandays_sa) : null,
+                mkt_mandays_pg: formData.mkt_mandays_pg ? parseFloat(formData.mkt_mandays_pg) : null,
+                mkt_mandays_pm: formData.mkt_mandays_pm ? parseFloat(formData.mkt_mandays_pm) : null,
                 mkt_expected_value: formData.mkt_expected_value ? parseFloat(formData.mkt_expected_value) : null,
-                mkt_expected_close_date: formData.mkt_expected_close_date || null,
+                mkt_discount: formData.mkt_discount ? parseFloat(formData.mkt_discount) : null,
                 mkt_contact_person: formData.mkt_contact_person || null,
                 mkt_contact_phone: formData.mkt_contact_phone || null,
                 mkt_contact_email: formData.mkt_contact_email || null,
@@ -322,29 +329,85 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                         <div className="min-h-[420px]">
                             {/* Tab: Details */}
                             <div className={`${activeTab === 'details' ? 'block' : 'hidden'} space-y-4`}>
-                                {/* Value Section */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="mandays" className="flex items-center gap-2 text-sm font-medium">
-                                            <Clock className="h-4 w-4 text-blue-600" />
-                                            Manday (ประมาณการ)
+                                {/* Manday Section */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="mandays_sa" className="text-xs text-muted-foreground">
+                                            Manday SA
                                         </Label>
                                         <div className="relative">
                                             <Input
-                                                id="mandays"
+                                                id="mandays_sa"
                                                 type="number"
                                                 step="0.5"
-                                                value={formData.mkt_mandays}
-                                                onChange={(e) => setFormData({ ...formData, mkt_mandays: e.target.value })}
+                                                value={formData.mkt_mandays_sa}
+                                                onChange={(e) => setFormData({ ...formData, mkt_mandays_sa: e.target.value })}
                                                 placeholder="0"
-                                                className="pr-16"
+                                                className="pr-10 h-9"
                                             />
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
                                                 วัน
                                             </span>
                                         </div>
                                     </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="mandays_pg" className="text-xs text-muted-foreground">
+                                            Manday PG
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="mandays_pg"
+                                                type="number"
+                                                step="0.5"
+                                                value={formData.mkt_mandays_pg}
+                                                onChange={(e) => setFormData({ ...formData, mkt_mandays_pg: e.target.value })}
+                                                placeholder="0"
+                                                className="pr-10 h-9"
+                                            />
+                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+                                                วัน
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="mandays_pm" className="text-xs text-muted-foreground">
+                                            Manday PM
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="mandays_pm"
+                                                type="number"
+                                                step="0.5"
+                                                value={formData.mkt_mandays_pm}
+                                                onChange={(e) => setFormData({ ...formData, mkt_mandays_pm: e.target.value })}
+                                                placeholder="0"
+                                                className="pr-10 h-9"
+                                            />
+                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+                                                วัน
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">
+                                            Manday รวม
+                                        </Label>
+                                        <div className="flex items-center justify-center h-9 bg-blue-50 border border-blue-200 rounded-md">
+                                            <span className="font-semibold text-blue-700">
+                                                {(
+                                                    (parseFloat(formData.mkt_mandays_sa) || 0) +
+                                                    (parseFloat(formData.mkt_mandays_pg) || 0) +
+                                                    (parseFloat(formData.mkt_mandays_pm) || 0)
+                                                ).toFixed(1)} วัน
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
 
+                                <Separator />
+
+                                {/* Value Section */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="expected_value" className="flex items-center gap-2 text-sm font-medium">
                                             <Banknote className="h-4 w-4 text-green-600" />
@@ -371,16 +434,45 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label htmlFor="close_date" className="flex items-center gap-2 text-sm font-medium">
-                                            <CalendarDays className="h-4 w-4 text-orange-600" />
-                                            วันที่คาดปิด
+                                        <Label htmlFor="discount" className="flex items-center gap-2 text-sm font-medium">
+                                            <Banknote className="h-4 w-4 text-orange-600" />
+                                            ส่วนลด
                                         </Label>
-                                        <Input
-                                            id="close_date"
-                                            type="date"
-                                            value={formData.mkt_expected_close_date}
-                                            onChange={(e) => setFormData({ ...formData, mkt_expected_close_date: e.target.value })}
-                                        />
+                                        <div className="relative">
+                                            <Input
+                                                id="discount"
+                                                type="number"
+                                                value={formData.mkt_discount}
+                                                onChange={(e) => setFormData({ ...formData, mkt_discount: e.target.value })}
+                                                placeholder="0"
+                                                className="pr-12"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                                                บาท
+                                            </span>
+                                        </div>
+                                        {formData.mkt_discount && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {formatCurrency(formData.mkt_discount)} บาท
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="flex items-center gap-2 text-sm font-medium">
+                                            <Banknote className="h-4 w-4 text-blue-600" />
+                                            สุทธิ
+                                        </Label>
+                                        <div className="flex items-center justify-center h-10 bg-blue-50 border border-blue-200 rounded-md">
+                                            <span className="font-semibold text-blue-700">
+                                                {formatCurrency(
+                                                    String(
+                                                        (parseFloat(formData.mkt_expected_value) || 0) -
+                                                        (parseFloat(formData.mkt_discount) || 0)
+                                                    )
+                                                )} บาท
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
 

@@ -16,6 +16,7 @@ import { MktProject } from '@/lib/actions/mkt-tracking-actions'
 interface MktProjectTableProps {
     projects: MktProject[]
     onEdit: (project: MktProject) => void
+    onEditProject?: (project: MktProject) => void
 }
 
 const stageColors: Record<string, string> = {
@@ -25,7 +26,7 @@ const stageColors: Record<string, string> = {
     QUOTED: 'bg-green-100 text-green-800',
 }
 
-export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
+export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectTableProps) {
     const formatDate = (date: string | Date | null | undefined) => {
         if (!date) return '-'
         return format(new Date(date), 'dd-MM-yy')
@@ -52,12 +53,13 @@ export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
                         <TableHead>วันประชุมล่าสุด</TableHead>
                         <TableHead>วันส่งราคา</TableHead>
                         <TableHead className="text-center">วันในสถานะ</TableHead>
+                        <TableHead>หมายเหตุ</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {projects.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                                 ไม่พบข้อมูล
                             </TableCell>
                         </TableRow>
@@ -69,7 +71,19 @@ export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
                                 onClick={() => onEdit(project)}
                             >
                                 <TableCell className="font-medium">
-                                    {project.project_code}
+                                    {onEditProject ? (
+                                        <button
+                                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                onEditProject(project)
+                                            }}
+                                        >
+                                            {project.project_code}
+                                        </button>
+                                    ) : (
+                                        project.project_code
+                                    )}
                                 </TableCell>
                                 <TableCell>
                                     <div className="max-w-[200px] font-medium truncate">
@@ -105,6 +119,11 @@ export function MktProjectTable({ projects, onEdit }: MktProjectTableProps) {
                                     <Badge variant="outline">
                                         {project.days_in_stage} วัน
                                     </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <span className="truncate block max-w-[200px] text-sm text-muted-foreground">
+                                        {project.mkt_notes || '-'}
+                                    </span>
                                 </TableCell>
                             </TableRow>
                         ))

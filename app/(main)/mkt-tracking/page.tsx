@@ -46,6 +46,8 @@ export default function MktTrackingPage() {
     const [historyProject, setHistoryProject] = useState<MktProject | null>(null)
     const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
+    const [editProjectModalOpen, setEditProjectModalOpen] = useState(false)
+    const [projectToEdit, setProjectToEdit] = useState<MktProject | null>(null)
 
     // Load filter options on mount
     useEffect(() => {
@@ -103,6 +105,11 @@ export default function MktTrackingPage() {
     const handleViewHistory = (project: MktProject) => {
         setHistoryProject(project)
         setHistoryPanelOpen(true)
+    }
+
+    const handleEditProject = (project: MktProject) => {
+        setProjectToEdit(project)
+        setEditProjectModalOpen(true)
     }
 
     const handleClearFilters = () => {
@@ -223,6 +230,7 @@ export default function MktTrackingPage() {
                             <MktProjectTable
                                 projects={projects}
                                 onEdit={handleEdit}
+                                onEditProject={handleEditProject}
                             />
                         </>
                     )}
@@ -257,6 +265,35 @@ export default function MktTrackingPage() {
                     setCreateDialogOpen(false)
                 }}
                 defaultProjectTypeCode="MKT"
+            />
+
+            {/* Edit Project Modal */}
+            <ProjectModal
+                open={editProjectModalOpen}
+                onClose={() => {
+                    setEditProjectModalOpen(false)
+                    setProjectToEdit(null)
+                }}
+                mode="edit"
+                project={projectToEdit ? {
+                    id: projectToEdit.id,
+                    project_code: projectToEdit.project_code,
+                    project_year: parseInt(projectToEdit.project_code.substring(0, 2)) + 2000 || new Date().getFullYear(),
+                    name: projectToEdit.title,
+                    customer_id: projectToEdit.customer_id || '',
+                    project_manager_id: projectToEdit.project_manager_id || '',
+                    sold_mandays: 0,
+                    manday_rate: 0,
+                    total_value: 0,
+                    is_active: true,
+                    created_at: projectToEdit.created_at,
+                    updated_at: projectToEdit.created_at,
+                } : null}
+                onSuccess={() => {
+                    loadData()
+                    setEditProjectModalOpen(false)
+                    setProjectToEdit(null)
+                }}
             />
         </div>
     )

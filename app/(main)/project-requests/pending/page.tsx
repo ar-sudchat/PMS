@@ -1,11 +1,15 @@
-
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
-import { getPendingProjectRequests, getProjectRequestTypes, getProjectRequestPriorities } from '@/lib/actions/project-request-actions'
-import { getCustomers } from '@/lib/actions/customer-actions'
+import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import {
+    getPendingProjectRequests,
+    getProjectRequestTypes,
+    getProjectRequestPriorities
+} from '@/lib/actions/project-request-actions'
+import { getCustomers } from '@/lib/actions/customer-actions'
 import { ProjectRequestList } from '@/components/project-requests/ProjectRequestList'
 
 export const metadata = {
@@ -13,12 +17,16 @@ export const metadata = {
 }
 
 export default async function PendingProjectRequestsPage() {
-    const [requests, customers, requestTypes, priorities, user] = await Promise.all([
+    const user = await getCurrentUser()
+    if (!user) {
+        redirect('/login')
+    }
+
+    const [requests, customers, requestTypes, priorities] = await Promise.all([
         getPendingProjectRequests(),
         getCustomers(),
         getProjectRequestTypes(),
-        getProjectRequestPriorities(),
-        getCurrentUser()
+        getProjectRequestPriorities()
     ])
 
     return (
@@ -42,7 +50,7 @@ export default async function PendingProjectRequestsPage() {
                     customers={customers}
                     requestTypes={requestTypes}
                     priorities={priorities}
-                    currentUserId={user?.id || ''}
+                    currentUserId={user.id}
                 />
             </Suspense>
         </div>

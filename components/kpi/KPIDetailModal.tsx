@@ -150,6 +150,15 @@ export function KPIDetailModal({
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left py-3 px-4 font-semibold text-slate-600">Project</th>
+              {(kpiName === 'Time to Delivery' || kpiName === 'Man-day Control') && (
+                <th className="text-left py-3 px-4 font-semibold text-slate-600">Milestone</th>
+              )}
+              {kpiName === 'Time to Delivery' && (
+                <>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Due Date</th>
+                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Completed</th>
+                </>
+              )}
               {kpiName === 'Man-day Control' && (
                 <>
                   <th className="text-center py-3 px-4 font-semibold text-slate-600">Planned</th>
@@ -193,6 +202,21 @@ export function KPIDetailModal({
                     <p className="text-xs text-slate-500">{item.project_name}</p>
                   </div>
                 </td>
+                {(kpiName === 'Time to Delivery' || kpiName === 'Man-day Control') && (
+                  <td className="py-3 px-4 text-slate-600 text-sm">
+                    {item.milestone_name}
+                  </td>
+                )}
+                {kpiName === 'Time to Delivery' && (
+                  <>
+                    <td className="text-center py-3 px-4 text-slate-600">
+                      {item.planned_date ? new Date(item.planned_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' }) : '-'}
+                    </td>
+                    <td className="text-center py-3 px-4 text-slate-600">
+                      {item.actual_date ? new Date(item.actual_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' }) : '-'}
+                    </td>
+                  </>
+                )}
                 {kpiName === 'Man-day Control' && (
                   <>
                     <td className="text-center py-3 px-4 text-slate-600">{item.planned_mandays || '-'}</td>
@@ -369,8 +393,8 @@ export function KPIDetailModal({
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="text-left py-3 px-4 font-semibold text-slate-600">พนักงาน</th>
-              <th className="text-left py-3 px-4 font-semibold text-slate-600">Project</th>
               <th className="text-center py-3 px-4 font-semibold text-slate-600">On-time</th>
+              <th className="text-center py-3 px-4 font-semibold text-slate-600">Late</th>
               <th className="text-center py-3 px-4 font-semibold text-slate-600">Total</th>
               <th className="text-center py-3 px-4 font-semibold text-slate-600">%</th>
               <th className="text-center py-3 px-4 font-semibold text-slate-600">Status</th>
@@ -380,11 +404,8 @@ export function KPIDetailModal({
             {data.details.map((item: any, idx: number) => (
               <tr key={idx} className="hover:bg-slate-50/50">
                 <td className="py-3 px-4 font-medium text-slate-800">{item.employee_name}</td>
-                <td className="py-3 px-4">
-                  <span className="text-slate-600">{item.project_code}</span>
-                  {item.project_name && <p className="text-xs text-slate-500">{item.project_name}</p>}
-                </td>
-                <td className="text-center py-3 px-4 text-slate-600">{item.ontime_count}</td>
+                <td className="text-center py-3 px-4 text-emerald-600 font-medium">{item.ontime_count}</td>
+                <td className="text-center py-3 px-4 text-rose-600 font-medium">{item.late_count}</td>
                 <td className="text-center py-3 px-4 text-slate-600">{item.total_docs}</td>
                 <td className="text-center py-3 px-4">
                   <span className={`font-bold ${item.status === 'ผ่าน' ? 'text-emerald-600' : 'text-rose-600'}`}>

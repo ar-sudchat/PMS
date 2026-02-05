@@ -608,16 +608,34 @@ export async function getKPIDetail(
             SELECT
               project_code,
               project_name,
+              milestone_name,
+              milestone_order,
+              milestone_weight,
+              planned_mandays,
+              planned_date,
+              actual_date,
               time_to_delivery_percent as actual_percent,
               target_percent,
               CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
             FROM pms.vw_kpi_time_to_delivery
             ${whereClause}
-            ORDER BY time_to_delivery_percent DESC
+            ORDER BY project_code, milestone_order
           `)
         details = result.recordset
-        actualValue = details.length > 0
-          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+        // Weighted average: Σ(Achievement% × Weight × Planned Mandays) / Σ(Planned Mandays × Weight)
+        const sumWeightedPercent = details.reduce((sum, d) => {
+          const percent = parseFloat(d.actual_percent || 0)
+          const weight = parseFloat(d.milestone_weight || 0)
+          const mandays = parseFloat(d.planned_mandays || 0)
+          return sum + (percent * weight * mandays / 100)
+        }, 0)
+        const sumWeightedMandays = details.reduce((sum, d) => {
+          const weight = parseFloat(d.milestone_weight || 0)
+          const mandays = parseFloat(d.planned_mandays || 0)
+          return sum + (mandays * weight)
+        }, 0)
+        actualValue = sumWeightedMandays > 0
+          ? Math.round(sumWeightedPercent * 100 / sumWeightedMandays)
           : 0
         break
       }
@@ -630,18 +648,33 @@ export async function getKPIDetail(
             SELECT
               project_code,
               project_name,
+              milestone_name,
+              milestone_order,
+              milestone_weight,
               manday_control_percent as actual_percent,
               target_percent,
-              total_planned_mandays as planned_mandays,
-              total_actual_mandays as actual_mandays,
+              planned_mandays,
+              actual_mandays,
               CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
             FROM pms.vw_kpi_manday_control
             ${whereClause}
-            ORDER BY manday_control_percent DESC
+            ORDER BY project_code, milestone_order
           `)
         details = result.recordset
-        actualValue = details.length > 0
-          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
+        // Weighted average: Σ(Control% × Weight × Planned Mandays) / Σ(Planned Mandays × Weight)
+        const sumWeightedPercentMDC = details.reduce((sum, d) => {
+          const percent = parseFloat(d.actual_percent || 0)
+          const weight = parseFloat(d.milestone_weight || 0)
+          const mandays = parseFloat(d.planned_mandays || 0)
+          return sum + (percent * weight * mandays / 100)
+        }, 0)
+        const sumWeightedMandaysMDC = details.reduce((sum, d) => {
+          const weight = parseFloat(d.milestone_weight || 0)
+          const mandays = parseFloat(d.planned_mandays || 0)
+          return sum + (mandays * weight)
+        }, 0)
+        actualValue = sumWeightedMandaysMDC > 0
+          ? Math.round(sumWeightedPercentMDC * 100 / sumWeightedMandaysMDC)
           : 0
         break
       }
@@ -778,6 +811,7 @@ export async function getKPIDetail(
         if (employeeId) {
           empWhereClause += ' AND employee_id = @employeeId'
         }
+        // Aggregate per employee (similar to Issue Clearing)
         const result = await pool.request()
           .input('year', sql.Int, year)
           .input('periodValue', sql.Int, periodValue)
@@ -785,20 +819,31 @@ export async function getKPIDetail(
           .query(`
             SELECT
               employee_name,
-              project_code,
-              project_name,
-              ontime_percent as actual_percent,
-              ontime_count,
-              total_docs,
-              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+              SUM(ontime_count) as ontime_count,
+              SUM(late_count) as late_count,
+              SUM(total_docs) as total_docs,
+              CASE
+                WHEN SUM(total_docs) > 0
+                THEN CAST(ROUND(SUM(ontime_count) * 100.0 / SUM(total_docs), 2) AS DECIMAL(5,2))
+                ELSE 100
+              END as actual_percent,
+              CASE
+                WHEN SUM(total_docs) = 0 THEN 'ผ่าน'
+                WHEN (SUM(ontime_count) * 100.0 / SUM(total_docs)) >= 95 THEN 'ผ่าน'
+                ELSE 'ไม่ผ่าน'
+              END as status
             FROM pms.vw_kpi_docs_ontime
             ${empWhereClause}
-            ORDER BY ontime_percent DESC
+            GROUP BY employee_id, employee_name
+            ORDER BY actual_percent DESC
           `)
         details = result.recordset
-        actualValue = details.length > 0
-          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
-          : 0
+        // Calculate overall from totals
+        const totalOntime = details.reduce((sum, d) => sum + (d.ontime_count || 0), 0)
+        const totalDocs = details.reduce((sum, d) => sum + (d.total_docs || 0), 0)
+        actualValue = totalDocs > 0
+          ? Math.round(totalOntime * 100 / totalDocs)
+          : 100
         break
       }
 
@@ -807,6 +852,7 @@ export async function getKPIDetail(
         if (employeeId) {
           empWhereClause += ' AND employee_id = @employeeId'
         }
+        // Aggregate per employee (sum cleared, pending, total across all months in the period)
         const result = await pool.request()
           .input('year', sql.Int, year)
           .input('periodValue', sql.Int, periodValue)
@@ -814,19 +860,31 @@ export async function getKPIDetail(
           .query(`
             SELECT
               employee_name,
-              clearing_percent as actual_percent,
-              cleared_tasks,
-              pending_count,
-              total_tasks,
-              CASE WHEN is_pass = 1 THEN 'ผ่าน' ELSE 'ไม่ผ่าน' END as status
+              SUM(cleared_tasks) as cleared_tasks,
+              SUM(pending_count) as pending_count,
+              SUM(total_tasks) as total_tasks,
+              CASE
+                WHEN SUM(total_tasks) > 0
+                THEN CAST(ROUND(SUM(cleared_tasks) * 100.0 / SUM(total_tasks), 2) AS DECIMAL(5,2))
+                ELSE 100
+              END as actual_percent,
+              CASE
+                WHEN SUM(total_tasks) = 0 THEN 'ผ่าน'
+                WHEN (SUM(cleared_tasks) * 100.0 / SUM(total_tasks)) >= 85 THEN 'ผ่าน'
+                ELSE 'ไม่ผ่าน'
+              END as status
             FROM pms.vw_kpi_issue_clearing
             ${empWhereClause}
-            ORDER BY clearing_percent DESC
+            GROUP BY employee_id, employee_name
+            ORDER BY actual_percent DESC
           `)
         details = result.recordset
-        actualValue = details.length > 0
-          ? Math.round(details.reduce((sum, d) => sum + parseFloat(d.actual_percent || 0), 0) / details.length)
-          : 0
+        // Calculate overall from totals (not average of percentages)
+        const totalCleared = details.reduce((sum, d) => sum + (d.cleared_tasks || 0), 0)
+        const totalTasks = details.reduce((sum, d) => sum + (d.total_tasks || 0), 0)
+        actualValue = totalTasks > 0
+          ? Math.round(totalCleared * 100 / totalTasks)
+          : 100
         break
       }
     }
