@@ -84,7 +84,19 @@ export function QuickLogTimeModal({ open, onOpenChange, task, postLogAction }: Q
         if (open) {
             setInputValue('1')
             setTimeUnit('hours')
-            setDate(format(new Date(), 'yyyy-MM-dd'))
+
+            // Default date: use task's start_date if available, otherwise today
+            const today = new Date()
+            let defaultDate = today
+
+            if (task?.start_date) {
+                const taskStartDate = new Date(task.start_date)
+                // Use task's start_date if it's not in the future
+                if (taskStartDate <= today) {
+                    defaultDate = taskStartDate
+                }
+            }
+            setDate(format(defaultDate, 'yyyy-MM-dd'))
 
             // Default to task type if available
             if (task?.task_type) {
