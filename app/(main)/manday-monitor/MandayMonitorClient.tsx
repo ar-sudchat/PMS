@@ -7,6 +7,12 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
+import {
     Select,
     SelectContent,
     SelectItem,
@@ -99,6 +105,8 @@ export function MandayMonitorClient({
     const [detailDialogOpen, setDetailDialogOpen] = useState(false)
     const [missingData, setMissingData] = useState<MissingTimesheetResult | null>(null)
     const [isMissingLoading, setIsMissingLoading] = useState(false)
+    const [selectedMissingEmployee, setSelectedMissingEmployee] = useState<MissingTimesheetEmployee | null>(null)
+    const [missingDetailDialogOpen, setMissingDetailDialogOpen] = useState(false)
 
     // Missing timesheet date range
     const getDefaultDateRange = () => {
@@ -327,6 +335,12 @@ export function MandayMonitorClient({
         },
     ], [])
 
+    // Handle click on missing timesheet employee
+    const handleMissingEmployeeClick = (employee: MissingTimesheetEmployee) => {
+        setSelectedMissingEmployee(employee)
+        setMissingDetailDialogOpen(true)
+    }
+
     // Missing Timesheet Table Columns
     const missingTimesheetColumns: ColumnDef<MissingTimesheetEmployee>[] = useMemo(() => [
         {
@@ -335,7 +349,10 @@ export function MandayMonitorClient({
             cell: ({ row }) => {
                 const hasIssue = row.original.missing_count > 0 || row.original.low_hours_count > 0
                 return (
-                    <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => handleMissingEmployeeClick(row.original)}
+                        className="flex items-center gap-2 hover:text-blue-600 transition-colors group text-left"
+                    >
                         {!hasIssue ? (
                             <CheckCircle className="h-4 w-4 text-emerald-600" />
                         ) : row.original.missing_count >= 5 ? (
@@ -343,8 +360,9 @@ export function MandayMonitorClient({
                         ) : (
                             <AlertCircle className="h-4 w-4 text-orange-600" />
                         )}
-                        <span className="font-medium">{row.original.employee_name}</span>
-                    </div>
+                        <span className="font-medium group-hover:underline">{row.original.employee_name}</span>
+                        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
                 )
             },
         },
@@ -1115,6 +1133,119 @@ export function MandayMonitorClient({
                 projectId={selectedProjectId}
                 filters={filters}
             />
+
+            {/* Missing Timesheet Detail Dialog */}
+            <Dialog open={missingDetailDialogOpen} onOpenChange={setMissingDetailDialogOpen}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <CalendarX className="h-5 w-5 text-orange-600" />
+                            รายละเอียดการคีย์เวลา
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {selectedMissingEmployee && (
+                        <div className="space-y-6">
+                            {/* Employee Info */}
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                <div>
+                                    <h3 className="font-semibold text-lg">{selectedMissingEmployee.employee_name}</h3>
+                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                        <Badge variant="outline">{selectedMissingEmployee.position_code}</Badge>
+                                        {selectedMissingEmployee.department_name && (
+                                            <span>{selectedMissingEmployee.department_name}</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm text-gray-500">คีย์แล้ว</div>
+                                    <div className="font-bold text-lg">
+                                        {selectedMissingEmployee.logged_count}/{selectedMissingEmployee.total_working_days} วัน
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Summary */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className={`p-4 rounded-lg ${selectedMissingEmployee.missing_count > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                                    <div className={`text-sm ${selectedMissingEmployee.missing_count > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                        วันที่ไม่ได้คีย์
+                                    </div>
+                                    <div className={`text-2xl font-bold ${selectedMissingEmployee.missing_count > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                                        {selectedMissingEmployee.missing_count} วัน
+                                    </div>
+                                </div>
+                                <div className={`p-4 rounded-lg ${selectedMissingEmployee.low_hours_count > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+                                    <div className={`text-sm ${selectedMissingEmployee.low_hours_count > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                        วันที่คีย์น้อยกว่า 5 ชม.
+                                    </div>
+                                    <div className={`text-2xl font-bold ${selectedMissingEmployee.low_hours_count > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                        {selectedMissingEmployee.low_hours_count} วัน
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Missing Dates */}
+                            {selectedMissingEmployee.missing_count > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="font-medium text-red-700 flex items-center gap-2">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        วันที่ไม่ได้คีย์เวลา ({selectedMissingEmployee.missing_count} วัน)
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+                                        {selectedMissingEmployee.missing_dates.map(date => (
+                                            <Badge key={date} className="bg-red-100 text-red-700 border-red-300">
+                                                {new Date(date).toLocaleDateString('th-TH', {
+                                                    weekday: 'short',
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                    year: '2-digit'
+                                                })}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Low Hours Dates */}
+                            {selectedMissingEmployee.low_hours_count > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="font-medium text-amber-700 flex items-center gap-2">
+                                        <AlertCircle className="h-4 w-4" />
+                                        วันที่คีย์น้อยกว่า 5 ชม. ({selectedMissingEmployee.low_hours_count} วัน)
+                                    </h4>
+                                    <div className="space-y-1 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                        {selectedMissingEmployee.low_hours_dates.map(entry => (
+                                            <div key={entry.date} className="flex items-center justify-between py-1">
+                                                <span className="text-amber-700">
+                                                    {new Date(entry.date).toLocaleDateString('th-TH', {
+                                                        weekday: 'short',
+                                                        day: 'numeric',
+                                                        month: 'short',
+                                                        year: '2-digit'
+                                                    })}
+                                                </span>
+                                                <Badge className="bg-amber-100 text-amber-700 border-amber-300">
+                                                    {entry.hours} ชม.
+                                                </Badge>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* All Good */}
+                            {selectedMissingEmployee.missing_count === 0 && selectedMissingEmployee.low_hours_count === 0 && (
+                                <div className="p-6 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
+                                    <CheckCircle className="h-12 w-12 mx-auto text-emerald-600 mb-2" />
+                                    <h4 className="font-medium text-emerald-700">คีย์เวลาครบถ้วน</h4>
+                                    <p className="text-sm text-emerald-600">ไม่มีวันที่มีปัญหา</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
