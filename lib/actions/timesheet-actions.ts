@@ -528,13 +528,13 @@ export async function getDailyLogSummary(dateString: string): Promise<{ success:
                     e.first_name_th
             `)
 
-    const data = result.recordset.map((r: any) => ({
+    const data: DailyLogSummaryItem[] = result.recordset.map((r: any) => ({
       id: r.id,
       name: r.nickname ? `${r.name} (${r.nickname})` : r.name,
       position: r.position,
       task_count: r.task_count,
       logged_hours: r.logged_hours,
-      status: r.logged_hours > 0 ? 'Logged' : 'Not Logged'
+      status: (r.logged_hours > 0 ? 'Logged' : 'Not Logged') as 'Logged' | 'Not Logged'
     }))
 
     return { success: true, data }

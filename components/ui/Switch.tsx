@@ -1,42 +1,43 @@
 import * as React from "react"
-import { Switch as HeadlessSwitch } from "@headlessui/react"
 import { cn } from "@/lib/utils"
 
-export interface SwitchProps {
-    checked: boolean
-    onChange: (checked: boolean) => void
-    disabled?: boolean
-    label?: string
-    className?: string
+export interface SwitchProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
+    onCheckedChange?: (checked: boolean) => void
 }
 
-export function Switch({ checked, onChange, disabled, label, className }: SwitchProps) {
-    return (
-        <HeadlessSwitch.Group as="div" className="flex items-center">
-            <HeadlessSwitch
-                checked={checked}
-                onChange={onChange}
-                disabled={disabled}
-                className={cn(
-                    checked ? 'bg-primary' : 'bg-input',
-                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-                    className
-                )}
-            >
-                <span className="sr-only">Use setting</span>
-                <span
-                    aria-hidden="true"
+const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
+    ({ className, onCheckedChange, onChange, ...props }, ref) => {
+        const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+            onChange?.(e)
+            onCheckedChange?.(e.target.checked)
+        }
+
+        return (
+            <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    ref={ref}
+                    onChange={handleChange}
+                    {...props}
+                />
+                <div
                     className={cn(
-                        checked ? 'translate-x-5' : 'translate-x-0',
-                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out'
+                        "w-11 h-6 bg-muted rounded-full peer",
+                        "peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2",
+                        "peer-checked:bg-primary",
+                        "peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+                        "after:content-[''] after:absolute after:top-[2px] after:left-[2px]",
+                        "after:bg-background after:border after:border-muted after:rounded-full",
+                        "after:h-5 after:w-5 after:transition-all",
+                        "peer-checked:after:translate-x-5 peer-checked:after:border-primary",
+                        className
                     )}
                 />
-            </HeadlessSwitch>
-            {label && (
-                <HeadlessSwitch.Label className="ml-3 text-sm font-medium leading-none cursor-pointer">
-                    {label}
-                </HeadlessSwitch.Label>
-            )}
-        </HeadlessSwitch.Group>
-    )
-}
+            </label>
+        )
+    }
+)
+Switch.displayName = "Switch"
+
+export { Switch }

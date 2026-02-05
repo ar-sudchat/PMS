@@ -244,7 +244,7 @@ export function MilestoneConfigModal({ open, onClose, mode, data, onSuccess }: M
                         <div className="flex items-center gap-2 h-10">
                             <Switch
                                 checked={formData.is_active}
-                                onChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                             />
                             <span className="text-sm text-slate-600">{formData.is_active ? 'Active' : 'Inactive'}</span>
                         </div>

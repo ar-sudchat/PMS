@@ -1,5 +1,6 @@
 'use client'
 
+import html2canvas from 'html2canvas'
 import { type ProjectRow, type SalesMetric } from "@/lib/actions/project-onhand-actions"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"

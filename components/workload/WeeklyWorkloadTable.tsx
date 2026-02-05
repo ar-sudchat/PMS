@@ -307,7 +307,6 @@ export function WeeklyWorkloadTable() {
                             value={selectedProject}
                             onChange={setSelectedProject}
                             placeholder="เลือกโครงการ..."
-                            isClearable
                         />
                     </div>
                 </div>

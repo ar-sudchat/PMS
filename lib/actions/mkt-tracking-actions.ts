@@ -24,7 +24,10 @@ export interface MktProject {
     stage_changed_by_name?: string
     mkt_expected_value?: number
     mkt_mandays?: number
-    mkt_expected_close_date?: string
+    mkt_mandays_sa?: number
+    mkt_mandays_pg?: number
+    mkt_mandays_pm?: number
+    mkt_discount?: number
     mkt_contact_person?: string
     mkt_contact_phone?: string
     mkt_contact_email?: string
@@ -94,7 +97,10 @@ export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
                 COALESCE(changed_by.first_name_th + ' ' + changed_by.last_name_th, changed_by.first_name + ' ' + changed_by.last_name) AS stage_changed_by_name,
                 p.mkt_expected_value,
                 p.mkt_mandays,
-                p.mkt_expected_close_date,
+                p.mkt_mandays_sa,
+                p.mkt_mandays_pg,
+                p.mkt_mandays_pm,
+                p.mkt_discount,
                 p.mkt_contact_person,
                 p.mkt_contact_phone,
                 p.mkt_contact_email,
@@ -205,7 +211,10 @@ export async function fetchMktProjectById(projectId: string): Promise<{
                     COALESCE(changed_by.first_name_th + ' ' + changed_by.last_name_th, changed_by.first_name + ' ' + changed_by.last_name) AS stage_changed_by_name,
                     p.mkt_expected_value,
                     p.mkt_mandays,
-                    p.mkt_expected_close_date,
+                    p.mkt_mandays_sa,
+                    p.mkt_mandays_pg,
+                    p.mkt_mandays_pm,
+                    p.mkt_discount,
                     p.mkt_contact_person,
                     p.mkt_contact_phone,
                     p.mkt_contact_email,
@@ -215,6 +224,8 @@ export async function fetchMktProjectById(projectId: string): Promise<{
                     p.mkt_notes,
                     p.project_manager_id,
                     COALESCE(pm.first_name_th + ' ' + pm.last_name_th, pm.first_name + ' ' + pm.last_name) AS project_manager_name,
+                    p.project_owner_id,
+                    COALESCE(owner.first_name_th + ' ' + owner.last_name_th, owner.first_name + ' ' + owner.last_name) AS project_owner_name,
                     p.status_id AS status,
                     p.created_at,
                     p.created_by,
@@ -225,6 +236,7 @@ export async function fetchMktProjectById(projectId: string): Promise<{
                 LEFT JOIN pms.customers c ON c.id = p.customer_id
                 LEFT JOIN pms.employees changed_by ON changed_by.id = p.mkt_stage_changed_by
                 LEFT JOIN pms.employees pm ON pm.id = p.project_manager_id
+                LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
                 LEFT JOIN pms.employees creator ON creator.id = p.created_by
                 WHERE p.id = @projectId AND pt.code = 'MKT'
             `)
@@ -310,7 +322,10 @@ export async function updateMktDetails(
     data: {
         mkt_expected_value?: number | null
         mkt_mandays?: number | null
-        mkt_expected_close_date?: string | null
+        mkt_mandays_sa?: number | null
+        mkt_mandays_pg?: number | null
+        mkt_mandays_pm?: number | null
+        mkt_discount?: number | null
         mkt_contact_person?: string | null
         mkt_contact_phone?: string | null
         mkt_contact_email?: string | null
@@ -344,9 +359,24 @@ export async function updateMktDetails(
             request.input('mandays', data.mkt_mandays)
         }
 
-        if (data.mkt_expected_close_date !== undefined) {
-            setClauses.push('mkt_expected_close_date = @closeDate')
-            request.input('closeDate', data.mkt_expected_close_date || null)
+        if (data.mkt_mandays_sa !== undefined) {
+            setClauses.push('mkt_mandays_sa = @mandaysSa')
+            request.input('mandaysSa', data.mkt_mandays_sa)
+        }
+
+        if (data.mkt_mandays_pg !== undefined) {
+            setClauses.push('mkt_mandays_pg = @mandaysPg')
+            request.input('mandaysPg', data.mkt_mandays_pg)
+        }
+
+        if (data.mkt_mandays_pm !== undefined) {
+            setClauses.push('mkt_mandays_pm = @mandaysPm')
+            request.input('mandaysPm', data.mkt_mandays_pm)
+        }
+
+        if (data.mkt_discount !== undefined) {
+            setClauses.push('mkt_discount = @discount')
+            request.input('discount', data.mkt_discount)
         }
 
         if (data.mkt_contact_person !== undefined) {

@@ -232,7 +232,7 @@ export function ProjectRequestList({
                                         <TableCell>{request.created_by_name}</TableCell>
                                         <TableCell onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenu>
-                                                <DropdownMenuTrigger as={Button} variant="ghost" size="icon">
+                                                <DropdownMenuTrigger className="inline-flex items-center justify-center h-10 w-10 rounded-md hover:bg-accent hover:text-accent-foreground">
                                                     <MoreHorizontal className="h-4 w-4" />
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">

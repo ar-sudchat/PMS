@@ -185,7 +185,7 @@ export async function getOwnerDashboardStats(ownerId: string): Promise<Dashboard
             delayed_count: projects.filter(p => ['DELAYED', 'OVER_BUDGET'].includes(p.health_status)).length,
             completed_count: projects.filter(p => p.health_status === 'COMPLETED').length,
             cancelled_count: projects.filter(p => p.health_status === 'CANCELLED').length,
-            total_planned_mandays: projects.reduce((sum, p) => sum + (p.sold_mandays || 0), 0),
+            total_planned_mandays: projects.reduce((sum, p) => sum + (p.planned_mandays || 0), 0),
             total_actual_mandays: projects.reduce((sum, p) => sum + (p.actual_mandays || 0), 0),
             total_remaining_mandays: projects.reduce((sum, p) => sum + (p.remaining_mandays || 0), 0),
             overall_manday_percent: 0,
@@ -373,7 +373,7 @@ export async function getAttentionRequired(ownerId: string): Promise<AttentionIt
                     owner_id: p.owner_id,
                     owner_name: p.owner_name,
                     issue_type: 'MANDAY_OVER',
-                    issue_description: `Man-day เกิน Budget ${Math.round(p.manday_percent - 100)}% (${Math.round(p.actual_mandays)}/${Math.round(p.sold_mandays)} MD)`,
+                    issue_description: `Man-day เกิน Budget ${Math.round(p.manday_percent - 100)}% (${Math.round(p.actual_mandays)}/${Math.round(p.planned_mandays)} MD)`,
                     severity: p.manday_percent > 120 ? 'HIGH' : 'MEDIUM'
                 })
             }

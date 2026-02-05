@@ -203,12 +203,12 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
             SELECT
                 CAST(ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS DECIMAL(10,2)) AS total_manday_used,
                 COUNT(DISTINCT s.project_id) AS active_projects,
-                COUNT(DISTINCT t.assignee_id) AS active_employees
+                COUNT(DISTINCT te.employee_id) AS active_employees
             FROM pms.timesheet_entries te
             INNER JOIN pms.tasks t ON te.task_id = t.id
             INNER JOIN pms.stories s ON t.story_id = s.id
             INNER JOIN pms.projects p ON s.project_id = p.id
-            LEFT JOIN pms.employees e ON t.assignee_id = e.id
+            LEFT JOIN pms.employees e ON te.employee_id = e.id
             LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
             WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1 AND p.is_active = 1
             AND ${whereClause}
@@ -356,7 +356,7 @@ export async function getMandayByProject(
                 SELECT
                     s.project_id,
                     CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS actual_mandays,
-                    COUNT(DISTINCT t.assignee_id) AS employee_count
+                    COUNT(DISTINCT te.employee_id) AS employee_count
                 FROM pms.timesheet_entries te
                 INNER JOIN pms.tasks t ON te.task_id = t.id
                 INNER JOIN pms.stories s ON t.story_id = s.id
@@ -456,7 +456,7 @@ export async function getMandayByEmployee(
             LEFT JOIN pms.positions pos ON e.position_id = pos.id
             INNER JOIN (
                 SELECT
-                    t.assignee_id AS employee_id,
+                    te.employee_id,
                     CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS total_mandays,
                     SUM(te.hours) AS total_hours,
                     COUNT(DISTINCT s.project_id) AS project_count,
@@ -468,7 +468,7 @@ export async function getMandayByEmployee(
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND ${whereClause}
                 ${subqueryWhere}
-                GROUP BY t.assignee_id
+                GROUP BY te.employee_id
             ) md ON e.id = md.employee_id
             WHERE e.is_active = 1
             ${additionalWhere}
@@ -523,7 +523,7 @@ export async function getMandayByCategory(filters: FilterParams): Promise<{
                 INNER JOIN pms.tasks t ON te.task_id = t.id
                 INNER JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
-                LEFT JOIN pms.employees e ON t.assignee_id = e.id
+                LEFT JOIN pms.employees e ON te.employee_id = e.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND ${whereClause}
                 ${additionalWhere}
@@ -572,7 +572,7 @@ export async function getMandayTrend(year: number): Promise<{
                         MONTH(te.entry_date) AS month,
                         CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS actual_mandays,
                         SUM(te.hours) AS total_hours,
-                        COUNT(DISTINCT t.assignee_id) AS employee_count,
+                        COUNT(DISTINCT te.employee_id) AS employee_count,
                         COUNT(DISTINCT s.project_id) AS project_count
                     FROM pms.timesheet_entries te
                     INNER JOIN pms.tasks t ON te.task_id = t.id
@@ -660,7 +660,7 @@ export async function getEmployeeProjectMatrix(filters: FilterParams): Promise<{
 
         const result = await request.query(`
             SELECT
-                t.assignee_id AS employee_id,
+                te.employee_id,
                 COALESCE(
                     CONCAT(e.first_name_th, ' ', e.last_name_th),
                     CONCAT(e.first_name, ' ', e.last_name)
@@ -672,7 +672,7 @@ export async function getEmployeeProjectMatrix(filters: FilterParams): Promise<{
                 CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS mandays
             FROM pms.timesheet_entries te
             INNER JOIN pms.tasks t ON te.task_id = t.id
-            INNER JOIN pms.employees e ON t.assignee_id = e.id
+            INNER JOIN pms.employees e ON te.employee_id = e.id
             LEFT JOIN pms.positions pos ON e.position_id = pos.id
             INNER JOIN pms.stories s ON t.story_id = s.id
             INNER JOIN pms.projects p ON s.project_id = p.id
@@ -680,7 +680,7 @@ export async function getEmployeeProjectMatrix(filters: FilterParams): Promise<{
             AND ${whereClause}
             ${additionalWhere}
             GROUP BY
-                t.assignee_id,
+                te.employee_id,
                 e.first_name_th,
                 e.last_name_th,
                 e.first_name,
@@ -1029,7 +1029,7 @@ export async function getProjectMandayDetail(
                 FROM pms.timesheet_entries te
                 INNER JOIN pms.tasks t ON te.task_id = t.id
                 INNER JOIN pms.stories s ON t.story_id = s.id
-                INNER JOIN pms.employees e ON t.assignee_id = e.id
+                INNER JOIN pms.employees e ON te.employee_id = e.id
                 LEFT JOIN pms.positions pos ON e.position_id = pos.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND s.project_id = @projectId
@@ -1069,7 +1069,7 @@ export async function getProjectMandayDetail(
             FROM pms.timesheet_entries te
             INNER JOIN pms.tasks t ON te.task_id = t.id
             INNER JOIN pms.stories s ON t.story_id = s.id
-            INNER JOIN pms.employees e ON t.assignee_id = e.id
+            INNER JOIN pms.employees e ON te.employee_id = e.id
             LEFT JOIN pms.positions pos ON e.position_id = pos.id
             LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
             LEFT JOIN pms.milestone_configs ms ON pm.milestone_config_id = ms.id
@@ -1111,6 +1111,247 @@ export async function getProjectMandayDetail(
         }
     } catch (error: any) {
         console.error('getProjectMandayDetail error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+// ============================================
+// Missing Timesheet Check (SA/BA/PG)
+// ============================================
+
+export interface LowHoursEntry {
+    date: string
+    hours: number
+}
+
+export interface MissingTimesheetEmployee {
+    employee_id: string
+    employee_code: string
+    employee_name: string
+    position_code: string
+    position_name: string
+    department_name: string | null
+    missing_dates: string[]
+    missing_count: number
+    low_hours_dates: LowHoursEntry[]  // Dates with < 5 hours
+    low_hours_count: number
+    logged_count: number
+    total_working_days: number
+}
+
+export interface MissingTimesheetSummary {
+    total_employees: number
+    employees_with_missing: number
+    employees_with_low_hours: number
+    total_missing_entries: number
+    total_low_hours_entries: number
+    period_start: string
+    period_end: string
+    holidays: string[]  // Dates where no one logged time
+}
+
+export interface MissingTimesheetResult {
+    summary: MissingTimesheetSummary
+    employees: MissingTimesheetEmployee[]
+}
+
+export async function getMissingTimesheet(
+    startDate: string,
+    endDate: string
+): Promise<{
+    success: boolean
+    data?: MissingTimesheetResult
+    error?: string
+}> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+
+        // Get all weekdays in the date range (exclude weekends)
+        const workingDaysResult = await pool.request()
+            .input('startDate', sql.Date, startDate)
+            .input('endDate', sql.Date, endDate)
+            .query(`
+                WITH DateRange AS (
+                    SELECT CAST(@startDate AS DATE) AS dt
+                    UNION ALL
+                    SELECT DATEADD(DAY, 1, dt)
+                    FROM DateRange
+                    WHERE DATEADD(DAY, 1, dt) <= @endDate
+                )
+                SELECT dt AS work_date
+                FROM DateRange
+                WHERE DATEPART(WEEKDAY, dt) NOT IN (1, 7) -- Exclude Sun(1), Sat(7)
+                AND dt <= GETDATE() -- Only past dates
+                OPTION (MAXRECURSION 400)
+            `)
+
+        const allWeekdays = workingDaysResult.recordset.map((r: { work_date: Date }) =>
+            r.work_date.toISOString().split('T')[0]
+        )
+
+        if (allWeekdays.length === 0) {
+            return {
+                success: true,
+                data: {
+                    summary: {
+                        total_employees: 0,
+                        employees_with_missing: 0,
+                        employees_with_low_hours: 0,
+                        total_missing_entries: 0,
+                        total_low_hours_entries: 0,
+                        period_start: startDate,
+                        period_end: endDate,
+                        holidays: []
+                    },
+                    employees: []
+                }
+            }
+        }
+
+        // Get dates where at least one SA/BA/PG logged time (to detect holidays)
+        const loggedDatesResult = await pool.request()
+            .input('startDate', sql.Date, startDate)
+            .input('endDate', sql.Date, endDate)
+            .query(`
+                SELECT DISTINCT CONVERT(VARCHAR(10), te.entry_date, 120) AS logged_date
+                FROM pms.timesheet_entries te
+                INNER JOIN pms.employees e ON te.employee_id = e.id
+                INNER JOIN pms.positions p ON e.position_id = p.id
+                WHERE te.is_active = 1
+                AND te.entry_date >= @startDate
+                AND te.entry_date <= @endDate
+                AND p.code IN ('SA', 'BA', 'PG')
+            `)
+
+        const datesWithLogs = new Set(loggedDatesResult.recordset.map((r: any) => r.logged_date))
+
+        // Holidays = weekdays where no one logged time
+        const holidays = allWeekdays.filter((d: string) => !datesWithLogs.has(d))
+
+        // Working days = weekdays minus holidays
+        const workingDays = allWeekdays.filter((d: string) => datesWithLogs.has(d))
+
+        // Get SA, BA, PG employees with their logged dates and hours per day
+        const employeesResult = await pool.request()
+            .input('startDate', sql.Date, startDate)
+            .input('endDate', sql.Date, endDate)
+            .query(`
+                WITH TargetEmployees AS (
+                    SELECT
+                        e.id AS employee_id,
+                        e.employee_code,
+                        COALESCE(
+                            CONCAT(e.first_name_th, ' ', e.last_name_th),
+                            CONCAT(e.first_name, ' ', e.last_name)
+                        ) AS employee_name,
+                        p.code AS position_code,
+                        p.name AS position_name,
+                        d.name AS department_name
+                    FROM pms.employees e
+                    INNER JOIN pms.positions p ON e.position_id = p.id
+                    LEFT JOIN pms.departments d ON e.department_id = d.id
+                    WHERE e.is_active = 1
+                    AND p.code IN ('SA', 'BA', 'PG')
+                ),
+                DailyHours AS (
+                    SELECT
+                        te.employee_id,
+                        CONVERT(VARCHAR(10), te.entry_date, 120) AS logged_date,
+                        SUM(te.hours) AS daily_hours
+                    FROM pms.timesheet_entries te
+                    WHERE te.is_active = 1
+                    AND te.entry_date >= @startDate
+                    AND te.entry_date <= @endDate
+                    GROUP BY te.employee_id, CONVERT(VARCHAR(10), te.entry_date, 120)
+                )
+                SELECT
+                    te.employee_id,
+                    te.employee_code,
+                    te.employee_name,
+                    te.position_code,
+                    te.position_name,
+                    te.department_name,
+                    STRING_AGG(dh.logged_date + ':' + CAST(dh.daily_hours AS VARCHAR(10)), ',') AS logged_data
+                FROM TargetEmployees te
+                LEFT JOIN DailyHours dh ON te.employee_id = dh.employee_id
+                GROUP BY
+                    te.employee_id,
+                    te.employee_code,
+                    te.employee_name,
+                    te.position_code,
+                    te.position_name,
+                    te.department_name
+                ORDER BY te.position_code, te.employee_name
+            `)
+
+        // Calculate missing dates and low hours for each employee
+        const employees: MissingTimesheetEmployee[] = employeesResult.recordset.map((emp: any) => {
+            // Parse logged_data: "2025-01-06:7.5,2025-01-07:3" => {date: hours}
+            const loggedMap: Record<string, number> = {}
+            if (emp.logged_data) {
+                emp.logged_data.split(',').forEach((entry: string) => {
+                    const [date, hours] = entry.split(':')
+                    if (date && hours) {
+                        loggedMap[date] = parseFloat(hours)
+                    }
+                })
+            }
+
+            const loggedDates = Object.keys(loggedMap)
+            // Missing = working days not in logged dates
+            const missingDates = workingDays.filter((wd: string) => !loggedMap[wd])
+
+            // Low hours = logged but < 5 hours
+            const lowHoursDates: LowHoursEntry[] = loggedDates
+                .filter(d => loggedMap[d] < 5 && workingDays.includes(d))
+                .map(d => ({ date: d, hours: loggedMap[d] }))
+                .sort((a, b) => a.date.localeCompare(b.date))
+
+            return {
+                employee_id: emp.employee_id,
+                employee_code: emp.employee_code,
+                employee_name: emp.employee_name,
+                position_code: emp.position_code,
+                position_name: emp.position_name,
+                department_name: emp.department_name,
+                missing_dates: missingDates,
+                missing_count: missingDates.length,
+                low_hours_dates: lowHoursDates,
+                low_hours_count: lowHoursDates.length,
+                logged_count: loggedDates.filter(d => workingDays.includes(d)).length,
+                total_working_days: workingDays.length
+            }
+        })
+
+        // Sort by issues (missing + low hours) descending
+        employees.sort((a, b) => (b.missing_count + b.low_hours_count) - (a.missing_count + a.low_hours_count))
+
+        const employeesWithMissing = employees.filter(e => e.missing_count > 0)
+        const employeesWithLowHours = employees.filter(e => e.low_hours_count > 0)
+        const totalMissingEntries = employeesWithMissing.reduce((sum, e) => sum + e.missing_count, 0)
+        const totalLowHoursEntries = employees.reduce((sum, e) => sum + e.low_hours_count, 0)
+
+        return {
+            success: true,
+            data: {
+                summary: {
+                    total_employees: employees.length,
+                    employees_with_missing: employeesWithMissing.length,
+                    employees_with_low_hours: employeesWithLowHours.length,
+                    total_missing_entries: totalMissingEntries,
+                    total_low_hours_entries: totalLowHoursEntries,
+                    period_start: startDate,
+                    period_end: endDate,
+                    holidays
+                },
+                employees
+            }
+        }
+    } catch (error: any) {
+        console.error('getMissingTimesheet error:', error)
         return { success: false, error: error.message }
     }
 }

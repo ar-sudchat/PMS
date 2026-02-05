@@ -444,7 +444,7 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                         </DialogHeader>
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
-                            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+                            <Button variant="danger" onClick={handleDelete}>Delete</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

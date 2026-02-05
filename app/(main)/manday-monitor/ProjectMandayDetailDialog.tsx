@@ -293,7 +293,7 @@ export function ProjectMandayDetailDialog({
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
                                                 <Pie
-                                                    data={data.employees.slice(0, 10)}
+                                                    data={data.employees.slice(0, 10).map(e => ({ ...e }))}
                                                     cx="50%"
                                                     cy="50%"
                                                     innerRadius={80}
@@ -302,7 +302,7 @@ export function ProjectMandayDetailDialog({
                                                     dataKey="mandays"
                                                     nameKey="employee_name"
                                                     label={({ percent }) =>
-                                                        percent > 5 ? `${percent}%` : ''
+                                                        (percent ?? 0) > 5 ? `${percent}%` : ''
                                                     }
                                                     labelLine={false}
                                                 >

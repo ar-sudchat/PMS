@@ -29,6 +29,8 @@ export interface DeployBackupRecord {
     created_at: string
     created_by: string
     created_by_name?: string
+    approval_status?: string
+    approval_instance_id?: string
 }
 
 export interface BackupKPIResult {
