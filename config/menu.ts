@@ -39,6 +39,8 @@ import {
   Calculator,
   Bug,
   FilePlus,
+  Printer,
+  Sticker,
   type LucideIcon
 } from 'lucide-react'
 
@@ -83,7 +85,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
           { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
           { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
-          { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3, roles: ['admin', 'manager'] },
+          { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3 },
         ]
       }
     ]
@@ -148,7 +150,7 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Analytics',
         titleTh: 'วิเคราะห์',
         children: [
-          { id: 'timesheet-dashboard', label: 'Timesheet Dashboard', labelTh: 'แดชบอร์ด Timesheet', path: '/timesheet-dashboard', icon: PieChart, roles: ['admin', 'manager'] },
+          { id: 'timesheet-dashboard', label: 'Timesheet Dashboard', labelTh: 'แดชบอร์ด Timesheet', path: '/timesheet-dashboard', icon: PieChart },
           { id: 'employee-work-report', label: 'Employee Work Report', labelTh: 'รายงานการทำงาน', path: '/analytics/employee-work', icon: BarChart3 },
         ]
       },
@@ -183,7 +185,7 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Dashboard',
         titleTh: 'แดชบอร์ด',
         children: [
-          { id: 'kpi-dashboard', label: 'KPI Dashboard', labelTh: 'KPI Dashboard (ทีม)', path: '/kpi-dashboard', icon: PieChart, roles: ['admin', 'manager'] },
+          { id: 'kpi-dashboard', label: 'KPI Dashboard', labelTh: 'KPI Dashboard (ทีม)', path: '/kpi-dashboard', icon: PieChart },
           { id: 'my-kpi', label: 'My KPI', labelTh: 'KPI ของฉัน', path: '/my-kpi', icon: Target },
         ]
       },
@@ -217,8 +219,8 @@ export const MENU_CONFIG: MenuModule[] = [
         title: 'Settings',
         titleTh: 'ตั้งค่า',
         children: [
-          { id: 'backup-sources', label: 'Backup Sources', labelTh: 'แหล่ง Backup', path: '/kpi-record/backup-sources', icon: Database, roles: ['admin', 'manager'] },
-          { id: 'backup-types', label: 'Backup Types', labelTh: 'ประเภท Backup', path: '/kpi-record/backup-types', icon: Layers, roles: ['admin', 'manager'] },
+          { id: 'backup-sources', label: 'Backup Sources', labelTh: 'แหล่ง Backup', path: '/kpi-record/backup-sources', icon: Database },
+          { id: 'backup-types', label: 'Backup Types', labelTh: 'ประเภท Backup', path: '/kpi-record/backup-types', icon: Layers },
         ]
       }
     ]
@@ -253,6 +255,8 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'ระบบ',
         children: [
           { id: 'settings-page', label: 'Settings', labelTh: 'ตั้งค่า', path: '/settings', icon: Settings },
+          { id: 'printers-config', label: 'Printers', labelTh: 'เครื่องพิมพ์', path: '/settings/printers', icon: Printer },
+          { id: 'sticker-print', label: 'Sticker Print', labelTh: 'พิมพ์สติ๊กเกอร์', path: '/sticker-print', icon: Sticker },
           { id: 'profile', label: 'Profile', labelTh: 'โปรไฟล์', path: '/profile', icon: UserCog },
         ]
       }

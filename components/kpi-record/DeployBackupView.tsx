@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle } from "lucide-react"
-import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult, approveAllPendingDeployBackups } from "@/lib/actions/deploy-backup-actions"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle, BarChart3 } from "lucide-react"
+import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult, approveAllPendingDeployBackups, getDeployBackupMonthlyTrend } from "@/lib/actions/deploy-backup-actions"
 import { getActiveBackupSources } from "@/lib/actions/backup-source-actions"
 import { DeployBackupModal } from "@/components/kpi-record/DeployBackupModal"
 import { toast } from "sonner"
@@ -25,6 +25,15 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
     const [selectedRecord, setSelectedRecord] = useState<DeployBackupRecord | undefined>(undefined)
     const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
     const [kpiData, setKpiData] = useState<BackupKPIResult | null>(null)
+    const [monthlyTrend, setMonthlyTrend] = useState<{
+        month: number
+        month_name: string
+        total: number
+        passed: number
+        failed: number
+        pass_rate: number
+        is_pass: boolean
+    }[]>([])
 
     // Filters
     const [searchQuery, setSearchQuery] = useState('')
@@ -64,6 +73,12 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
             const kpiResult = await getBackupKPI(yearFilter)
             if (kpiResult.success && kpiResult.data) {
                 setKpiData(kpiResult.data)
+            }
+
+            // Fetch monthly trend
+            const trendResult = await getDeployBackupMonthlyTrend(yearFilter)
+            if (trendResult.success && trendResult.data) {
+                setMonthlyTrend(trendResult.data)
             }
         } catch (error) {
             toast.error("An error occurred while fetching data")
@@ -395,6 +410,73 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
                             </ul>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Monthly Trend */}
+            {!embedded && (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                            <BarChart3 size={18} className="text-blue-600" />
+                        </div>
+                        Monthly Trend - {yearFilter}
+                    </h3>
+                    <div className="grid grid-cols-12 gap-2">
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                            const item = monthlyTrend.find(t => t.month === month)
+                            const hasData = item && item.total > 0
+                            const isPass = hasData && item.is_pass
+                            const rate = item?.pass_rate || 0
+                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+                            return (
+                                <div
+                                    key={month}
+                                    className={`rounded-xl p-3 text-center transition-all hover:scale-105 cursor-default ${!hasData
+                                        ? 'bg-slate-100 border border-slate-200'
+                                        : isPass
+                                            ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200'
+                                            : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200'
+                                        }`}
+                                >
+                                    <div className="text-xs text-slate-500 font-medium mb-2">
+                                        {monthNames[month - 1]}
+                                    </div>
+                                    <div className={`text-lg font-bold ${!hasData ? 'text-slate-400' : isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {hasData ? `${rate}%` : '-'}
+                                    </div>
+                                    {hasData && (
+                                        <div className="mt-2 space-y-0.5">
+                                            <div className="text-[10px] text-slate-500">
+                                                Pass: <span className="font-semibold text-emerald-600">{item.passed}</span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-500">
+                                                Fail: <span className={`font-semibold ${item.failed > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{item.failed}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {!hasData && (
+                                        <div className="text-[10px] text-slate-400 mt-2">No Data</div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <div className="flex items-center justify-center gap-6 mt-4 text-xs">
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-300 rounded" />
+                            <span className="font-medium">Pass (0 Fail)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-b from-rose-50 to-red-100 border border-rose-300 rounded" />
+                            <span className="font-medium">Fail (&gt; 0 Fail)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-slate-100 border border-slate-300 rounded" />
+                            <span className="font-medium">No Data</span>
+                        </div>
+                    </div>
                 </div>
             )}
 

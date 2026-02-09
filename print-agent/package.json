@@ -1,0 +1,16 @@
+{
+  "name": "pms-print-agent",
+  "version": "1.0.0",
+  "description": "Print Agent for PMS - Auto-print to SATO printers via network",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "dev": "node --watch agent.js",
+    "test-connection": "node test-printer.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  },
+  "author": "PMS Team",
+  "license": "MIT"
+}

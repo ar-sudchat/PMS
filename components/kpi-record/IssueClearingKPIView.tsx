@@ -317,43 +317,54 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                         </div>
                         Monthly Trend - {yearFilter}
                     </h3>
-                    <div className="flex items-end gap-2 h-40">
-                        {monthlyTrend.map((item, index) => (
-                            <div key={index} className="flex-1 flex flex-col items-center group">
-                                <div className="relative w-full">
-                                    <div
-                                        className={`w-full rounded-t-lg transition-all group-hover:scale-105 ${item.total_completed === 0
-                                            ? 'bg-slate-200'
-                                            : item.is_pass
-                                                ? 'bg-gradient-to-t from-emerald-500 to-green-400'
-                                                : 'bg-gradient-to-t from-rose-500 to-red-400'
-                                            }`}
-                                        style={{ height: `${Math.max(item.clearing_rate * 1.2, 15)}px` }}
-                                        title={`${item.clearing_rate}% (${item.done_as_planned}/${item.total_completed})`}
-                                    />
-                                    {item.total_completed > 0 && (
-                                        <div className={`absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity ${item.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                            {item.clearing_rate}%
-                                        </div>
-                                    )}
+                    <div className="grid grid-cols-12 gap-2">
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                            const monthData = monthlyTrend.find(m => m.month === month)
+                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+                            if (!monthData || monthData.total_completed === 0) {
+                                return (
+                                    <div key={month} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                        <div className="text-xs font-medium text-slate-400 mb-1">{monthNames[month - 1]}</div>
+                                        <div className="text-sm font-bold text-slate-300">-</div>
+                                        <div className="text-xs text-slate-300">No data</div>
+                                    </div>
+                                )
+                            }
+
+                            return (
+                                <div
+                                    key={month}
+                                    className={`rounded-lg p-2 text-center border ${
+                                        monthData.is_pass
+                                            ? 'bg-emerald-50 border-emerald-200'
+                                            : 'bg-rose-50 border-rose-200'
+                                    }`}
+                                >
+                                    <div className={`text-xs font-medium mb-1 ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {monthNames[month - 1]}
+                                    </div>
+                                    <div className={`text-sm font-bold ${monthData.is_pass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                        {monthData.clearing_rate}%
+                                    </div>
+                                    <div className={`text-xs ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {monthData.done_as_planned}/{monthData.total_completed}
+                                    </div>
                                 </div>
-                                <div className="text-xs text-slate-500 mt-2 font-medium">
-                                    {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][index]}
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                     <div className="flex items-center justify-center gap-6 mt-5 text-xs">
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-t from-emerald-500 to-green-400 rounded" />
-                            <span className="font-medium">Pass (&ge; 85%)</span>
+                            <div className="w-4 h-4 bg-emerald-100 border border-emerald-300 rounded" />
+                            <span className="font-medium">Pass (≥ 85%)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-t from-rose-500 to-red-400 rounded" />
+                            <div className="w-4 h-4 bg-rose-100 border border-rose-300 rounded" />
                             <span className="font-medium">Fail (&lt; 85%)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-slate-200 rounded" />
+                            <div className="w-4 h-4 bg-slate-50 border border-slate-200 rounded" />
                             <span className="font-medium">No Data</span>
                         </div>
                     </div>

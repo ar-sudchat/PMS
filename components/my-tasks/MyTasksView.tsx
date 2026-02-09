@@ -388,6 +388,8 @@ export function MyTasksView({
                 onStatusChange={handleTaskStatusUpdate}
                 onDataChange={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date, true)}
                 refreshTrigger={detailRefreshKey}
+                onUnassign={() => fetchTasks(statusFilter, selectedEmployeeId, currentWeek.week_start_date)}
+                canUnassign={true}
             />
 
             <QuickLogTimeModal

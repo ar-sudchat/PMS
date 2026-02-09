@@ -270,6 +270,52 @@ export async function getProjectOwnersForRework(year?: number): Promise<{
     }
 }
 
+// Get Monthly Trend for Post Go-Live Rework
+export async function getPostGoliveReworkMonthlyTrend(year: number): Promise<{
+    success: boolean
+    data: { month: number; month_name: string; total_projects: number; total_manday: number; rework_manday: number; rework_ratio: number; is_pass: boolean }[]
+    error?: string
+}> {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('year', year)
+            .query(`
+                SELECT
+                    MONTH(golive_completed_date) as month,
+                    COUNT(*) as total_projects,
+                    SUM(total_manday) as total_manday,
+                    SUM(rework_manday) as rework_manday
+                FROM pms.vw_post_golive_rework
+                WHERE project_year = @year
+                GROUP BY MONTH(golive_completed_date)
+                ORDER BY MONTH(golive_completed_date)
+            `)
+
+        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+        const data = result.recordset.map((r: any) => {
+            const totalManday = r.total_manday || 0
+            const reworkManday = r.rework_manday || 0
+            const ratio = totalManday > 0 ? Math.round((reworkManday / totalManday) * 100 * 100) / 100 : 0
+            return {
+                month: r.month,
+                month_name: monthNames[r.month - 1],
+                total_projects: r.total_projects || 0,
+                total_manday: Math.round(totalManday * 10) / 10,
+                rework_manday: Math.round(reworkManday * 10) / 10,
+                rework_ratio: ratio,
+                is_pass: ratio <= TARGET_REWORK_RATIO
+            }
+        })
+
+        return { success: true, data }
+    } catch (error) {
+        console.error('Error fetching post go-live rework monthly trend:', error)
+        return { success: false, error: 'Failed to fetch monthly trend', data: [] }
+    }
+}
+
 // Get available years
 export async function getAvailableYearsForRework(): Promise<{
     success: boolean

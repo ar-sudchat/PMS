@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { MyTask } from '@/lib/actions/my-tasks-actions'
+import { MyTask, unassignFromTask } from '@/lib/actions/my-tasks-actions'
 import { getTimeEntriesForTask, deleteTimeEntry, TaskTimeEntry } from '@/lib/actions/timesheet-actions'
 import { getChecklistItems, toggleChecklistItem, ChecklistItem } from '@/lib/actions/checklist-actions'
 import { getTaskAttachments, Attachment } from '@/lib/actions/attachment-actions'
 import { format } from 'date-fns'
-import { Calendar, Clock, CheckSquare, AlignLeft, AlertCircle, Trash2, History, ListChecks, Square, CheckSquare2, Paperclip, FileText, Image, ExternalLink } from 'lucide-react'
+import { Calendar, Clock, CheckSquare, AlignLeft, AlertCircle, Trash2, History, ListChecks, Square, CheckSquare2, Paperclip, FileText, Image, ExternalLink, UserX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TaskStatusSelect } from '@/components/tasks/TaskStatusSelect'
 import { toast } from 'sonner'
@@ -24,9 +24,11 @@ interface TaskDetailModalProps {
     onStatusChange: (task: MyTask, status: string, reason?: string) => void
     onDataChange?: () => void  // Called when time entries are modified
     refreshTrigger?: number    // When this changes, refresh internal data (time entries, checklist, etc.)
+    onUnassign?: () => void   // Called after successful unassign
+    canUnassign?: boolean     // Only show unassign button when viewing own tasks
 }
 
-export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlledTab, onTabChange, onLogTime, onStatusChange, onDataChange, refreshTrigger }: TaskDetailModalProps) {
+export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlledTab, onTabChange, onLogTime, onStatusChange, onDataChange, refreshTrigger, onUnassign, canUnassign = true }: TaskDetailModalProps) {
     // Use controlled tab if provided, otherwise use internal state
     const [internalTab, setInternalTab] = useState<DetailTab>('checklist')
     const activeTab = controlledTab ?? internalTab
@@ -44,6 +46,9 @@ export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlle
     const [togglingItem, setTogglingItem] = useState<string | null>(null)
     const [attachments, setAttachments] = useState<Attachment[]>([])
     const [loadingAttachments, setLoadingAttachments] = useState(false)
+
+    // Unassign state
+    const [isUnassigning, setIsUnassigning] = useState(false)
 
     useEffect(() => {
         if (open && task) {
@@ -149,9 +154,32 @@ export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlle
         }
     }
 
+    const handleUnassign = async () => {
+        if (!task) return
+        if (!confirm('ต้องการถอนออกจาก Task นี้ใช่ไหม?\n\nTask จะถูกส่งกลับเพื่อมอบหมายใหม่')) return
+
+        setIsUnassigning(true)
+        try {
+            const result = await unassignFromTask(task.task_id, 'ถอนออกจาก Task')
+            if (result.success) {
+                toast.success('ถอนออกจาก Task สำเร็จ')
+                onOpenChange(false) // Close detail modal
+                if (onUnassign) onUnassign()
+                if (onDataChange) onDataChange()
+            } else {
+                toast.error(result.error || 'ไม่สามารถถอนตัวได้')
+            }
+        } catch (error) {
+            toast.error('เกิดข้อผิดพลาด')
+        } finally {
+            setIsUnassigning(false)
+        }
+    }
+
     if (!task) return null
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-5xl h-[85vh] max-h-[85vh] flex flex-col overflow-hidden">
                 <DialogHeader className="flex-shrink-0">
@@ -571,6 +599,17 @@ export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlle
                                 >
                                     <Clock className="w-4 h-4" /> Log Time
                                 </button>
+
+                                {/* Unassign Button - only show when viewing own tasks */}
+                                {canUnassign && (
+                                    <button
+                                        onClick={handleUnassign}
+                                        disabled={isUnassigning}
+                                        className="w-full mt-2 py-1.5 flex items-center justify-center gap-2 border border-red-200 text-red-600 rounded-md text-sm font-medium hover:bg-red-50 transition-colors disabled:opacity-50"
+                                    >
+                                        <UserX className="w-4 h-4" /> {isUnassigning ? 'กำลังดำเนินการ...' : 'ถอนออกจาก Task'}
+                                    </button>
+                                )}
                             </div>
 
                             {/* Meta - compact */}
@@ -585,5 +624,7 @@ export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlle
                 </div>
             </DialogContent>
         </Dialog>
+
+        </>
     )
 }

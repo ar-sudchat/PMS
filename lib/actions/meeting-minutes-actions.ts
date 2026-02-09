@@ -440,6 +440,61 @@ export async function getMeetingMinutesKPIByOrganizer(year: number, organizerId?
     }
 }
 
+// Get Monthly Trend for Meeting Minutes
+export async function getMeetingMinutesMonthlyTrend(year: number, organizerId?: string) {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('year', year)
+
+        let whereClause = 'YEAR(meeting_date) = @year'
+        if (organizerId) {
+            whereClause += ' AND organized_by = @organizerId'
+            request.input('organizerId', organizerId)
+        }
+
+        const result = await request.query(`
+            SELECT
+                MONTH(meeting_date) as month,
+                COUNT(*) as total,
+                SUM(CASE WHEN is_on_time = 1 THEN 1 ELSE 0 END) as on_time,
+                SUM(CASE WHEN is_on_time = 0 THEN 1 ELSE 0 END) as late,
+                SUM(CASE WHEN mom_sent_at IS NULL THEN 1 ELSE 0 END) as pending
+            FROM pms.meeting_minutes_records
+            WHERE ${whereClause}
+            GROUP BY MONTH(meeting_date)
+            ORDER BY MONTH(meeting_date)
+        `)
+
+        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+        const data = result.recordset.map((r: any) => {
+            const total = r.total || 0
+            const onTime = r.on_time || 0
+            const late = r.late || 0
+            const pending = r.pending || 0
+            const completed = onTime + late
+            const onTimeRate = completed > 0 ? Math.round((onTime / completed) * 100 * 10) / 10 : 0
+
+            return {
+                month: r.month,
+                month_name: monthNames[r.month - 1],
+                total,
+                on_time: onTime,
+                late,
+                pending,
+                on_time_rate: onTimeRate,
+                is_pass: late <= 3
+            }
+        })
+
+        return { success: true, data }
+    } catch (error) {
+        console.error('Error fetching meeting minutes monthly trend:', error)
+        return { success: false, error: 'Failed to fetch monthly trend', data: [] }
+    }
+}
+
 // Submit meeting minutes record for approval
 export async function submitMeetingMinutesForApproval(recordId: string, documentTitle: string) {
     try {

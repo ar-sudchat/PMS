@@ -111,5 +111,28 @@ export const NOT_AS_PLANNED_REASONS = [
   { value: 'other', label: 'อื่นๆ' },
 ]
 
+// Reasons for "Cancelled"
+export const CANCELLED_REASONS = [
+  { value: 'duplicate', label: 'งานซ้ำซ้อน' },
+  { value: 'no_longer_needed', label: 'ไม่ต้องการแล้ว' },
+  { value: 'scope_removed', label: 'ถูกตัดออกจาก Scope' },
+  { value: 'wrong_assignment', label: 'มอบหมายงานผิด' },
+  { value: 'client_cancelled', label: 'ลูกค้ายกเลิก' },
+  { value: 'project_cancelled', label: 'โครงการถูกยกเลิก' },
+  { value: 'other', label: 'อื่นๆ' },
+]
+
+// Reasons for "Unassign" (ถอนตัวจาก Task)
+export const UNASSIGN_REASONS = [
+  { value: 'workload_full', label: 'งานเยอะเกินไป' },
+  { value: 'skill_mismatch', label: 'ไม่ตรงกับความถนัด' },
+  { value: 'urgent_other_task', label: 'ต้องทำงานอื่นที่ด่วนกว่า' },
+  { value: 'sick_leave', label: 'ลาป่วย/ลากิจ' },
+  { value: 'reassign_request', label: 'ขอให้คนอื่นทำแทน' },
+  { value: 'missing_info', label: 'ขาดข้อมูล/Requirements ไม่ชัด' },
+  { value: 'blocked_dependency', label: 'ติดรอ Dependency' },
+  { value: 'other', label: 'อื่นๆ' },
+]
+
 // KPI Target
 export const ISSUE_CLEARING_TARGET = 85 // percent

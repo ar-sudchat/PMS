@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, XCircle, X, RefreshCw, TrendingUp, Send } from "lucide-react"
-import { getDeployRecords, deleteDeployRecord, getDeploySuccessKPI, getActiveCustomers, DeployRecord, submitDeployRecordForApproval } from "@/lib/actions/deploy-record-actions"
+import { Plus, Edit, Trash2, CheckCircle2, XCircle, X, RefreshCw, TrendingUp, Send, BarChart3 } from "lucide-react"
+import { getDeployRecords, deleteDeployRecord, getDeploySuccessKPI, getActiveCustomers, DeployRecord, submitDeployRecordForApproval, getDeploySuccessMonthlyTrend } from "@/lib/actions/deploy-record-actions"
 import { DeployRecordModal } from "@/components/kpi-record/DeployRecordModal"
 import { toast } from "sonner"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
@@ -30,6 +30,19 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
         target: 95,
         is_pass: false
     })
+
+    // Monthly trend data
+    const [monthlyTrend, setMonthlyTrend] = useState<{
+        month: number
+        month_name: string
+        total_deploy: number
+        total_rollback: number
+        success_count: number
+        success_rate: number
+        customer_count: number
+        record_count: number
+        is_pass: boolean
+    }[]>([])
 
     // Filters
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
@@ -61,6 +74,12 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
             const summaryResult = await getDeploySuccessKPI(yearFilter, customerFilter || undefined)
             if (summaryResult.success && summaryResult.data) {
                 setSummary(summaryResult.data)
+            }
+
+            // Fetch monthly trend
+            const trendResult = await getDeploySuccessMonthlyTrend(yearFilter, customerFilter || undefined)
+            if (trendResult.success && trendResult.data) {
+                setMonthlyTrend(trendResult.data)
             }
         } catch (error) {
             toast.error("An error occurred while fetching data")
@@ -347,6 +366,76 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
                     <div className="text-sm text-slate-500">Target: ≥{summary.target}%</div>
                 </div>
             </div>
+
+            {/* Monthly Trend */}
+            {!embedded && (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                            <BarChart3 size={18} className="text-blue-600" />
+                        </div>
+                        Monthly Trend - {yearFilter}
+                    </h3>
+                    <div className="grid grid-cols-12 gap-2">
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                            const item = monthlyTrend.find(t => t.month === month)
+                            const hasData = item && item.total_deploy > 0
+                            const isPass = hasData && item.success_rate >= 95
+                            const rate = item?.success_rate || 0
+                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+                            return (
+                                <div
+                                    key={month}
+                                    className={`rounded-xl p-3 text-center transition-all hover:scale-105 cursor-default ${!hasData
+                                        ? 'bg-slate-100 border border-slate-200'
+                                        : isPass
+                                            ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200'
+                                            : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200'
+                                        }`}
+                                >
+                                    {/* Month Label */}
+                                    <div className="text-xs text-slate-500 font-medium mb-2">
+                                        {monthNames[month - 1]}
+                                    </div>
+                                    {/* Rate */}
+                                    <div className={`text-lg font-bold ${!hasData ? 'text-slate-400' : isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {hasData ? `${rate}%` : '-'}
+                                    </div>
+                                    {/* Deploy/Rollback counts */}
+                                    {hasData && (
+                                        <div className="mt-2 space-y-0.5">
+                                            <div className="text-[10px] text-slate-500">
+                                                Deploy: <span className="font-semibold text-blue-600">{item.total_deploy}</span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-500">
+                                                Rollback: <span className={`font-semibold ${item.total_rollback > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{item.total_rollback}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {!hasData && (
+                                        <div className="text-[10px] text-slate-400 mt-2">No Data</div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <div className="flex items-center justify-center gap-6 mt-4 text-xs">
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-300 rounded" />
+                            <span className="font-medium">Pass (&ge; 95%)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-b from-rose-50 to-red-100 border border-rose-300 rounded" />
+                            <span className="font-medium">Fail (&lt; 95%)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-slate-100 border border-slate-300 rounded" />
+                            <span className="font-medium">No Data</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Filters */}
             <div className={`bg-white border border-slate-200 rounded-xl p-3 ${embedded ? 'mb-3' : 'mb-4'}`}>

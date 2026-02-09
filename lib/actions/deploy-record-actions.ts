@@ -393,6 +393,62 @@ export async function updateDeployRecordApprovalStatus(
     }
 }
 
+// Get monthly trend data
+export async function getDeploySuccessMonthlyTrend(year: number, customerId?: string) {
+    try {
+        const pool = await getConnection()
+        const request = pool.request()
+        request.input('year', year)
+
+        let whereClause = 'year = @year'
+        if (customerId) {
+            whereClause += ' AND customer_id = @customerId'
+            request.input('customerId', customerId)
+        }
+
+        const result = await request.query(`
+            SELECT
+                MONTH(week_start_date) as month,
+                SUM(deploy_count) as total_deploy,
+                SUM(rollback_count) as total_rollback,
+                COUNT(DISTINCT customer_id) as customer_count,
+                COUNT(*) as record_count
+            FROM pms.deploy_success_records
+            WHERE ${whereClause}
+            GROUP BY MONTH(week_start_date)
+            ORDER BY MONTH(week_start_date)
+        `)
+
+        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+        const data = result.recordset.map((r: any) => {
+            const totalDeploy = r.total_deploy || 0
+            const totalRollback = r.total_rollback || 0
+            const successCount = totalDeploy - totalRollback
+            const successRate = totalDeploy > 0
+                ? Math.round((successCount / totalDeploy) * 100 * 10) / 10
+                : 100
+
+            return {
+                month: r.month,
+                month_name: monthNames[r.month - 1],
+                total_deploy: totalDeploy,
+                total_rollback: totalRollback,
+                success_count: successCount,
+                success_rate: successRate,
+                customer_count: r.customer_count,
+                record_count: r.record_count,
+                is_pass: successRate >= 95
+            }
+        })
+
+        return { success: true, data }
+    } catch (error) {
+        console.error('Error fetching monthly trend:', error)
+        return { success: false, error: 'Failed to fetch monthly trend', data: [] }
+    }
+}
+
 // Batch approve all pending Deploy Success records
 export async function approveAllPendingDeployRecords() {
     try {

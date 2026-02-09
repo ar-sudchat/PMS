@@ -216,3 +216,67 @@ export async function updateTaskStatus(
         return { success: false, error: 'Database error' }
     }
 }
+
+// Unassign from task (ถอนตัวจาก Task)
+// Task goes back to 'todo' status with no assignee, so it can be reassigned
+// Managers/Admins can unassign anyone, regular users can only unassign themselves
+export async function unassignFromTask(
+    taskId: string,
+    reason: string
+): Promise<{ success: boolean; error?: string }> {
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: 'Unauthorized' }
+
+    try {
+        const pool = await getConnection()
+        const currentEmployeeId = (user as any).employeeId || user.id
+        const userRole = (user as any).role || 'user'
+        const isManager = userRole === 'admin' || userRole === 'manager'
+
+        // Check if task exists and get assignee info
+        const checkResult = await pool.request()
+            .input('taskId', sql.UniqueIdentifier, taskId)
+            .query(`
+                SELECT id, assignee_id, reviewer_id, status
+                FROM pms.tasks
+                WHERE id = @taskId
+            `)
+
+        if (checkResult.recordset.length === 0) {
+            return { success: false, error: 'Task not found' }
+        }
+
+        const task = checkResult.recordset[0]
+
+        // If not manager, can only unassign self
+        if (!isManager && task.assignee_id !== currentEmployeeId) {
+            return { success: false, error: 'ไม่มีสิทธิ์ถอนคนอื่นออกจาก Task' }
+        }
+
+        // Unassign: set assignee_id to null, status to 'todo'
+        // Append unassign reason to notes field for tracking
+        const actionBy = isManager && task.assignee_id !== currentEmployeeId
+            ? '[ถอนโดย Manager]'
+            : '[ถอนตัว]'
+
+        await pool.request()
+            .input('taskId', sql.UniqueIdentifier, taskId)
+            .input('reason', sql.NVarChar, `${actionBy} ${reason}`)
+            .query(`
+                UPDATE pms.tasks
+                SET assignee_id = NULL,
+                    status = 'todo',
+                    notes = CASE
+                        WHEN notes IS NULL OR notes = '' THEN @reason
+                        ELSE notes + CHAR(10) + @reason
+                    END,
+                    updated_at = GETDATE()
+                WHERE id = @taskId
+            `)
+
+        return { success: true }
+    } catch (error) {
+        console.error('Error unassigning from task:', error)
+        return { success: false, error: 'Database error' }
+    }
+}

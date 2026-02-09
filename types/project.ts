@@ -71,6 +71,7 @@ export interface ProjectMilestone {
 
     // UI state
     will_approve?: boolean
+    will_verify?: boolean
 
     // Detailed Deliverables
     deliverables?: ProjectDeliverable[]
@@ -140,6 +141,7 @@ export interface ProjectFormData {
         is_locked?: boolean
         is_approved?: boolean
         will_approve?: boolean
+        will_verify?: boolean
     }[]
 }
 
