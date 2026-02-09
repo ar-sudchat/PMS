@@ -551,6 +551,12 @@ export async function getProjectById(id: string) {
           pm.kpi_mdc_pass,
           pm.kpi_docs_pass,
 
+          -- Verification
+          ISNULL(pm.is_verified, 0) as is_verified,
+          pm.verified_at,
+          pm.verified_by,
+          pm.support_end_date,
+
           mc.code as milestone_code,
           mc.name as milestone_name,
           ${milestoneNameThCol} as milestone_name_th,
@@ -839,6 +845,13 @@ export async function createProject(data: ProjectFormData) {
 // Update Project
 export async function updateProject(id: string, data: ProjectFormData) {
     console.log('[UPDATE_PROJECT] Starting update for id:', id);
+
+    // Get current user for verification tracking
+    const user = await getCurrentUser()
+    if (!user) {
+        throw new Error('Unauthorized')
+    }
+
     const pool = await getConnection()
     const transaction = new sql.Transaction(pool)
 
@@ -1059,6 +1072,21 @@ export async function updateProject(id: string, data: ProjectFormData) {
 
                 // TODO: Calculate KPI here if needed (could be complex, maybe do client side calc and pass it? Or purely DB)
                 // For now, let's trust the input or simple defaults.
+            }
+
+            // Handle Verification (will_verify checkbox)
+            if (m.will_verify && !m.is_verified) {
+                await transaction.request()
+                    .input('id', milestoneId)
+                    .input('today', new Date())
+                    .input('userId', user.id)
+                    .query(`
+                        UPDATE pms.project_milestones
+                        SET is_verified = 1,
+                            verified_at = @today,
+                            verified_by = @userId
+                        WHERE id = @id
+                    `)
             }
 
             // Check if this is the current milestone

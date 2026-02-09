@@ -7,7 +7,6 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
-import { VerifyMilestoneModal } from '@/components/modals/VerifyMilestoneModal'
 
 // Field order for Enter key navigation
 const FIELD_ORDER = ['weight_ttd', 'weight_mdc', 'planned_mandays', 'due_date', 'completed_date'] as const
@@ -21,15 +20,6 @@ interface MilestonesTabProps {
 }
 
 export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, currentMilestoneId, onCurrentMilestoneChange }: MilestonesTabProps) {
-    // State for Verify Milestone Modal
-    const [verifyModal, setVerifyModal] = useState<{
-        open: boolean
-        milestoneId?: string
-        milestoneName?: string
-        completedDate?: string
-        dueDate?: string
-    }>({ open: false })
-
     // Ref for table to find inputs
     const tableRef = useRef<HTMLTableElement>(null)
 
@@ -265,8 +255,8 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                 <th className="px-3 py-3 w-28 text-center">Support End</th>
                                 <th className="px-2 py-3 w-16 text-center text-xs">Docs</th>
                                 <th className="px-2 py-3 w-12 text-center text-xs">KPI</th>
-                                <th className="px-2 py-3 w-16 text-center text-xs">Verified</th>
                                 <th className="px-2 py-3 w-20 text-center">Status</th>
+                                <th className="px-2 py-3 w-16 text-center text-xs">Verified</th>
                                 <th className="px-2 py-3 w-10"></th>
                             </tr>
                         </thead>
@@ -465,20 +455,10 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                     <input
                                                         type="checkbox"
                                                         className="rounded border-slate-300 cursor-pointer"
-                                                        checked={false}
-                                                        onChange={() => {
-                                                            if (m.id && m.milestone_name) {
-                                                                setVerifyModal({
-                                                                    open: true,
-                                                                    milestoneId: m.id,
-                                                                    milestoneName: m.milestone_name,
-                                                                    completedDate: m.completed_date,
-                                                                    dueDate: m.due_date
-                                                                })
-                                                            }
-                                                        }}
+                                                        checked={m.will_verify || false}
+                                                        onChange={(e) => handleUpdateMilestone(i, 'will_verify', e.target.checked)}
                                                         disabled={!m.completed_date || isLocked}
-                                                        title={m.completed_date ? "Click to verify and lock this milestone" : "Please set Completed Date first"}
+                                                        title={m.completed_date ? "Check to verify on save" : "Please set Completed Date first"}
                                                     />
                                                 )}
                                             </td>
@@ -552,22 +532,6 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                         Add All ({availableMilestones.length})
                     </button>
                 </div>
-            )}
-            {/* Verify Milestone Modal */}
-            {verifyModal.open && verifyModal.milestoneId && (
-                <VerifyMilestoneModal
-                    isOpen={verifyModal.open}
-                    onClose={() => setVerifyModal({ open: false })}
-                    milestoneId={verifyModal.milestoneId}
-                    milestoneName={verifyModal.milestoneName || ''}
-                    completedDate={verifyModal.completedDate}
-                    dueDate={verifyModal.dueDate}
-                    onSuccess={() => {
-                        // Refresh milestone data - parent should handle this
-                        // For now, just close the modal, parent will refresh via save
-                        setVerifyModal({ open: false })
-                    }}
-                />
             )}
         </div>
     )

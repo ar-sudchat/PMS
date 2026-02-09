@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { RefreshCw, AlertTriangle, CheckCircle2, XCircle, Wrench, Target, TrendingDown, FolderKanban, Users, X, Award } from 'lucide-react'
+import { RefreshCw, AlertTriangle, CheckCircle2, XCircle, Wrench, Target, TrendingDown, FolderKanban, Users, X, Award, BarChart3 } from 'lucide-react'
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import {
@@ -10,6 +10,7 @@ import {
     getProjectsExceedingTarget,
     getProjectOwnersForRework,
     getAvailableYearsForRework,
+    getPostGoliveReworkMonthlyTrend,
     PostGoliveReworkSummary,
     PostGoliveReworkProject,
     ProjectExceedingTarget
@@ -28,6 +29,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
     const [exceedingProjects, setExceedingProjects] = useState<ProjectExceedingTarget[]>([])
     const [owners, setOwners] = useState<{ id: string; name: string }[]>([])
     const [availableYears, setAvailableYears] = useState<number[]>([])
+    const [monthlyTrend, setMonthlyTrend] = useState<{ month: number; month_name: string; total_projects: number; total_manday: number; rework_manday: number; rework_ratio: number; is_pass: boolean }[]>([])
 
     // Filters
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
@@ -65,19 +67,21 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
     const fetchData = async () => {
         setIsLoading(true)
         try {
-            const [summaryRes, projectsRes, exceedingRes] = await Promise.all([
+            const [summaryRes, projectsRes, exceedingRes, trendRes] = await Promise.all([
                 getPostGoliveReworkSummary(yearFilter),
                 getPostGoliveReworkProjects({
                     year: yearFilter,
                     status: statusFilter,
                     ownerId: ownerFilter || undefined
                 }),
-                getProjectsExceedingTarget(yearFilter)
+                getProjectsExceedingTarget(yearFilter),
+                getPostGoliveReworkMonthlyTrend(yearFilter)
             ])
 
             if (summaryRes.success) setSummary(summaryRes.data)
             if (projectsRes.success) setProjects(projectsRes.data)
             if (exceedingRes.success) setExceedingProjects(exceedingRes.data)
+            if (trendRes.success) setMonthlyTrend(trendRes.data)
         } catch (error) {
             console.error('Error fetching data:', error)
         } finally {
@@ -276,6 +280,73 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
                         Clear
                     </button>
                 )}
+            </div>
+
+            {/* Monthly Trend */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
+                    <div className="p-2 bg-gradient-to-br from-amber-100 to-orange-100 rounded-lg">
+                        <BarChart3 size={18} className="text-amber-600" />
+                    </div>
+                    Monthly Trend - {yearFilter}
+                    <span className="text-sm font-normal text-slate-500 ml-2">(Lower is better)</span>
+                </h3>
+                <div className="grid grid-cols-12 gap-2">
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                        const monthData = monthlyTrend.find(m => m.month === month)
+                        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+                        if (!monthData || monthData.total_projects === 0) {
+                            return (
+                                <div key={month} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                    <div className="text-xs font-medium text-slate-400 mb-1">{monthNames[month - 1]}</div>
+                                    <div className="text-sm font-bold text-slate-300">-</div>
+                                    <div className="text-xs text-slate-300">No data</div>
+                                </div>
+                            )
+                        }
+
+                        const reworkManday = monthData.rework_manday || 0
+                        const totalManday = monthData.total_manday || 0
+                        const ratio = totalManday > 0 ? (reworkManday / totalManday) * 100 : 0
+                        const isPass = ratio <= 8
+
+                        return (
+                            <div
+                                key={month}
+                                className={`rounded-lg p-2 text-center border ${
+                                    isPass
+                                        ? 'bg-emerald-50 border-emerald-200'
+                                        : 'bg-rose-50 border-rose-200'
+                                }`}
+                            >
+                                <div className={`text-xs font-medium mb-1 ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {monthNames[month - 1]}
+                                </div>
+                                <div className={`text-sm font-bold ${isPass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                    {ratio.toFixed(2)}%
+                                </div>
+                                <div className={`text-xs ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {reworkManday.toFixed(1)}/{totalManday.toFixed(1)}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+                <div className="flex items-center justify-center gap-6 mt-5 text-xs">
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-emerald-100 border border-emerald-300 rounded" />
+                        <span className="font-medium">Pass (≤ 8%)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-rose-100 border border-rose-300 rounded" />
+                        <span className="font-medium">Fail (&gt; 8%)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-slate-50 border border-slate-200 rounded" />
+                        <span className="font-medium">No Data</span>
+                    </div>
+                </div>
             </div>
 
             {/* Summary Card */}

@@ -226,6 +226,192 @@ export async function getDocsOntimeKPIAllOwners(year: number) {
     }
 }
 
+// Get Monthly Trend for Docs On-time
+export async function getDocsOntimeMonthlyTrend(year: number, ownerId?: string) {
+    try {
+        const pool = await getConnection()
+        const request = pool.request().input('year', year)
+
+        let ownerClause = ''
+        if (ownerId) {
+            ownerClause = 'AND project_owner_id = @ownerId'
+            request.input('ownerId', ownerId)
+        }
+
+        const result = await request.query(`
+            SELECT
+                MONTH(milestone_due_date) as month,
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'On-time' THEN 1 ELSE 0 END) as on_time,
+                SUM(CASE WHEN status = 'Late' THEN 1 ELSE 0 END) as late,
+                SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'Overdue' THEN 1 ELSE 0 END) as overdue
+            FROM pms.vw_deliverables_by_owner
+            WHERE due_year = @year
+            ${ownerClause}
+            GROUP BY MONTH(milestone_due_date)
+            ORDER BY MONTH(milestone_due_date)
+        `)
+
+        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+        const data = result.recordset.map((r: any) => {
+            const submitted = (r.on_time || 0) + (r.late || 0)
+            const rate = submitted > 0 ? Math.round(((r.on_time || 0) / submitted) * 100) : 100
+            return {
+                month: r.month,
+                month_name: monthNames[r.month - 1],
+                total: r.total || 0,
+                on_time: r.on_time || 0,
+                late: r.late || 0,
+                pending: r.pending || 0,
+                overdue: r.overdue || 0,
+                on_time_rate: rate,
+                is_pass: rate >= 95
+            }
+        })
+
+        return { success: true, data }
+    } catch (error) {
+        console.error('Error fetching docs on-time monthly trend:', error)
+        return { success: false, error: 'Failed to fetch monthly trend', data: [] }
+    }
+}
+
+// ============================================
+// Get Docs On-Time by Project and Milestone (for KPI table with milestone columns)
+// ============================================
+
+export interface MilestoneDocsDetail {
+    milestone_name: string
+    total_docs: number
+    on_time_docs: number
+    late_docs: number
+    pending_docs: number
+    overdue_docs: number
+    on_time_rate: number
+}
+
+export interface ProjectDocsData {
+    project_id: string
+    project_code: string
+    project_name: string
+    owner_name: string | null
+    milestones: MilestoneDocsDetail[]
+    total_docs: number
+    on_time_docs: number
+    late_docs: number
+    on_time_rate: number
+    is_pass: boolean
+}
+
+export async function getDocsOntimeByProjectMilestone(params: {
+    year: number
+    period: 'month' | 'quarter' | 'year'
+    periodValue?: number
+}): Promise<{ success: boolean; data: ProjectDocsData[] }> {
+    try {
+        const pool = await getConnection()
+        const { year, period, periodValue } = params
+
+        let whereClause = 'WHERE YEAR(pm.due_date) = @year'
+        if (period === 'month' && periodValue) {
+            whereClause += ' AND MONTH(pm.due_date) = @periodValue'
+        } else if (period === 'quarter' && periodValue) {
+            whereClause += ' AND DATEPART(QUARTER, pm.due_date) = @periodValue'
+        }
+
+        const result = await pool.request()
+            .input('year', year)
+            .input('periodValue', periodValue || null)
+            .query(`
+                SELECT
+                    p.id AS project_id,
+                    p.project_code,
+                    p.name AS project_name,
+                    e.first_name + ' ' + e.last_name AS owner_name,
+                    mc.name AS milestone_name,
+                    COUNT(*) AS total_docs,
+                    SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) AS on_time_docs,
+                    SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date > pm.due_date THEN 1 ELSE 0 END) AS late_docs,
+                    SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date >= CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS pending_docs,
+                    SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date < CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS overdue_docs
+                FROM pms.project_deliverables pd
+                INNER JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
+                INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                INNER JOIN pms.projects p ON pm.project_id = p.id
+                LEFT JOIN pms.employees e ON p.project_owner_id = e.id
+                LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+                ${whereClause}
+                AND pd.is_required = 1
+                AND p.is_active = 1
+                AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
+                AND (pt.code IS NULL OR pt.code <> 'MKT')
+                GROUP BY p.id, p.project_code, p.name, e.first_name, e.last_name, mc.name
+                ORDER BY p.project_code,
+                    CASE mc.name
+                        WHEN 'Mapping Data' THEN 1
+                        WHEN 'System Test' THEN 2
+                        WHEN 'User Acceptance Test' THEN 3
+                        WHEN 'Go-Live' THEN 4
+                        WHEN 'Close Go-Live' THEN 5
+                        ELSE 99
+                    END
+            `)
+
+        // Group by project
+        const projectMap = new Map<string, ProjectDocsData>()
+
+        for (const row of result.recordset) {
+            const key = row.project_id
+            if (!projectMap.has(key)) {
+                projectMap.set(key, {
+                    project_id: row.project_id,
+                    project_code: row.project_code,
+                    project_name: row.project_name,
+                    owner_name: row.owner_name,
+                    milestones: [],
+                    total_docs: 0,
+                    on_time_docs: 0,
+                    late_docs: 0,
+                    on_time_rate: 0,
+                    is_pass: true
+                })
+            }
+
+            const proj = projectMap.get(key)!
+            const submitted = (row.on_time_docs || 0) + (row.late_docs || 0)
+            const rate = submitted > 0 ? Math.round(((row.on_time_docs || 0) / submitted) * 100) : 100
+
+            proj.milestones.push({
+                milestone_name: row.milestone_name,
+                total_docs: row.total_docs || 0,
+                on_time_docs: row.on_time_docs || 0,
+                late_docs: row.late_docs || 0,
+                pending_docs: row.pending_docs || 0,
+                overdue_docs: row.overdue_docs || 0,
+                on_time_rate: rate
+            })
+
+            proj.total_docs += (row.total_docs || 0)
+            proj.on_time_docs += (row.on_time_docs || 0)
+            proj.late_docs += (row.late_docs || 0)
+        }
+
+        // Calculate project-level on-time rate
+        for (const proj of projectMap.values()) {
+            const submitted = proj.on_time_docs + proj.late_docs
+            proj.on_time_rate = submitted > 0 ? Math.round((proj.on_time_docs / submitted) * 100) : 100
+            proj.is_pass = proj.on_time_rate >= 95
+        }
+
+        return { success: true, data: Array.from(projectMap.values()) }
+    } catch (error) {
+        console.error('getDocsOntimeByProjectMilestone error:', error)
+        return { success: false, data: [] }
+    }
+}
+
 // Get Active Owners (for filter dropdown)
 export async function getActiveOwners() {
     try {

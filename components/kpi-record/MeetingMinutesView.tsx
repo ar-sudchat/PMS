@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, AlertCircle, FileText, Users } from "lucide-react"
-import { getMeetingMinutesRecords, deleteMeetingMinutesRecord, getMeetingMinutesKPI, getMeetingMinutesKPIByOrganizer, MeetingMinutesRecord, OrganizerKPI, approveAllPendingMeetingMinutes } from "@/lib/actions/meeting-minutes-actions"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, AlertCircle, FileText, Users, BarChart3 } from "lucide-react"
+import { getMeetingMinutesRecords, deleteMeetingMinutesRecord, getMeetingMinutesKPI, getMeetingMinutesKPIByOrganizer, MeetingMinutesRecord, OrganizerKPI, approveAllPendingMeetingMinutes, getMeetingMinutesMonthlyTrend } from "@/lib/actions/meeting-minutes-actions"
 import { getActiveEmployees } from "@/lib/actions/employee-actions"
 import { MEETING_TYPES } from "@/lib/constants/kpi-record"
 import { MeetingMinutesModal } from "@/components/kpi-record/MeetingMinutesModal"
@@ -28,6 +28,16 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
     const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
     const [summary, setSummary] = useState({ total: 0, on_time: 0, late: 0, pending: 0, late_count: 0, on_time_rate: 0 })
     const [organizerKPIs, setOrganizerKPIs] = useState<OrganizerKPI[]>([])
+    const [monthlyTrend, setMonthlyTrend] = useState<{
+        month: number
+        month_name: string
+        total: number
+        on_time: number
+        late: number
+        pending: number
+        on_time_rate: number
+        is_pass: boolean
+    }[]>([])
 
     // Filters
     const [searchQuery, setSearchQuery] = useState('')
@@ -78,6 +88,12 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
             const organizerKPIResult = await getMeetingMinutesKPIByOrganizer(yearFilter)
             if (organizerKPIResult.success && organizerKPIResult.data) {
                 setOrganizerKPIs(organizerKPIResult.data)
+            }
+
+            // Fetch monthly trend
+            const trendResult = await getMeetingMinutesMonthlyTrend(yearFilter, organizerFilter || undefined)
+            if (trendResult.success && trendResult.data) {
+                setMonthlyTrend(trendResult.data)
             }
         } catch (error) {
             toast.error("An error occurred while fetching data")
@@ -423,6 +439,73 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                     <div className="text-sm text-slate-500">On Time Rate</div>
                 </div>
             </div >
+
+            {/* Monthly Trend */}
+            {!embedded && (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                            <BarChart3 size={18} className="text-blue-600" />
+                        </div>
+                        Monthly Trend - {yearFilter}
+                    </h3>
+                    <div className="grid grid-cols-12 gap-2">
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                            const item = monthlyTrend.find(t => t.month === month)
+                            const hasData = item && item.total > 0
+                            const isPass = hasData && item.late <= 3
+                            const rate = item?.on_time_rate || 0
+                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+                            return (
+                                <div
+                                    key={month}
+                                    className={`rounded-xl p-3 text-center transition-all hover:scale-105 cursor-default ${!hasData
+                                        ? 'bg-slate-100 border border-slate-200'
+                                        : isPass
+                                            ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200'
+                                            : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200'
+                                        }`}
+                                >
+                                    <div className="text-xs text-slate-500 font-medium mb-2">
+                                        {monthNames[month - 1]}
+                                    </div>
+                                    <div className={`text-lg font-bold ${!hasData ? 'text-slate-400' : isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {hasData ? `${rate}%` : '-'}
+                                    </div>
+                                    {hasData && (
+                                        <div className="mt-2 space-y-0.5">
+                                            <div className="text-[10px] text-slate-500">
+                                                On-time: <span className="font-semibold text-emerald-600">{item.on_time}</span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-500">
+                                                Late: <span className={`font-semibold ${item.late > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{item.late}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {!hasData && (
+                                        <div className="text-[10px] text-slate-400 mt-2">No Data</div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <div className="flex items-center justify-center gap-6 mt-4 text-xs">
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-300 rounded" />
+                            <span className="font-medium">Pass (Late &le; 3)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-gradient-to-b from-rose-50 to-red-100 border border-rose-300 rounded" />
+                            <span className="font-medium">Fail (Late &gt; 3)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 bg-slate-100 border border-slate-300 rounded" />
+                            <span className="font-medium">No Data</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Filters */}
             < div className="bg-white border border-slate-200 rounded-xl p-4 mb-4" >

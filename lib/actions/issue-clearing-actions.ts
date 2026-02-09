@@ -341,7 +341,14 @@ export async function getIssueClearingKPI(params: {
                     AS DECIMAL(5,2)) AS clearing_rate
                 FROM pms.tasks t
                 INNER JOIN pms.employees e ON t.assignee_id = e.id
+                LEFT JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.projects p ON s.project_id = p.id
+                LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 WHERE ${whereClause}
+                AND (p.id IS NULL OR p.is_active = 1)
+                AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
+                AND (pt.code IS NULL OR pt.code <> 'MKT')
                 GROUP BY
                     t.assignee_id,
                     COALESCE(e.first_name_th + ' ' + e.last_name_th, e.first_name + ' ' + e.last_name)
@@ -401,7 +408,12 @@ export async function getTasksNotAsPlanned(params: {
                 INNER JOIN pms.employees e ON t.assignee_id = e.id
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.projects p ON s.project_id = p.id
+                LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 WHERE ${whereClause}
+                AND (p.id IS NULL OR p.is_active = 1)
+                AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
+                AND (pt.code IS NULL OR pt.code <> 'MKT')
                 ORDER BY t.completed_date DESC
             `)
 
@@ -449,7 +461,14 @@ export async function getIssueClearingMonthlyTrend(params: {
                         END
                     AS DECIMAL(5,2)) AS clearing_rate
                 FROM pms.tasks t
+                LEFT JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.projects p ON s.project_id = p.id
+                LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 WHERE ${whereClause}
+                AND (p.id IS NULL OR p.is_active = 1)
+                AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
+                AND (pt.code IS NULL OR pt.code <> 'MKT')
                 GROUP BY MONTH(t.completed_date)
                 ORDER BY month
             `)

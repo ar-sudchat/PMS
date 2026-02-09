@@ -114,6 +114,122 @@ export async function getTimeToDeliveryTrend(year: number) {
     }
 }
 
+// Get milestone-level data for Time to Delivery
+export interface TTDMilestoneDetail {
+    milestone_name: string
+    due_date: string | null
+    completed_date: string | null
+    weight_ttd: number | null
+    achievement_percent: number
+    days_diff: number | null
+}
+
+export interface ProjectTTDMilestoneData {
+    project_id: string
+    project_code: string
+    project_name: string
+    milestones: TTDMilestoneDetail[]
+}
+
+export async function getTimeToDeliveryMilestones(params: {
+    year: number
+    period: 'month' | 'quarter' | 'year'
+    periodValue?: number
+}): Promise<{ success: boolean; data: ProjectTTDMilestoneData[] }> {
+    try {
+        const pool = await getConnection()
+        const { year, period, periodValue } = params
+
+        let whereClause = 'WHERE YEAR(ISNULL(pm.completed_date, pm.due_date)) = @year'
+        if (period === 'month' && periodValue) {
+            whereClause += ' AND MONTH(ISNULL(pm.completed_date, pm.due_date)) = @periodValue'
+        } else if (period === 'quarter' && periodValue) {
+            whereClause += ' AND DATEPART(QUARTER, ISNULL(pm.completed_date, pm.due_date)) = @periodValue'
+        }
+
+        const result = await pool.request()
+            .input('year', sql.Int, year)
+            .input('periodValue', sql.Int, periodValue)
+            .query(`
+                SELECT
+                    p.id AS project_id,
+                    p.project_code,
+                    p.name AS project_name,
+                    mc.name AS milestone_name,
+                    pm.due_date,
+                    pm.completed_date,
+                    COALESCE(pm.weight_ttd, mc.default_weight_ttd,
+                        CASE mc.name
+                            WHEN 'Mapping Data' THEN 30
+                            WHEN 'System Test' THEN 30
+                            WHEN 'User Acceptance Test' THEN 20
+                            WHEN 'Go-Live' THEN 10
+                            WHEN 'Close Go-Live' THEN 10
+                            ELSE 0
+                        END) AS weight_ttd,
+                    CASE
+                        WHEN pm.completed_date IS NULL THEN 0
+                        WHEN pm.completed_date <= pm.due_date THEN 100
+                        WHEN DATEDIFF(DAY, pm.due_date, pm.completed_date) <= 7 THEN 80
+                        WHEN DATEDIFF(DAY, pm.due_date, pm.completed_date) <= 14 THEN 60
+                        ELSE 40
+                    END AS achievement_percent,
+                    CASE
+                        WHEN pm.completed_date IS NULL THEN NULL
+                        ELSE DATEDIFF(DAY, pm.due_date, pm.completed_date)
+                    END AS days_diff
+                FROM pms.project_milestones pm
+                INNER JOIN pms.projects p ON pm.project_id = p.id
+                INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+                ${whereClause}
+                AND p.is_active = 1
+                AND pm.due_date IS NOT NULL
+                AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
+                AND (pt.code IS NULL OR pt.code <> 'MKT')
+                ORDER BY p.project_code,
+                    CASE mc.name
+                        WHEN 'Mapping Data' THEN 1
+                        WHEN 'System Test' THEN 2
+                        WHEN 'User Acceptance Test' THEN 3
+                        WHEN 'Go-Live' THEN 4
+                        WHEN 'Close Go-Live' THEN 5
+                        ELSE 99
+                    END
+            `)
+
+        // Group by project
+        const projectMap = new Map<string, ProjectTTDMilestoneData>()
+
+        for (const row of result.recordset) {
+            const key = row.project_id
+            if (!projectMap.has(key)) {
+                projectMap.set(key, {
+                    project_id: row.project_id,
+                    project_code: row.project_code,
+                    project_name: row.project_name,
+                    milestones: []
+                })
+            }
+
+            projectMap.get(key)!.milestones.push({
+                milestone_name: row.milestone_name,
+                due_date: row.due_date,
+                completed_date: row.completed_date,
+                weight_ttd: row.weight_ttd,
+                achievement_percent: row.achievement_percent,
+                days_diff: row.days_diff
+            })
+        }
+
+        return { success: true, data: Array.from(projectMap.values()) }
+    } catch (error) {
+        console.error('getTimeToDeliveryMilestones error:', error)
+        return { success: false, data: [] }
+    }
+}
+
 // ============================================
 // Man-day Control KPI Actions
 // ============================================
@@ -233,6 +349,116 @@ export async function getMandayControlTrend(year: number) {
         return { success: true, data: result.recordset }
     } catch (error) {
         console.error('getMandayControlTrend error:', error)
+        return { success: false, data: [] }
+    }
+}
+
+// Get milestone-level data for Man-day Control
+export interface MilestoneDetail {
+    milestone_name: string
+    planned_mandays: number | null
+    actual_mandays: number | null
+    weight_mdc: number | null
+    achievement_percent: number
+}
+
+export interface ProjectMilestoneData {
+    project_id: string
+    project_code: string
+    project_name: string
+    milestones: MilestoneDetail[]
+}
+
+export async function getMandayControlMilestones(params: {
+    year: number
+    period: 'month' | 'quarter' | 'year'
+    periodValue?: number
+}): Promise<{ success: boolean; data: ProjectMilestoneData[] }> {
+    try {
+        const pool = await getConnection()
+        const { year, period, periodValue } = params
+
+        let whereClause = 'WHERE YEAR(ISNULL(pm.completed_date, pm.due_date)) = @year'
+        if (period === 'month' && periodValue) {
+            whereClause += ' AND MONTH(ISNULL(pm.completed_date, pm.due_date)) = @periodValue'
+        } else if (period === 'quarter' && periodValue) {
+            whereClause += ' AND DATEPART(QUARTER, ISNULL(pm.completed_date, pm.due_date)) = @periodValue'
+        }
+
+        const result = await pool.request()
+            .input('year', sql.Int, year)
+            .input('periodValue', sql.Int, periodValue)
+            .query(`
+                SELECT
+                    p.id AS project_id,
+                    p.project_code,
+                    p.name AS project_name,
+                    mc.name AS milestone_name,
+                    pm.planned_mandays,
+                    pm.actual_mandays,
+                    COALESCE(pm.weight_mdc, mc.default_weight_mdc,
+                        CASE mc.name
+                            WHEN 'Mapping Data' THEN 30
+                            WHEN 'System Test' THEN 30
+                            WHEN 'User Acceptance Test' THEN 20
+                            WHEN 'Go-Live' THEN 10
+                            WHEN 'Close Go-Live' THEN 10
+                            ELSE 0
+                        END) AS weight_mdc,
+                    CASE
+                        WHEN pm.actual_mandays IS NULL THEN 0
+                        WHEN pm.planned_mandays IS NULL OR pm.planned_mandays = 0 THEN 0
+                        WHEN pm.actual_mandays <= pm.planned_mandays THEN 100
+                        WHEN pm.actual_mandays <= pm.planned_mandays * 1.1 THEN 90
+                        WHEN pm.actual_mandays <= pm.planned_mandays * 1.2 THEN 70
+                        ELSE 50
+                    END AS achievement_percent
+                FROM pms.project_milestones pm
+                INNER JOIN pms.projects p ON pm.project_id = p.id
+                INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
+                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+                ${whereClause}
+                AND p.is_active = 1
+                AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
+                AND (pt.code IS NULL OR pt.code <> 'MKT')
+                ORDER BY p.project_code,
+                    CASE mc.name
+                        WHEN 'Mapping Data' THEN 1
+                        WHEN 'System Test' THEN 2
+                        WHEN 'User Acceptance Test' THEN 3
+                        WHEN 'Go-Live' THEN 4
+                        WHEN 'Close Go-Live' THEN 5
+                        ELSE 99
+                    END
+            `)
+
+        // Group by project
+        const projectMap = new Map<string, ProjectMilestoneData>()
+
+        for (const row of result.recordset) {
+            const key = row.project_id
+            if (!projectMap.has(key)) {
+                projectMap.set(key, {
+                    project_id: row.project_id,
+                    project_code: row.project_code,
+                    project_name: row.project_name,
+                    milestones: []
+                })
+            }
+
+            projectMap.get(key)!.milestones.push({
+                milestone_name: row.milestone_name,
+                planned_mandays: row.planned_mandays,
+                actual_mandays: row.actual_mandays,
+                weight_mdc: row.weight_mdc,
+                achievement_percent: row.achievement_percent
+            })
+        }
+
+        return { success: true, data: Array.from(projectMap.values()) }
+    } catch (error) {
+        console.error('getMandayControlMilestones error:', error)
         return { success: false, data: [] }
     }
 }

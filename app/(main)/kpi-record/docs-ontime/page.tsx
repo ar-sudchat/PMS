@@ -11,5 +11,5 @@ export default async function DocsOntimePage() {
         redirect('/login')
     }
 
-    return <DocsOntimeView currentUserId={user.id} currentUserName={user.nameTh || user.name || user.nickname || 'User'} />
+    return <DocsOntimeView />
 }

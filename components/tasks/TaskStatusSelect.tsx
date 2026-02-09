@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { TASK_STATUSES, NOT_AS_PLANNED_REASONS, getTaskStatusConfig } from '@/lib/constants/task-status'
+import { TASK_STATUSES, NOT_AS_PLANNED_REASONS, CANCELLED_REASONS, getTaskStatusConfig } from '@/lib/constants/task-status'
 import {
   Select,
   SelectContent,
@@ -26,6 +26,7 @@ interface TaskStatusSelectProps {
   disabled?: boolean
   excludeStatuses?: string[]
   fullWidth?: boolean
+  showCancelOption?: boolean
 }
 
 export function TaskStatusSelect({
@@ -33,18 +34,27 @@ export function TaskStatusSelect({
   onChange,
   disabled = false,
   excludeStatuses = ['cancelled'],
-  fullWidth = false
+  fullWidth = false,
+  showCancelOption = false
 }: TaskStatusSelectProps) {
   const [showReasonModal, setShowReasonModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
   const [selectedReason, setSelectedReason] = useState('')
   const [customReason, setCustomReason] = useState('')
 
-  const filteredStatuses = TASK_STATUSES.filter(s => !excludeStatuses.includes(s.value))
+  // If showCancelOption is true, remove 'cancelled' from excludeStatuses
+  const effectiveExcludeStatuses = showCancelOption
+    ? excludeStatuses.filter(s => s !== 'cancelled')
+    : excludeStatuses
+
+  const filteredStatuses = TASK_STATUSES.filter(s => !effectiveExcludeStatuses.includes(s.value))
   const currentConfig = getTaskStatusConfig(value)
 
   const handleStatusChange = (newStatus: string) => {
     if (newStatus === 'done_not_planned') {
       setShowReasonModal(true)
+    } else if (newStatus === 'cancelled') {
+      setShowCancelModal(true)
     } else {
       onChange(newStatus)
     }
@@ -58,8 +68,17 @@ export function TaskStatusSelect({
     setCustomReason('')
   }
 
+  const handleCancelSubmit = () => {
+    const reason = selectedReason === 'other' ? customReason : selectedReason
+    onChange('cancelled', reason)
+    setShowCancelModal(false)
+    setSelectedReason('')
+    setCustomReason('')
+  }
+
   const handleReasonCancel = () => {
     setShowReasonModal(false)
+    setShowCancelModal(false)
     setSelectedReason('')
     setCustomReason('')
   }
@@ -94,6 +113,9 @@ export function TaskStatusSelect({
                 )}
                 {status.value === 'done' && (
                   <span className="text-xs text-green-500 ml-1">(KPI +)</span>
+                )}
+                {status.value === 'cancelled' && (
+                  <span className="text-xs text-gray-500 ml-1">(ไม่นับ KPI)</span>
                 )}
               </div>
             </SelectItem>
@@ -156,6 +178,69 @@ export function TaskStatusSelect({
               className="bg-orange-500 hover:bg-orange-600"
             >
               ยืนยัน
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reason Modal for "Cancelled" */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>เหตุผลที่ยกเลิก Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-600">
+              <strong>หมายเหตุ:</strong> Task ที่ถูกยกเลิกจะไม่ถูกนับใน KPI
+            </div>
+            <div className="space-y-2">
+              <Label>เลือกเหตุผล</Label>
+              <div className="grid gap-2">
+                {CANCELLED_REASONS.map(reason => (
+                  <label
+                    key={reason.value}
+                    className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
+                      selectedReason === reason.value
+                        ? 'border-gray-500 bg-gray-50'
+                        : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="cancelReason"
+                      value={reason.value}
+                      checked={selectedReason === reason.value}
+                      onChange={(e) => setSelectedReason(e.target.value)}
+                      className="text-gray-500"
+                    />
+                    <span>{reason.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {selectedReason === 'other' && (
+              <div className="space-y-2">
+                <Label>ระบุเหตุผล</Label>
+                <Textarea
+                  value={customReason}
+                  onChange={(e) => setCustomReason(e.target.value)}
+                  placeholder="กรุณาระบุเหตุผล..."
+                  rows={3}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleReasonCancel}>
+              ไม่ยกเลิก
+            </Button>
+            <Button
+              onClick={handleCancelSubmit}
+              disabled={!selectedReason || (selectedReason === 'other' && !customReason)}
+              variant="danger"
+            >
+              ยืนยันยกเลิก Task
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -474,6 +474,53 @@ export async function approveAllPendingDeployBackups() {
     }
 }
 
+// Get Monthly Trend for Deploy Backup
+export async function getDeployBackupMonthlyTrend(year: number) {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('year', year)
+            .query(`
+                SELECT
+                    MONTH(db.backup_date) as month,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN db.is_passed = 1 THEN 1 ELSE 0 END) as passed,
+                    SUM(CASE WHEN db.is_passed = 0 THEN 1 ELSE 0 END) as failed
+                FROM pms.deploy_backup_records db
+                LEFT JOIN pms.backup_types bt ON db.backup_type = bt.code
+                WHERE YEAR(db.backup_date) = @year
+                AND ISNULL(bt.is_kpi_counted, 1) = 1
+                GROUP BY MONTH(db.backup_date)
+                ORDER BY MONTH(db.backup_date)
+            `)
+
+        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+        const data = result.recordset.map((r: any) => {
+            const total = r.total || 0
+            const passed = r.passed || 0
+            const failed = r.failed || 0
+            const passRate = total > 0 ? Math.round((passed / total) * 100 * 10) / 10 : 100
+
+            return {
+                month: r.month,
+                month_name: monthNames[r.month - 1],
+                total,
+                passed,
+                failed,
+                pass_rate: passRate,
+                is_pass: failed === 0
+            }
+        })
+
+        return { success: true, data }
+    } catch (error) {
+        console.error('Error fetching deploy backup monthly trend:', error)
+        return { success: false, error: 'Failed to fetch monthly trend', data: [] }
+    }
+}
+
 // Get Backup KPI (Target: 100% Pass)
 // Only counts backup types where is_kpi_counted = 1
 export async function getBackupKPI(year: number): Promise<{ success: boolean, data?: BackupKPIResult, error?: string }> {
