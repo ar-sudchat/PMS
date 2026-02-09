@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npm run build:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: Resolve build errors in ExecutiveSummaryPanel and WorkflowTemplateSettings\n\n- Remove duplicate imports \\(useState, html2canvas\\) in ExecutiveSummaryPanel\n- Fix case-sensitive import path for Switch component\n- Change onChange to onCheckedChange for Switch components\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)"
     ]
   }
 }
