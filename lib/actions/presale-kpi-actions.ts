@@ -380,6 +380,128 @@ export async function deleteMandayAssessmentRecord(id: string) {
 }
 
 // ============================================
+// Monthly Trend Functions
+// ============================================
+
+export interface MonthlyTrendItem {
+    month: number
+    month_name: string
+    total: number
+    pass: number
+    fail: number
+    pass_rate: number
+    is_pass: boolean
+}
+
+const MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+export async function getCustomerContactMonthlyTrend(year: number): Promise<{ success: boolean; data: MonthlyTrendItem[] }> {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('year', sql.Int, year)
+            .query(`
+                SELECT
+                    MONTH(sales_handover_date) AS month,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN DATEDIFF(DAY, sales_handover_date, customer_contact_date) <= 2 THEN 1 ELSE 0 END) AS pass,
+                    SUM(CASE WHEN DATEDIFF(DAY, sales_handover_date, customer_contact_date) > 2 THEN 1 ELSE 0 END) AS fail
+                FROM pms.customer_contact_records
+                WHERE YEAR(sales_handover_date) = @year
+                GROUP BY MONTH(sales_handover_date)
+                ORDER BY MONTH(sales_handover_date)
+            `)
+
+        // Build monthly data for all 12 months
+        const monthlyData: MonthlyTrendItem[] = []
+        for (let m = 1; m <= 12; m++) {
+            const found = result.recordset.find((r: any) => r.month === m)
+            if (found) {
+                const passRate = found.total > 0 ? Math.round((found.pass / found.total) * 100) : 100
+                monthlyData.push({
+                    month: m,
+                    month_name: MONTH_NAMES[m - 1],
+                    total: found.total,
+                    pass: found.pass,
+                    fail: found.fail,
+                    pass_rate: passRate,
+                    is_pass: passRate >= 85
+                })
+            } else {
+                monthlyData.push({
+                    month: m,
+                    month_name: MONTH_NAMES[m - 1],
+                    total: 0,
+                    pass: 0,
+                    fail: 0,
+                    pass_rate: 100,
+                    is_pass: true
+                })
+            }
+        }
+
+        return { success: true, data: monthlyData }
+    } catch (error) {
+        console.error('getCustomerContactMonthlyTrend error:', error)
+        return { success: false, data: [] }
+    }
+}
+
+export async function getMandayAssessmentMonthlyTrend(year: number): Promise<{ success: boolean; data: MonthlyTrendItem[] }> {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('year', sql.Int, year)
+            .query(`
+                SELECT
+                    MONTH(final_meeting_date) AS month,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN DATEDIFF(DAY, final_meeting_date, manday_submit_date) <= 3 THEN 1 ELSE 0 END) AS pass,
+                    SUM(CASE WHEN DATEDIFF(DAY, final_meeting_date, manday_submit_date) > 3 THEN 1 ELSE 0 END) AS fail
+                FROM pms.manday_assessment_records
+                WHERE YEAR(final_meeting_date) = @year
+                GROUP BY MONTH(final_meeting_date)
+                ORDER BY MONTH(final_meeting_date)
+            `)
+
+        // Build monthly data for all 12 months
+        const monthlyData: MonthlyTrendItem[] = []
+        for (let m = 1; m <= 12; m++) {
+            const found = result.recordset.find((r: any) => r.month === m)
+            if (found) {
+                const passRate = found.total > 0 ? Math.round((found.pass / found.total) * 100) : 100
+                monthlyData.push({
+                    month: m,
+                    month_name: MONTH_NAMES[m - 1],
+                    total: found.total,
+                    pass: found.pass,
+                    fail: found.fail,
+                    pass_rate: passRate,
+                    is_pass: passRate >= 85
+                })
+            } else {
+                monthlyData.push({
+                    month: m,
+                    month_name: MONTH_NAMES[m - 1],
+                    total: 0,
+                    pass: 0,
+                    fail: 0,
+                    pass_rate: 100,
+                    is_pass: true
+                })
+            }
+        }
+
+        return { success: true, data: monthlyData }
+    } catch (error) {
+        console.error('getMandayAssessmentMonthlyTrend error:', error)
+        return { success: false, data: [] }
+    }
+}
+
+// ============================================
 // STATISTICS for Dashboard
 // ============================================
 

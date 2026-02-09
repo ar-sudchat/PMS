@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, Calendar as CalendarIcon, Loader2, Paperclip, Pencil, Trash2, RefreshCw, CheckCircle2, XCircle, X, Calculator } from 'lucide-react'
-import { createMandayAssessmentRecord, updateMandayAssessmentRecord, deleteMandayAssessmentRecord, getPresaleProjects, Attachment } from '@/lib/actions/presale-kpi-actions'
+import { Search, Plus, Calendar as CalendarIcon, Loader2, Paperclip, Pencil, Trash2, RefreshCw, CheckCircle2, XCircle, X, Calculator, BarChart3 } from 'lucide-react'
+import { createMandayAssessmentRecord, updateMandayAssessmentRecord, deleteMandayAssessmentRecord, getPresaleProjects, getMandayAssessmentMonthlyTrend, Attachment, MonthlyTrendItem } from '@/lib/actions/presale-kpi-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { SmartCombobox } from '@/components/ui/smart-combobox'
@@ -32,6 +32,21 @@ interface Props {
     currentYear: number
 }
 
+const MONTHS = [
+    { value: 1, label: 'ม.ค.' },
+    { value: 2, label: 'ก.พ.' },
+    { value: 3, label: 'มี.ค.' },
+    { value: 4, label: 'เม.ย.' },
+    { value: 5, label: 'พ.ค.' },
+    { value: 6, label: 'มิ.ย.' },
+    { value: 7, label: 'ก.ค.' },
+    { value: 8, label: 'ส.ค.' },
+    { value: 9, label: 'ก.ย.' },
+    { value: 10, label: 'ต.ค.' },
+    { value: 11, label: 'พ.ย.' },
+    { value: 12, label: 'ธ.ค.' },
+]
+
 export function MandayAssessmentView({ initialData, currentYear }: Props) {
     const router = useRouter()
     const [searchTerm, setSearchTerm] = useState('')
@@ -39,6 +54,10 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [projectOptions, setProjectOptions] = useState<any[]>([])
     const [loadingProjects, setLoadingProjects] = useState(false)
+
+    // Monthly Trend State
+    const [trendData, setTrendData] = useState<MonthlyTrendItem[]>([])
+    const [loadingTrend, setLoadingTrend] = useState(false)
 
     // Edit/Delete State
     const [editingId, setEditingId] = useState<string | null>(null)
@@ -52,6 +71,24 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
         remark: '',
         attachments: [] as any[]
     })
+
+    // Fetch Monthly Trend on mount
+    useEffect(() => {
+        const fetchTrend = async () => {
+            setLoadingTrend(true)
+            try {
+                const result = await getMandayAssessmentMonthlyTrend(currentYear)
+                if (result.success) {
+                    setTrendData(result.data)
+                }
+            } catch (error) {
+                console.error('Error fetching trend:', error)
+            } finally {
+                setLoadingTrend(false)
+            }
+        }
+        fetchTrend()
+    }, [currentYear])
 
     useEffect(() => {
         if (open) {
@@ -205,6 +242,43 @@ export function MandayAssessmentView({ initialData, currentYear }: Props) {
                     <div className={`font-bold px-3 py-1 rounded-full text-sm ${isKpiPassed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {isKpiPassed ? '✅ KPI Passed' : '❌ KPI Failed'}
                     </div>
+                </div>
+            </div>
+
+            {/* Monthly Trend */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+                    <BarChart3 size={18} className="text-purple-600" />
+                    Monthly Trend - {currentYear}
+                </h3>
+                <div className="grid grid-cols-12 gap-2">
+                    {MONTHS.map((month) => {
+                        const monthData = trendData.find(t => t.month === month.value)
+                        if (!monthData || monthData.total === 0) {
+                            return (
+                                <div key={month.value} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                    <div className="text-xs font-medium text-slate-400 mb-1">{month.label}</div>
+                                    <div className="text-sm font-bold text-slate-300">-</div>
+                                </div>
+                            )
+                        }
+                        return (
+                            <div
+                                key={month.value}
+                                className={`rounded-lg p-2 text-center border ${monthData.is_pass ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}
+                            >
+                                <div className={`text-xs font-medium mb-1 ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {month.label}
+                                </div>
+                                <div className={`text-sm font-bold ${monthData.is_pass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                    {monthData.pass_rate}%
+                                </div>
+                                <div className={`text-xs ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {monthData.pass}/{monthData.total}
+                                </div>
+                            </div>
+                        )
+                    })}
                 </div>
             </div>
 
