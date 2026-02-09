@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from "react"
-import { CheckCircle2, XCircle, RefreshCw, Target, Bug, FolderKanban, BarChart3, AlertTriangle, TrendingDown } from "lucide-react"
+import React, { useState, useEffect, useCallback, useMemo } from "react"
+import { RefreshCw, Target, Bug, FolderKanban, BarChart3, AlertTriangle, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react"
 import {
     getDefectRatioKPI,
     getDefectRatioTrend,
@@ -33,6 +33,10 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
     // Filters
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
     const [quarterFilter, setQuarterFilter] = useState<number>(0)
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1)
+    const pageSize = 10
 
     const fetchData = useCallback(async () => {
         setIsLoading(true)
@@ -67,6 +71,18 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
     useEffect(() => {
         fetchData()
     }, [fetchData])
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [yearFilter, quarterFilter])
+
+    // Pagination logic
+    const totalPages = Math.ceil(data.length / pageSize)
+    const paginatedData = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return data.slice(start, start + pageSize)
+    }, [data, currentPage, pageSize])
 
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
@@ -226,7 +242,7 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
             )}
 
             {/* Monthly Trend */}
-            {quarterFilter === 0 && trend.length > 0 && (
+            {quarterFilter === 0 && (
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
                     <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
                         <div className="p-2 bg-gradient-to-br from-rose-100 to-pink-100 rounded-lg">
@@ -235,50 +251,58 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                         Monthly Trend - {yearFilter}
                         <span className="text-sm font-normal text-slate-500 ml-2">(Lower is better)</span>
                     </h3>
-                    <div className="flex items-end gap-2 h-40">
+                    <div className="grid grid-cols-12 gap-2">
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                            const item = trend.find(t => t.month === month) || { avg_percent: 0, project_count: 0 }
-                            const isPass = item.avg_percent <= 15
-                            // For defect ratio, lower is better, so we invert the height calc
-                            const barHeight = item.project_count === 0 ? 15 : Math.max(Math.min(item.avg_percent * 3, 100), 15)
-                            return (
-                                <div key={month} className="flex-1 flex flex-col items-center group">
-                                    <div className="relative w-full">
-                                        <div
-                                            className={`w-full rounded-t-lg transition-all group-hover:scale-105 ${item.project_count === 0
-                                                ? 'bg-slate-200'
-                                                : isPass
-                                                    ? 'bg-gradient-to-t from-emerald-500 to-green-400'
-                                                    : 'bg-gradient-to-t from-rose-500 to-red-400'
-                                                }`}
-                                            style={{ height: `${barHeight}px` }}
-                                            title={`${item.avg_percent?.toFixed(1) || 0}% (${item.project_count} projects)`}
-                                        />
-                                        {item.project_count > 0 && (
-                                            <div className={`absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {item.avg_percent?.toFixed(0)}%
-                                            </div>
-                                        )}
+                            const monthData = trend.find(t => t.month === month)
+                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+                            if (!monthData || monthData.project_count === 0) {
+                                return (
+                                    <div key={month} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                        <div className="text-xs font-medium text-slate-400 mb-1">{monthNames[month - 1]}</div>
+                                        <div className="text-sm font-bold text-slate-300">-</div>
+                                        <div className="text-xs text-slate-300">No data</div>
                                     </div>
-                                    <div className="text-xs text-slate-500 mt-2 font-medium">
-                                        {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][month - 1]}
+                                )
+                            }
+
+                            const totalDefect = monthData.total_defect || 0
+                            const totalMandays = monthData.total_mandays || 0
+                            const ratio = totalMandays > 0 ? (totalDefect / totalMandays) * 100 : 0
+                            const isPass = ratio <= 15
+                            return (
+                                <div
+                                    key={month}
+                                    className={`rounded-lg p-2 text-center border ${
+                                        isPass
+                                            ? 'bg-emerald-50 border-emerald-200'
+                                            : 'bg-rose-50 border-rose-200'
+                                    }`}
+                                >
+                                    <div className={`text-xs font-medium mb-1 ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {monthNames[month - 1]}
+                                    </div>
+                                    <div className={`text-sm font-bold ${isPass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                        {ratio.toFixed(2)}%
+                                    </div>
+                                    <div className={`text-xs ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {totalDefect.toFixed(0)}/{totalMandays.toFixed(0)}
                                     </div>
                                 </div>
                             )
                         })}
                     </div>
-                    {/* Target line indicator */}
                     <div className="flex items-center justify-center gap-6 mt-5 text-xs">
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-t from-emerald-500 to-green-400 rounded" />
-                            <span className="font-medium">Pass (&le; 15%)</span>
+                            <div className="w-4 h-4 bg-emerald-100 border border-emerald-300 rounded" />
+                            <span className="font-medium">Pass (≤ 15%)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-t from-rose-500 to-red-400 rounded" />
+                            <div className="w-4 h-4 bg-rose-100 border border-rose-300 rounded" />
                             <span className="font-medium">Exceed (&gt; 15%)</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-slate-200 rounded" />
+                            <div className="w-4 h-4 bg-slate-50 border border-slate-200 rounded" />
                             <span className="font-medium">No Data</span>
                         </div>
                     </div>
@@ -325,7 +349,7 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
 
             {/* Projects Table */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-rose-50 to-pink-50 flex items-center justify-between">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                     <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <FolderKanban size={18} className="text-rose-600" />
                         Project Breakdown
@@ -336,12 +360,12 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                     <table className="w-full">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
-                                <th className="text-left px-5 py-3.5 text-sm font-semibold text-slate-600">Project</th>
-                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Month</th>
-                                <th className="text-right px-4 py-3.5 text-sm font-semibold text-slate-600">Total MD</th>
-                                <th className="text-right px-4 py-3.5 text-sm font-semibold text-slate-600">Defect MD</th>
-                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Defect %</th>
-                                <th className="text-center px-4 py-3.5 text-sm font-semibold text-slate-600">Status</th>
+                                <th className="text-left px-5 py-3 text-sm font-semibold text-slate-600">Project</th>
+                                <th className="text-center px-4 py-3 text-sm font-semibold text-slate-600">Month</th>
+                                <th className="text-right px-4 py-3 text-sm font-semibold text-slate-600">Total MD</th>
+                                <th className="text-right px-4 py-3 text-sm font-semibold text-slate-600">Defect MD</th>
+                                <th className="text-right px-4 py-3 text-sm font-semibold text-slate-600">Defect %</th>
+                                <th className="text-center px-4 py-3 text-sm font-semibold text-slate-600">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -360,50 +384,31 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                                     </td>
                                 </tr>
                             ) : (
-                                data.map((row, idx) => (
+                                paginatedData.map((row, idx) => (
                                     <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm ${row.is_pass === 1
-                                                    ? 'bg-gradient-to-br from-emerald-500 to-green-600'
-                                                    : 'bg-gradient-to-br from-rose-500 to-red-600'
-                                                    }`}>
-                                                    {row.project_code?.substring(0, 2) || '?'}
-                                                </div>
-                                                <div>
-                                                    <span className="font-semibold text-slate-800">{row.project_code}</span>
-                                                    <p className="text-xs text-slate-500 truncate max-w-[200px]">{row.project_name}</p>
-                                                </div>
-                                            </div>
+                                        <td className="px-5 py-3">
+                                            <div className="font-semibold text-slate-800">{row.project_code}</div>
+                                            <div className="text-xs text-slate-500 truncate max-w-[250px]">{row.project_name}</div>
                                         </td>
-                                        <td className="text-center px-4 py-4 text-sm text-slate-600">
+                                        <td className="text-center px-4 py-3 text-sm text-slate-600">
                                             {['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][row.month]} {row.year}
                                         </td>
-                                        <td className="text-right px-4 py-4 text-sm text-blue-600 font-semibold">
+                                        <td className="text-right px-4 py-3 text-sm text-slate-700">
                                             {row.total_mandays?.toFixed(1)}
                                         </td>
-                                        <td className="text-right px-4 py-4 text-sm text-rose-600 font-semibold">
+                                        <td className="text-right px-4 py-3 text-sm text-slate-700">
                                             {row.defect_mandays?.toFixed(1)}
                                         </td>
-                                        <td className="text-center px-4 py-4">
-                                            <div className="flex items-center justify-center gap-3">
-                                                <div className="w-20 h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                                                    <div
-                                                        className={`h-full rounded-full transition-all ${row.defect_ratio_percent <= 15 ? 'bg-gradient-to-r from-emerald-500 to-green-500' : 'bg-gradient-to-r from-rose-500 to-red-500'}`}
-                                                        style={{ width: `${Math.min(row.defect_ratio_percent * 3, 100)}%` }}
-                                                    />
-                                                </div>
-                                                <span className={`font-black text-lg ${row.defect_ratio_percent <= 15 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                    {row.defect_ratio_percent}%
-                                                </span>
-                                            </div>
+                                        <td className="text-right px-4 py-3 text-sm font-semibold">
+                                            <span className={row.defect_ratio_percent <= 15 ? 'text-emerald-600' : 'text-rose-600'}>
+                                                {row.defect_ratio_percent}%
+                                            </span>
                                         </td>
-                                        <td className="text-center px-4 py-4">
-                                            <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold shadow-sm ${row.is_pass === 1
-                                                ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white'
-                                                : 'bg-gradient-to-r from-rose-500 to-red-500 text-white'
+                                        <td className="text-center px-4 py-3">
+                                            <span className={`px-3 py-1 rounded text-xs font-medium ${row.is_pass === 1
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-rose-100 text-rose-700'
                                                 }`}>
-                                                {row.is_pass === 1 ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
                                                 {row.is_pass === 1 ? 'Pass' : 'Exceed'}
                                             </span>
                                         </td>
@@ -413,6 +418,61 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                         </tbody>
                     </table>
                 </div>
+                {/* Pagination */}
+                {!isLoading && data.length > 0 && totalPages > 1 && (
+                    <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50">
+                        <div className="text-sm text-slate-600">
+                            แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, data.length)} จาก {data.length} รายการ
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="p-2 rounded border border-slate-200 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <div className="flex items-center gap-1">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter(page => {
+                                        // Show first, last, current, and neighbors
+                                        return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1
+                                    })
+                                    .reduce((acc: (number | string)[], page, idx, arr) => {
+                                        if (idx > 0 && page - (arr[idx - 1] as number) > 1) {
+                                            acc.push('...')
+                                        }
+                                        acc.push(page)
+                                        return acc
+                                    }, [])
+                                    .map((page, idx) => (
+                                        page === '...' ? (
+                                            <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">...</span>
+                                        ) : (
+                                            <button
+                                                key={page}
+                                                onClick={() => setCurrentPage(page as number)}
+                                                className={`w-8 h-8 rounded text-sm font-medium ${currentPage === page
+                                                    ? 'bg-rose-500 text-white'
+                                                    : 'border border-slate-200 hover:bg-white text-slate-700'
+                                                    }`}
+                                            >
+                                                {page}
+                                            </button>
+                                        )
+                                    ))
+                                }
+                            </div>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="p-2 rounded border border-slate-200 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )

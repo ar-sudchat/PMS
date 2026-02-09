@@ -30,7 +30,11 @@ WITH ProjectMilestones AS (
     LEFT JOIN pms.project_milestones pm_close ON pm_close.project_id = p.id
     LEFT JOIN pms.milestone_configs mc_close ON pm_close.milestone_config_id = mc_close.id
         AND mc_close.is_post_go_live = 1
+    -- Exclude MKT projects
+    LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
     WHERE pm_golive.completed_date IS NOT NULL
+      AND p.is_active = 1
+      AND (pt.code IS NULL OR pt.code <> 'MKT')
 )
 SELECT
     pm.project_id,
@@ -42,16 +46,17 @@ SELECT
     pm.golive_completed_date,
     pm.close_golive_completed_date,
 
-    -- Total Manday (all work on project)
+    -- Total Manday (work from Go-Live onwards - ตั้งแต่ Go-Live เป็นต้นไป)
     ISNULL((
         SELECT SUM(ts.hours) / 8.0
         FROM pms.timesheet_entries ts
         INNER JOIN pms.tasks t ON ts.task_id = t.id
         INNER JOIN pms.stories s ON t.story_id = s.id
         WHERE s.project_id = pm.project_id
+        AND ts.entry_date >= pm.golive_completed_date
     ), 0) AS total_manday,
 
-    -- Rework Manday (work after Go-Live until Close Go-Live)
+    -- Rework Manday (work after Go-Live until Close Go-Live - หลัง Go-Live)
     ISNULL((
         SELECT SUM(ts.hours) / 8.0
         FROM pms.timesheet_entries ts
