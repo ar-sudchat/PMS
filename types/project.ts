@@ -141,6 +141,9 @@ export interface ProjectFormData {
         is_locked?: boolean
         is_approved?: boolean
         will_approve?: boolean
+
+        // Verification
+        is_verified?: boolean
         will_verify?: boolean
     }[]
 }

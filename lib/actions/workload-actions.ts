@@ -1172,3 +1172,269 @@ export async function updateTaskPlanning(data: {
         return { success: false, error: error.message }
     }
 }
+
+// ============================================
+// QUICK RESERVE TASK (Internal Issue - No KPI)
+// ============================================
+
+/**
+ * Create a quick reserve task for internal issues
+ * - Creates task under a special "Internal Issue" project/story
+ * - Sets is_count_for_kpi = false (won't count for KPI/Manday)
+ * - Sets assignment_status = 'requested' (waiting for assignment)
+ */
+export async function createQuickReserveTask(data: {
+    title: string
+    estimated_hours: number
+    assignee_id?: string
+    due_date?: string
+    project_code?: string // Default: 260010
+}): Promise<{
+    success: boolean
+    error?: string
+    data?: { id: string; task_code: string }
+}> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+
+        // Default project code for internal issues
+        const projectCode = data.project_code || '260010'
+
+        // Find the project
+        const projectResult = await pool.request()
+            .input('projectCode', sql.NVarChar, projectCode)
+            .query(`
+                SELECT id, name FROM pms.projects
+                WHERE project_code = @projectCode AND is_active = 1
+            `)
+
+        if (projectResult.recordset.length === 0) {
+            return { success: false, error: `ไม่พบโปรเจค ${projectCode}` }
+        }
+
+        const project = projectResult.recordset[0]
+
+        // Story title based on project
+        const storyTitleByProject: Record<string, string> = {
+            '260010': 'Issue ภายใน (ห้ามลง Manday)',
+            '260011': 'ลาหยุด'
+        }
+        const storyTitle = storyTitleByProject[projectCode] || 'Reserve Tasks'
+
+        // Find or create story for this project
+        const storyResult = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, project.id)
+            .query(`
+                SELECT id, story_code FROM pms.stories
+                WHERE project_id = @projectId
+                AND (title LIKE '%Issue%' OR title LIKE '%Internal%' OR title LIKE '%Reserve%' OR title LIKE '%ลา%')
+                AND is_active = 1
+                ORDER BY created_at ASC
+            `)
+
+        let storyId: string
+        let storyCode: string
+
+        if (storyResult.recordset.length > 0) {
+            // Use existing story
+            storyId = storyResult.recordset[0].id
+            storyCode = storyResult.recordset[0].story_code
+        } else {
+            // Create new story for internal issues
+            const newStoryId = require('crypto').randomUUID()
+
+            // Generate story code
+            const codeResult = await pool.request()
+                .input('projectId', sql.UniqueIdentifier, project.id)
+                .query(`
+                    SELECT CONCAT('S-', RIGHT('000' + CAST(ISNULL(MAX(TRY_CAST(REPLACE(story_code, 'S-', '') AS INT)), 0) + 1 AS VARCHAR), 3)) AS new_code
+                    FROM pms.stories WHERE project_id = @projectId
+                `)
+
+            storyCode = codeResult.recordset[0].new_code
+
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, newStoryId)
+                .input('storyCode', sql.NVarChar, storyCode)
+                .input('projectId', sql.UniqueIdentifier, project.id)
+                .input('title', sql.NVarChar, storyTitle)
+                .input('createdBy', sql.UniqueIdentifier, user.id)
+                .query(`
+                    INSERT INTO pms.stories (id, story_code, project_id, title, status, is_active, created_by, created_at, updated_at)
+                    VALUES (@id, @storyCode, @projectId, @title, 'in_progress', 1, @createdBy, GETDATE(), GETDATE())
+                `)
+
+            storyId = newStoryId
+        }
+
+        // Generate task code
+        const taskCodeResult = await pool.request()
+            .input('storyId', sql.UniqueIdentifier, storyId)
+            .query(`
+                SELECT CONCAT('T-', RIGHT('000' + CAST(ISNULL(MAX(TRY_CAST(REPLACE(task_code, 'T-', '') AS INT)), 0) + 1 AS VARCHAR), 3)) AS new_code
+                FROM pms.tasks WHERE story_id = @storyId
+            `)
+
+        const taskCode = taskCodeResult.recordset[0].new_code
+        const newTaskId = require('crypto').randomUUID()
+
+        // Check if is_count_for_kpi and assignment_status columns exist
+        const kpiColumnCheck = await pool.request().query(`
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+            AND COLUMN_NAME = 'is_count_for_kpi'
+        `)
+        const hasKpiColumn = kpiColumnCheck.recordset.length > 0
+
+        const assignmentColumnCheck = await pool.request().query(`
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+            AND COLUMN_NAME = 'assignment_status'
+        `)
+        const hasAssignmentColumn = assignmentColumnCheck.recordset.length > 0
+
+        // Build insert query
+        const request = pool.request()
+            .input('id', sql.UniqueIdentifier, newTaskId)
+            .input('taskCode', sql.NVarChar, taskCode)
+            .input('storyId', sql.UniqueIdentifier, storyId)
+            .input('title', sql.NVarChar, data.title)
+            .input('taskType', sql.NVarChar, 'other') // Internal type
+            .input('assigneeId', sql.UniqueIdentifier, data.assignee_id || null)
+            .input('reviewerId', sql.UniqueIdentifier, user.id)
+            .input('priority', sql.NVarChar, 'medium')
+            .input('estimatedHours', sql.Decimal(10, 2), data.estimated_hours)
+            .input('dueDate', sql.Date, data.due_date ? new Date(data.due_date) : null)
+            .input('createdBy', sql.UniqueIdentifier, user.id)
+
+        // Build columns and values dynamically
+        let columns = 'id, task_code, story_id, title, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, created_at, updated_at'
+        let values = '@id, @taskCode, @storyId, @title, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, \'todo\', 1, GETDATE(), GETDATE()'
+
+        if (hasKpiColumn) {
+            columns += ', is_count_for_kpi'
+            values += ', 0' // NOT count for KPI
+        }
+
+        if (hasAssignmentColumn) {
+            columns += ', assignment_status'
+            values += ', \'requested\'' // Always 'requested' for Quick Reserve
+        }
+
+        // Add start_date if due_date is provided
+        if (data.due_date) {
+            columns += ', start_date'
+            values += ', @dueDate'
+        }
+
+        const insertResult = await request.query(`
+            INSERT INTO pms.tasks (${columns})
+            OUTPUT INSERTED.id, INSERTED.task_code
+            VALUES (${values})
+        `)
+
+        revalidatePath('/projects/resource-planning')
+
+        return {
+            success: true,
+            data: {
+                id: insertResult.recordset[0].id,
+                task_code: insertResult.recordset[0].task_code
+            }
+        }
+    } catch (error: any) {
+        console.error('createQuickReserveTask error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
+/**
+ * Get employees for quick reserve dropdown
+ */
+export async function getEmployeesForReserve(): Promise<{
+    success: boolean
+    data: { id: string; name: string; nickname: string; position_code: string }[]
+}> {
+    try {
+        const pool = await getConnection()
+
+        const result = await pool.request().query(`
+            SELECT
+                e.id,
+                ISNULL(NULLIF(CONCAT(e.first_name_th, ' ', e.last_name_th), ' '), CONCAT(e.first_name, ' ', e.last_name)) as name,
+                ISNULL(e.nickname, '') as nickname,
+                ISNULL(p.code, 'PG') as position_code
+            FROM pms.employees e
+            LEFT JOIN pms.positions p ON e.position_id = p.id
+            WHERE e.is_active = 1
+            AND p.code IN ('PG', 'SA', 'BA')
+            ORDER BY p.code, e.first_name_th
+        `)
+
+        return { success: true, data: result.recordset }
+    } catch (error: any) {
+        console.error('getEmployeesForReserve error:', error)
+        return { success: true, data: [] }
+    }
+}
+
+/**
+ * Delete a quick reserve task (only for project 260010 - Issue ภายใน)
+ */
+export async function deleteQuickReserveTask(taskId: string): Promise<{
+    success: boolean
+    error?: string
+}> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) {
+            return { success: false, error: 'ไม่ได้ล็อกอิน' }
+        }
+
+        const pool = await getConnection()
+
+        // Verify the task belongs to project 260010 (internal issue project)
+        const checkResult = await pool.request()
+            .input('taskId', taskId)
+            .query(`
+                SELECT t.id, p.project_code
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                INNER JOIN pms.projects p ON s.project_id = p.id
+                WHERE t.id = @taskId
+            `)
+
+        if (checkResult.recordset.length === 0) {
+            return { success: false, error: 'ไม่พบ Task นี้' }
+        }
+
+        const task = checkResult.recordset[0]
+        const allowedProjects = ['260010', '260011']
+        if (!allowedProjects.includes(task.project_code)) {
+            return { success: false, error: 'สามารถลบได้เฉพาะ Task ของ 260010 (Issue ภายใน) หรือ 260011 (ลาหยุด) เท่านั้น' }
+        }
+
+        // Delete timesheet entries first (if any)
+        await pool.request()
+            .input('taskId', taskId)
+            .query('DELETE FROM pms.timesheet_entries WHERE task_id = @taskId')
+
+        // Delete task checklist items (if any)
+        await pool.request()
+            .input('taskId', taskId)
+            .query('DELETE FROM pms.task_checklist_items WHERE task_id = @taskId')
+
+        // Delete the task
+        await pool.request()
+            .input('taskId', taskId)
+            .query('DELETE FROM pms.tasks WHERE id = @taskId')
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('deleteQuickReserveTask error:', error)
+        return { success: false, error: error.message }
+    }
+}

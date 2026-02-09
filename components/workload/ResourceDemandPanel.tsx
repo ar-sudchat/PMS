@@ -1,14 +1,16 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { getUnassignedTasks, UnassignedTask, autoAssignSABATasks, autoAssignAllReadyTasks } from '@/lib/actions/workload-actions'
+import { getUnassignedTasks, UnassignedTask, autoAssignSABATasks, autoAssignAllReadyTasks, deleteQuickReserveTask } from '@/lib/actions/workload-actions'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { RefreshCw, Package, ChevronDown, AlertCircle, Clock, CheckCircle2, Calendar, Zap, Users, GripVertical } from 'lucide-react'
+import { RefreshCw, Package, ChevronDown, AlertCircle, Clock, CheckCircle2, Calendar, Zap, Users, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { useDraggable } from '@dnd-kit/core'
+import { QuickReserveModal } from './QuickReserveModal'
 
 // Task Card for Demand Panel (Click to Edit + Draggable)
-function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (task: UnassignedTask) => void }) {
+function DemandTaskCard({ task, onClick, onDelete }: { task: UnassignedTask, onClick?: (task: UnassignedTask) => void, onDelete?: (taskId: string) => void }) {
+    const [isDeleting, setIsDeleting] = useState(false)
     const { attributes, listeners, setNodeRef, isDragging, transform } = useDraggable({
         id: `demand-task-${task.id}`,
         data: {
@@ -54,8 +56,11 @@ function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (ta
                 }
             }}
             className={cn(
-                "p-2.5 pl-6 rounded-md border border-l-4 bg-white shadow-sm select-none text-xs transition-all relative group touch-none",
-                priorityColors[task.priority] || priorityColors.medium,
+                "p-2.5 pl-6 rounded-md border shadow-sm select-none text-xs transition-all relative group touch-none",
+                // Special styling for 260010/260011 (Issue ภายใน / ลาหยุด)
+                ['260010', '260011'].includes(task.project_code)
+                    ? "border-2 border-red-400 bg-white"
+                    : cn("border-l-4", priorityColors[task.priority] || priorityColors.medium),
                 "cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400",
                 isDragging && "opacity-70 ring-2 ring-blue-500 shadow-xl z-50 scale-105"
             )}
@@ -65,11 +70,17 @@ function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (ta
                 <GripVertical className="w-3.5 h-3.5 text-slate-300" />
             </div>
 
-            {/* Row 1: Project Code + Project Name + Status */}
+            {/* Row 1: Project Code + Project Name + Status + Delete */}
             <div className="flex items-center justify-between gap-1 mb-1.5">
                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <span className="font-bold text-blue-600 shrink-0">{task.project_code}</span>
-                    <span className="text-slate-500 truncate text-[10px]" title={task.project_name}>
+                    <span className={cn(
+                        "font-bold shrink-0",
+                        ['260010', '260011'].includes(task.project_code) ? "text-red-600" : "text-blue-600"
+                    )}>{task.project_code}</span>
+                    <span className={cn(
+                        "truncate text-[10px]",
+                        ['260010', '260011'].includes(task.project_code) ? "text-slate-700" : "text-slate-500"
+                    )} title={task.project_name}>
                         {task.project_name}
                     </span>
                 </div>
@@ -84,6 +95,24 @@ function DemandTaskCard({ task, onClick }: { task: UnassignedTask, onClick?: (ta
                             <CheckCircle2 className="w-2.5 h-2.5" />
                             จ่ายแล้ว
                         </span>
+                    )}
+                    {/* Delete button for 260010 (Issue ภายใน) and 260011 (ลาหยุด) */}
+                    {['260010', '260011'].includes(task.project_code) && onDelete && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (isDeleting) return
+                                if (confirm('ต้องการลบ Task นี้หรือไม่?')) {
+                                    setIsDeleting(true)
+                                    onDelete(task.id)
+                                }
+                            }}
+                            disabled={isDeleting}
+                            className="p-1 ml-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="ลบ Task"
+                        >
+                            <Trash2 className={cn("w-3.5 h-3.5", isDeleting && "animate-pulse")} />
+                        </button>
                     )}
                 </div>
             </div>
@@ -140,8 +169,11 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
     const [isAutoAssigning, setIsAutoAssigning] = useState(false)
     const [isAutoAssigningAll, setIsAutoAssigningAll] = useState(false)
     const [selectedProject, setSelectedProject] = useState<string>('all')
-    const [selectedAssignmentStatus, setSelectedAssignmentStatus] = useState<string>('all')
+    const [selectedAssignmentStatus, setSelectedAssignmentStatus] = useState<string>('requested') // Default to 'รอจ่ายงาน'
     const [selectedPositionType, setSelectedPositionType] = useState<'all' | 'PG' | 'SA_BA'>('PG')
+
+    // Quick Reserve Modal
+    const [isQuickReserveOpen, setIsQuickReserveOpen] = useState(false)
 
     // Reload when date range changes
     useEffect(() => {
@@ -288,6 +320,22 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
         }
     }
 
+    // Handle delete task (only for 260010 project)
+    const handleDeleteTask = async (taskId: string) => {
+        try {
+            const result = await deleteQuickReserveTask(taskId)
+            if (result.success) {
+                toast.success('ลบ Task สำเร็จ')
+                loadTasks()
+                onRefresh?.()
+            } else {
+                toast.error(result.error || 'ไม่สามารถลบ Task ได้')
+            }
+        } catch (error) {
+            toast.error('เกิดข้อผิดพลาดในการลบ')
+        }
+    }
+
     // Group tasks by date
     const groupedByDate = useMemo(() => {
         const groups = new Map<string, UnassignedTask[]>()
@@ -356,12 +404,21 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => { loadTasks(); onRefresh?.() }}
-                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"
-                    >
-                        <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setIsQuickReserveOpen(true)}
+                            className="p-1.5 bg-amber-100 hover:bg-amber-200 rounded-lg text-amber-600 transition-colors"
+                            title="Quick Reserve (Issue ภายใน)"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            onClick={() => { loadTasks(); onRefresh?.() }}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"
+                        >
+                            <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Summary */}
@@ -559,7 +616,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                     {dateTasks.length > 0 ? (
                                         <div className="space-y-1.5">
                                             {dateTasks.map(task => (
-                                                <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
+                                                <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} onDelete={handleDeleteTask} />
                                             ))}
                                         </div>
                                     ) : (
@@ -587,7 +644,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                 </div>
                                 <div className="space-y-1.5">
                                     {groupedByDate.outsideRange.map(task => (
-                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
+                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} onDelete={handleDeleteTask} />
                                     ))}
                                 </div>
                             </div>
@@ -609,7 +666,7 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                                 </div>
                                 <div className="space-y-1.5">
                                     {groupedByDate.noDate.map(task => (
-                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} />
+                                        <DemandTaskCard key={task.id} task={task} onClick={onTaskClick} onDelete={handleDeleteTask} />
                                     ))}
                                 </div>
                             </div>
@@ -617,6 +674,14 @@ export function ResourceDemandPanel({ onRefresh, excludeTaskIds = [], refreshTri
                     </div>
                 )}
             </div>
+
+            {/* Quick Reserve Modal */}
+            <QuickReserveModal
+                open={isQuickReserveOpen}
+                onClose={() => setIsQuickReserveOpen(false)}
+                onSuccess={() => { loadTasks(); onRefresh?.() }}
+                dates={dates}
+            />
         </div>
     )
 }

@@ -435,8 +435,12 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
 
                                             {/* Status */}
                                             <td className="px-2 py-2 text-center text-xs">
-                                                {isLocked ? (
+                                                {m.is_verified ? (
+                                                    <span className="text-green-600 font-medium">Verified</span>
+                                                ) : isLocked ? (
                                                     <span className="text-slate-500 font-medium">Locked</span>
+                                                ) : m.will_verify ? (
+                                                    <span className="text-emerald-600 font-medium">Will Verify</span>
                                                 ) : m.will_approve ? (
                                                     <span className="text-blue-600 font-medium">Will Approve</span>
                                                 ) : (
