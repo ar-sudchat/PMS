@@ -49,6 +49,7 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                         <TableHead>Stage</TableHead>
                         <TableHead>ผู้จัดการ</TableHead>
                         <TableHead>เจ้าของ</TableHead>
+                        <TableHead>วันเปิดโครงการ</TableHead>
                         <TableHead>วันนัดประชุม</TableHead>
                         <TableHead>วันประชุมล่าสุด</TableHead>
                         <TableHead>วันส่งราคา</TableHead>
@@ -59,7 +60,7 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                 <TableBody>
                     {projects.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                                 ไม่พบข้อมูล
                             </TableCell>
                         </TableRow>
@@ -105,6 +106,9 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                                 </TableCell>
                                 <TableCell>
                                     {getFirstName(project.project_owner_name)}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                    {formatDate(project.created_at)}
                                 </TableCell>
                                 <TableCell className="whitespace-nowrap">
                                     {formatDate(project.mkt_meeting_date)}
