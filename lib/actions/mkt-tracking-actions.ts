@@ -34,6 +34,7 @@ export interface MktProject {
     mkt_meeting_date?: string
     mkt_last_meeting_date?: string
     mkt_quote_sent_date?: string
+    mkt_dev_accepted_date?: string
     mkt_notes?: string
     project_manager_id?: string
     project_manager_name?: string
@@ -107,6 +108,7 @@ export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
                 p.mkt_meeting_date,
                 p.mkt_last_meeting_date,
                 p.mkt_quote_sent_date,
+                p.mkt_dev_accepted_date,
                 p.mkt_notes,
                 p.project_manager_id,
                 COALESCE(pm.first_name_th + ' ' + pm.last_name_th, pm.first_name + ' ' + pm.last_name) AS project_manager_name,
@@ -173,7 +175,8 @@ export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
                 WHEN 'CONTACT' THEN 2
                 WHEN 'ESTIMATING' THEN 3
                 WHEN 'QUOTED' THEN 4
-                ELSE 5
+                WHEN 'PRICE_SENT' THEN 5
+                ELSE 6
             END,
             p.created_at DESC`
 
@@ -221,6 +224,7 @@ export async function fetchMktProjectById(projectId: string): Promise<{
                     p.mkt_meeting_date,
                     p.mkt_last_meeting_date,
                     p.mkt_quote_sent_date,
+                    p.mkt_dev_accepted_date,
                     p.mkt_notes,
                     p.project_manager_id,
                     COALESCE(pm.first_name_th + ' ' + pm.last_name_th, pm.first_name + ' ' + pm.last_name) AS project_manager_name,
@@ -332,6 +336,7 @@ export async function updateMktDetails(
         mkt_meeting_date?: string | null
         mkt_last_meeting_date?: string | null
         mkt_quote_sent_date?: string | null
+        mkt_dev_accepted_date?: string | null
         mkt_notes?: string | null
     }
 ): Promise<{ success: boolean; error?: string }> {
@@ -407,6 +412,11 @@ export async function updateMktDetails(
         if (data.mkt_quote_sent_date !== undefined) {
             setClauses.push('mkt_quote_sent_date = @quoteSentDate')
             request.input('quoteSentDate', data.mkt_quote_sent_date || null)
+        }
+
+        if (data.mkt_dev_accepted_date !== undefined) {
+            setClauses.push('mkt_dev_accepted_date = @devAcceptedDate')
+            request.input('devAcceptedDate', data.mkt_dev_accepted_date || null)
         }
 
         if (data.mkt_notes !== undefined) {

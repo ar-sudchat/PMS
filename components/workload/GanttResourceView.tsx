@@ -156,24 +156,34 @@ function TaskBar({
             }}
             className={cn(
                 "rounded-md border flex flex-col justify-center px-2 py-1 text-xs font-medium shadow-sm transition-all group overflow-hidden relative cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-100",
-                !bgColor && (priorityColors[task.priority] || priorityColors.medium),
+                // Special styling for 260010/260011 (Issue ภายใน / ลาหยุด)
+                ['260010', '260011'].includes(task.projectCode)
+                    ? "border-2 border-red-400 bg-white text-slate-800"
+                    : !bgColor && (priorityColors[task.priority] || priorityColors.medium),
                 task.isLocked && "opacity-60 cursor-not-allowed"
             )}
             style={{
                 width: '100%',
                 height: barHeight,
-                backgroundColor: bgColor || undefined,
-                borderColor: bgColor ? bgColor.replace('85%)', '75%)') : undefined,
-                color: bgColor ? '#334155' : undefined
+                // Don't apply bgColor for 260010/260011
+                backgroundColor: ['260010', '260011'].includes(task.projectCode) ? '#ffffff' : (bgColor || undefined),
+                borderColor: ['260010', '260011'].includes(task.projectCode) ? '#f87171' : (bgColor ? bgColor.replace('85%)', '75%)') : undefined),
+                color: ['260010', '260011'].includes(task.projectCode) ? '#1e293b' : (bgColor ? '#334155' : undefined)
             }}
             title={`${task.projectCode} - ${task.title} (${task.hours}h)`}
         >
             {/* Top row: Project code + hours */}
             <div className="flex items-center justify-between">
-                <span className="font-bold text-[11px] truncate flex-1 mr-1" title={task.projectName}>
+                <span className={cn(
+                    "font-bold text-[11px] truncate flex-1 mr-1",
+                    ['260010', '260011'].includes(task.projectCode) && "text-red-600"
+                )} title={task.projectName}>
                     {task.projectCode} {task.projectName ? `- ${task.projectName}` : ''}
                 </span>
-                <span className="bg-white/30 px-1.5 py-0.5 rounded text-xs font-bold shrink-0">
+                <span className={cn(
+                    "px-1.5 py-0.5 rounded text-xs font-bold shrink-0",
+                    ['260010', '260011'].includes(task.projectCode) ? "bg-red-100 text-red-700" : "bg-white/30"
+                )}>
                     {task.hours}h
                 </span>
             </div>

@@ -16,6 +16,7 @@ const stageColors: Record<string, string> = {
     CONTACT: 'bg-purple-100 text-purple-800 hover:bg-purple-200',
     ESTIMATING: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
     QUOTED: 'bg-green-100 text-green-800 hover:bg-green-200',
+    PRICE_SENT: 'bg-teal-100 text-teal-800 hover:bg-teal-200',
     ALL: 'bg-gray-100 text-gray-800 hover:bg-gray-200',
 }
 
@@ -24,6 +25,7 @@ const selectedColors: Record<string, string> = {
     CONTACT: 'bg-purple-500 text-white',
     ESTIMATING: 'bg-yellow-500 text-white',
     QUOTED: 'bg-green-500 text-white',
+    PRICE_SENT: 'bg-teal-500 text-white',
     ALL: 'bg-gray-700 text-white',
 }
 

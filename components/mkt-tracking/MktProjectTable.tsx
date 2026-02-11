@@ -24,6 +24,7 @@ const stageColors: Record<string, string> = {
     CONTACT: 'bg-purple-100 text-purple-800',
     ESTIMATING: 'bg-yellow-100 text-yellow-800',
     QUOTED: 'bg-green-100 text-green-800',
+    PRICE_SENT: 'bg-teal-100 text-teal-800',
 }
 
 export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectTableProps) {
@@ -45,21 +46,22 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                     <TableRow>
                         <TableHead className="w-[100px]">รหัส</TableHead>
                         <TableHead>ชื่อโครงการ</TableHead>
-                        <TableHead>ลูกค้า</TableHead>
+                        <TableHead className="max-w-[100px]">ลูกค้า</TableHead>
                         <TableHead>Stage</TableHead>
                         <TableHead>ผู้จัดการ</TableHead>
                         <TableHead>เจ้าของ</TableHead>
+                        <TableHead>วันเปิดโครงการ</TableHead>
                         <TableHead>วันนัดประชุม</TableHead>
                         <TableHead>วันประชุมล่าสุด</TableHead>
                         <TableHead>วันส่งราคา</TableHead>
+                        <TableHead>DEV รับงาน</TableHead>
                         <TableHead className="text-center">วันในสถานะ</TableHead>
-                        <TableHead>หมายเหตุ</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {projects.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                                 ไม่พบข้อมูล
                             </TableCell>
                         </TableRow>
@@ -91,7 +93,7 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <span className="truncate block max-w-[150px]">
+                                    <span className="truncate block max-w-[100px]">
                                         {project.client_name || '-'}
                                     </span>
                                 </TableCell>
@@ -107,6 +109,9 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                                     {getFirstName(project.project_owner_name)}
                                 </TableCell>
                                 <TableCell className="whitespace-nowrap">
+                                    {formatDate(project.created_at)}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap">
                                     {formatDate(project.mkt_meeting_date)}
                                 </TableCell>
                                 <TableCell className="whitespace-nowrap">
@@ -115,15 +120,13 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                                 <TableCell className="whitespace-nowrap">
                                     {formatDate(project.mkt_quote_sent_date)}
                                 </TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                    {formatDate(project.mkt_dev_accepted_date)}
+                                </TableCell>
                                 <TableCell className="text-center">
                                     <Badge variant="outline">
                                         {project.days_in_stage} วัน
                                     </Badge>
-                                </TableCell>
-                                <TableCell>
-                                    <span className="truncate block max-w-[200px] text-sm text-muted-foreground">
-                                        {project.mkt_notes || '-'}
-                                    </span>
                                 </TableCell>
                             </TableRow>
                         ))

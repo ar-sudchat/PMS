@@ -86,6 +86,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
           { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
           { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3 },
+          { id: 'manday-control-dashboard', label: 'Project Tracking', labelTh: 'ติดตามโครงการ', path: '/kpi-record/manday-control', icon: Activity },
         ]
       }
     ]
