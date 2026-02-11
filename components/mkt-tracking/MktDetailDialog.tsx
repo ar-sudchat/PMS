@@ -60,6 +60,7 @@ const stageColors: Record<string, string> = {
     CONTACT: 'bg-purple-100 text-purple-800 hover:bg-purple-200',
     ESTIMATING: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
     QUOTED: 'bg-green-100 text-green-800 hover:bg-green-200',
+    PRICE_SENT: 'bg-teal-100 text-teal-800 hover:bg-teal-200',
 }
 
 const stageActiveColors: Record<string, string> = {
@@ -67,6 +68,7 @@ const stageActiveColors: Record<string, string> = {
     CONTACT: 'bg-purple-500 text-white',
     ESTIMATING: 'bg-yellow-500 text-white',
     QUOTED: 'bg-green-500 text-white',
+    PRICE_SENT: 'bg-teal-500 text-white',
 }
 
 export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onViewHistory }: MktDetailDialogProps) {
@@ -88,6 +90,7 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
         mkt_meeting_date: '',
         mkt_last_meeting_date: '',
         mkt_quote_sent_date: '',
+        mkt_dev_accepted_date: '',
         mkt_notes: '',
     })
 
@@ -118,6 +121,7 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                 mkt_meeting_date: toDateString(project.mkt_meeting_date),
                 mkt_last_meeting_date: toDateString(project.mkt_last_meeting_date),
                 mkt_quote_sent_date: toDateString(project.mkt_quote_sent_date),
+                mkt_dev_accepted_date: toDateString(project.mkt_dev_accepted_date),
                 mkt_notes: project.mkt_notes || '',
             })
             // Load attachments
@@ -156,6 +160,7 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                 mkt_meeting_date: formData.mkt_meeting_date || null,
                 mkt_last_meeting_date: formData.mkt_last_meeting_date || null,
                 mkt_quote_sent_date: formData.mkt_quote_sent_date || null,
+                mkt_dev_accepted_date: formData.mkt_dev_accepted_date || null,
                 mkt_notes: formData.mkt_notes || null,
             }
 
@@ -524,7 +529,7 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                                 <Separator />
 
                                 {/* Meeting & Quote Section */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="meeting_date" className="flex items-center gap-2 text-sm">
                                             <CalendarClock className="h-4 w-4 text-purple-600" />
@@ -561,6 +566,19 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                                             type="date"
                                             value={formData.mkt_quote_sent_date}
                                             onChange={(e) => setFormData({ ...formData, mkt_quote_sent_date: e.target.value })}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="dev_accepted_date" className="flex items-center gap-2 text-sm">
+                                            <CalendarCheck className="h-4 w-4 text-orange-600" />
+                                            วันที่ DEV รับงาน
+                                        </Label>
+                                        <Input
+                                            id="dev_accepted_date"
+                                            type="date"
+                                            value={formData.mkt_dev_accepted_date}
+                                            onChange={(e) => setFormData({ ...formData, mkt_dev_accepted_date: e.target.value })}
                                         />
                                     </div>
                                 </div>
