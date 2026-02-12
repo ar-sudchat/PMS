@@ -104,7 +104,8 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
-          { id: 'resource-planning', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
+          { id: 'resource-planning-old', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
+          { id: 'resource-planning-board', label: 'Resource Planning Board', labelTh: 'บอร์ดวางแผนทรัพยากร', path: '/resource-planning', icon: Users },
         ]
       },
       {
