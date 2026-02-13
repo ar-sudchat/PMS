@@ -16,9 +16,12 @@ export interface ProjectDetail {
     description: string | null
     customer_id: string
     customer_name: string
-    owner_id: string
-    owner_name: string
-    owner_nickname: string
+    project_manager_id: string
+    project_manager_name: string
+    project_owner_id: string
+    project_owner_name: string
+    project_owner_nickname: string
+    status_id: string
     status: string
     status_name: string
     status_color: string
@@ -319,17 +322,21 @@ export async function getProjectDetail(projectId: string) {
           p.[description],
           p.customer_id,
           c.[name] AS customer_name,
-          p.[owner_id],
-          CONCAT(owner.first_name_th, ' ', owner.last_name_th) AS owner_name,
-          owner.nickname AS owner_nickname,
-          p.[status],
-          ps.[name] AS status_name,
+          p.project_manager_id,
+          CONCAT(pm.first_name_th, ' ', pm.last_name_th) AS project_manager_name,
+          p.project_owner_id,
+          CONCAT(owner.first_name_th, ' ', owner.last_name_th) AS project_owner_name,
+          owner.nickname AS project_owner_nickname,
+          p.status_id,
+          ps.code AS status,
+          ps.name AS status_name,
           ps.color AS status_color,
           p.project_year,
           p.sold_mandays,
-          p.[actual_mandays],
-          p.start_date,
-          p.[end_date],
+          p.actual_mandays,
+          p.created_at AS start_date,
+          p.warranty_end_date AS end_date,
+          p.warranty_end_date AS contract_end_date,
           
           -- Stories count
           (SELECT COUNT(*) FROM pms.stories s WHERE s.project_id = p.id AND s.[is_active] = 1) AS total_stories,
@@ -351,8 +358,9 @@ export async function getProjectDetail(projectId: string) {
           
         FROM pms.projects p
         LEFT JOIN pms.customers c ON p.customer_id = c.id
-        LEFT JOIN pms.employees owner ON p.[owner_id] = owner.id
-        LEFT JOIN pms.project_status_configs ps ON p.[status] = ps.code
+        LEFT JOIN pms.employees pm ON p.project_manager_id = pm.id
+        LEFT JOIN pms.employees owner ON p.project_owner_id = owner.id
+        LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
         WHERE p.id = @projectId AND p.[is_active] = 1
       `)
 

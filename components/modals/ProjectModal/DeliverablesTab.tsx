@@ -184,6 +184,25 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
                                     {m.status === 'completed' ? 'Completed' : 'Pending'}
                                 </div>
 
+                                {/* Delete All Button */}
+                                {!m.is_locked && m.deliverables && m.deliverables.filter(d => !pendingDeletes.has(d.id)).length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            const activeDocs = m.deliverables!.filter(d => !pendingDeletes.has(d.id))
+                                            if (confirm(`Are you sure you want to delete ALL ${activeDocs.length} documents in "${m.milestone_name}"?`)) {
+                                                activeDocs.forEach(d => {
+                                                    if (onMarkDelete) onMarkDelete(d.id, d.name)
+                                                })
+                                                toast.success(`Marked ${activeDocs.length} documents for deletion`)
+                                            }
+                                        }}
+                                        className="text-slate-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 transition-colors"
+                                        title="Delete All Documents"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
+
                                 {/* Add from Template Dropdown */}
                                 {!m.is_locked && m.id && (() => {
                                     const availableConfigs = getAvailableConfigs(m)

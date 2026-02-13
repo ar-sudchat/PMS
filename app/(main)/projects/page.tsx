@@ -8,6 +8,7 @@ import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { ProjectModal } from '@/components/modals/ProjectModal'
 import { ProjectDetailModal } from '@/components/modals/ProjectDetailModal'
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
+import * as XLSX from 'xlsx'
 
 // Types
 interface FilterOptions {
@@ -125,6 +126,85 @@ export default function ProjectsPage() {
                 ? prev.milestoneIds.filter(id => id !== milestoneId)
                 : [...prev.milestoneIds, milestoneId]
         }))
+    }
+
+    // Export to Excel
+    const handleExportExcel = () => {
+        if (!projects || projects.length === 0) {
+            alert('No data to export')
+            return
+        }
+
+        // Get all available milestones from filter options to create consistent columns
+        const allMilestones = filterOptions.milestones || []
+
+        // Flatten data for Excel
+        const excelData = projects.map((p, index) => {
+            const row: any = {
+                'No': index + 1,
+                'Year': p.project_year,
+                'Code': p.project_code,
+                'Project Name': p.name,
+                'Customer': p.customer_name || '',
+                'Type': p.project_type_code || '',
+                'Status': p.status_name || '',
+                'Mandays (Sold)': p.sold_mandays || 0,
+                'Mandays (Actual)': p.actual_mandays || 0,
+                'Progress (%)': `${p.progress_percent || 0}%`,
+                'PM': p.pm_name || '',
+                'Owner': p.owner_name || '',
+                'Current Milestone': p.current_milestone_name || '',
+                'Warranty End': p.warranty_end_date ? new Date(p.warranty_end_date).toLocaleDateString('th-TH') : ''
+            }
+
+            // Add Milestone Due Dates columns
+            allMilestones.forEach(m => {
+                const projectMs = p.milestones?.find((pm: any) => pm.code === m.code)
+                const headerKey = `Due: ${m.code || m.name}`
+                row[headerKey] = projectMs?.due_date
+                    ? new Date(projectMs.due_date).toLocaleDateString('th-TH')
+                    : ''
+            })
+
+            return row
+        })
+
+        // Create worksheet
+        const ws = XLSX.utils.json_to_sheet(excelData)
+
+        // Auto-width columns
+        const baseColWidths = [
+            { wch: 5 },  // No
+            { wch: 6 },  // Year
+            { wch: 10 }, // Code
+            { wch: 40 }, // Name
+            { wch: 25 }, // Customer
+            { wch: 10 }, // Type
+            { wch: 15 }, // Status
+            { wch: 10 }, // MD Sold
+            { wch: 10 }, // MD Actual
+            { wch: 10 }, // Progress
+            { wch: 20 }, // PM
+            { wch: 20 }, // Owner
+            { wch: 20 }, // Milestone
+            { wch: 15 }  // Warranty
+        ]
+
+        // Add width for dynamic milestone columns
+        const milestoneColWidths = allMilestones.map(() => ({ wch: 15 }))
+
+        ws['!cols'] = [...baseColWidths, ...milestoneColWidths]
+
+        // Create workbook
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Projects')
+
+        // Generate filename with date
+        const dateStr = new Date().toISOString().split('T')[0]
+        const fileName = `Projects_On_Hand_${dateStr}.xlsx`
+
+        // Write file
+        XLSX.writeFile(wb, fileName)
     }
 
     // Row click → Edit Modal (skip detail modal per request)
@@ -530,6 +610,14 @@ export default function ProjectsPage() {
 
                     {/* Create Project Button */}
                     <div className="ml-auto flex items-center gap-2">
+                        <button
+                            onClick={handleExportExcel}
+                            className="px-4 py-2 border border-slate-300 text-slate-700 bg-white rounded-lg hover:bg-slate-50 flex items-center gap-2 text-sm font-medium transition-colors"
+                            title="Export to Excel"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-file-spreadsheet"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M8 13h2" /><path d="M8 17h2" /><path d="M14 13h2" /><path d="M14 17h2" /></svg>
+                            Export
+                        </button>
                         <Link
                             href="/projects/settings/project-types"
                             className="px-4 py-2 border border-slate-300 text-slate-700 bg-white rounded-lg hover:bg-slate-50 flex items-center gap-2 text-sm font-medium transition-colors"

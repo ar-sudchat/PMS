@@ -27,6 +27,7 @@ export interface PostGoliveReworkProject {
     golive_completed_date: string
     close_golive_completed_date: string | null
     project_status: string
+    sold_mandays: number
     total_manday: number
     rework_manday: number
     rework_ratio: number
@@ -34,8 +35,10 @@ export interface PostGoliveReworkProject {
 }
 
 export interface ProjectExceedingTarget {
+    project_id: string
     project_code: string
     project_name: string
+    sold_mandays: number
     rework_ratio: number
     rework_manday: number
     total_manday: number
@@ -64,7 +67,7 @@ export async function getPostGoliveReworkSummary(year: number): Promise<{
                     COUNT(*) AS total_projects,
                     SUM(CASE WHEN project_status = 'Closed' THEN 1 ELSE 0 END) AS closed_count,
                     SUM(CASE WHEN project_status = 'Post Go-Live' THEN 1 ELSE 0 END) AS post_golive_count,
-                    SUM(total_manday) AS total_manday,
+                    SUM(sold_mandays) AS total_manday,
                     SUM(rework_manday) AS rework_manday
                 FROM pms.vw_post_golive_rework
                 WHERE project_year = @year
@@ -80,10 +83,10 @@ export async function getPostGoliveReworkSummary(year: number): Promise<{
             .input('year', year)
             .query(`
                 SELECT
-                    SUM(CASE WHEN (rework_manday / NULLIF(total_manday, 0)) * 100 <= 8 THEN 1 ELSE 0 END) AS pass_count,
-                    SUM(CASE WHEN (rework_manday / NULLIF(total_manday, 0)) * 100 > 8 THEN 1 ELSE 0 END) AS fail_count
+                    SUM(CASE WHEN (rework_manday / NULLIF(sold_mandays, 0)) * 100 <= 8 THEN 1 ELSE 0 END) AS pass_count,
+                    SUM(CASE WHEN (rework_manday / NULLIF(sold_mandays, 0)) * 100 > 8 THEN 1 ELSE 0 END) AS fail_count
                 FROM pms.vw_post_golive_rework
-                WHERE project_year = @year AND total_manday > 0
+                WHERE project_year = @year AND sold_mandays > 0
             `)
 
         const projRow = projectsResult.recordset[0]
@@ -157,11 +160,12 @@ export async function getPostGoliveReworkProjects(filters: PostGoliveReworkFilte
                     golive_completed_date,
                     close_golive_completed_date,
                     project_status,
+                    sold_mandays,
                     total_manday,
                     rework_manday,
                     CASE
-                        WHEN total_manday = 0 THEN 0
-                        ELSE (rework_manday / total_manday) * 100
+                        WHEN sold_mandays = 0 THEN 0
+                        ELSE (rework_manday / sold_mandays) * 100
                     END AS rework_ratio
                 FROM pms.vw_post_golive_rework
                 WHERE ${whereClause}
@@ -177,6 +181,7 @@ export async function getPostGoliveReworkProjects(filters: PostGoliveReworkFilte
             golive_completed_date: row.golive_completed_date,
             close_golive_completed_date: row.close_golive_completed_date,
             project_status: row.project_status,
+            sold_mandays: Math.round((row.sold_mandays || 0) * 10) / 10,
             total_manday: Math.round((row.total_manday || 0) * 10) / 10,
             rework_manday: Math.round((row.rework_manday || 0) * 10) / 10,
             rework_ratio: Math.round((row.rework_ratio || 0) * 100) / 100,
@@ -204,24 +209,28 @@ export async function getProjectsExceedingTarget(year: number): Promise<{
             .input('target', TARGET_REWORK_RATIO)
             .query(`
                 SELECT
+                    project_id,
                     project_code,
                     project_name,
+                    sold_mandays,
                     total_manday,
                     rework_manday,
                     CASE
-                        WHEN total_manday = 0 THEN 0
-                        ELSE (rework_manday / total_manday) * 100
+                        WHEN sold_mandays = 0 THEN 0
+                        ELSE (rework_manday / sold_mandays) * 100
                     END AS rework_ratio
                 FROM pms.vw_post_golive_rework
                 WHERE project_year = @year
-                AND total_manday > 0
-                AND (rework_manday / total_manday) * 100 > @target
-                ORDER BY (rework_manday / total_manday) DESC
+                AND sold_mandays > 0
+                AND (rework_manday / sold_mandays) * 100 > @target
+                ORDER BY (rework_manday / sold_mandays) DESC
             `)
 
         const data: ProjectExceedingTarget[] = result.recordset.map((row: any) => ({
+            project_id: row.project_id,
             project_code: row.project_code,
             project_name: row.project_name,
+            sold_mandays: Math.round((row.sold_mandays || 0) * 10) / 10,
             total_manday: Math.round((row.total_manday || 0) * 10) / 10,
             rework_manday: Math.round((row.rework_manday || 0) * 10) / 10,
             rework_ratio: Math.round((row.rework_ratio || 0) * 100) / 100,
@@ -285,7 +294,7 @@ export async function getPostGoliveReworkMonthlyTrend(year: number): Promise<{
                 SELECT
                     MONTH(golive_completed_date) as month,
                     COUNT(*) as total_projects,
-                    SUM(total_manday) as total_manday,
+                    SUM(sold_mandays) as total_manday,
                     SUM(rework_manday) as rework_manday
                 FROM pms.vw_post_golive_rework
                 WHERE project_year = @year

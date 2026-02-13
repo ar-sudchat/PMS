@@ -153,6 +153,7 @@ export async function getDevProjectsWithMilestones(): Promise<{
             LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
             WHERE pt.code = 'DEV'
               AND p.is_active = 1
+              AND (psc.code IS NULL OR psc.code NOT IN ('CLOSED', 'WARRANTY', 'CANCELLED'))
             ORDER BY p.project_code DESC
         `)
 
@@ -692,6 +693,10 @@ export async function getEmployeeAllocations(startDate?: string, endDate?: strin
                 taskRequest.input('endDate2', sql.Date, endDate)
             }
 
+            // Get config
+            const configResult = await getWorkloadConfig()
+            const mandayHours = (configResult.success && configResult.data?.mandayHours) || 7.0
+
             const taskResult = await taskRequest.query(`
                 SELECT
                     t.assignee_id AS employee_id,
@@ -707,7 +712,7 @@ export async function getEmployeeAllocations(startDate?: string, endDate?: strin
                     ISNULL(pos.code, '-') AS role,
                     MIN(ISNULL(t.start_date, t.due_date)) AS start_date,
                     MAX(ISNULL(t.due_date, t.start_date)) AS end_date,
-                    ROUND(SUM(CASE WHEN ISNULL(t.actual_hours, 0) > 0 THEN t.actual_hours ELSE ISNULL(t.estimated_hours, 0) END) / 8.0, 2) AS working_days,
+                    ROUND(SUM(CASE WHEN ISNULL(t.actual_hours, 0) > 0 THEN t.actual_hours ELSE ISNULL(t.estimated_hours, 0) END) / ${mandayHours}, 2) AS working_days,
                     COUNT(*) AS task_count,
                     'PLAN' AS source_type
                 FROM pms.tasks t
@@ -805,6 +810,8 @@ export async function getAllResourceEmployees(): Promise<{
 // ============================================
 // 9. Get tasks for employee in a milestone (for popup detail)
 // ============================================
+import { getWorkloadConfig } from '@/lib/actions/config-actions'
+
 export interface MilestoneEmployeeTask {
     id: string
     title: string
@@ -815,6 +822,8 @@ export interface MilestoneEmployeeTask {
     estimated_hours: number
     actual_hours: number
     story_name: string
+    assigner_name: string
+    manday_hours: number
 }
 
 export async function getMilestoneEmployeeTasks(milestoneId: string, employeeId: string): Promise<{
@@ -824,6 +833,11 @@ export async function getMilestoneEmployeeTasks(milestoneId: string, employeeId:
 }> {
     try {
         const pool = await getConnection()
+
+        // Get config
+        const configResult = await getWorkloadConfig()
+        const mandayHours = (configResult.success && configResult.data?.mandayHours) || 7.0
+
         const result = await pool.request()
             .input('milestoneId', sql.UniqueIdentifier, milestoneId)
             .input('employeeId', sql.UniqueIdentifier, employeeId)
@@ -837,9 +851,12 @@ export async function getMilestoneEmployeeTasks(milestoneId: string, employeeId:
                     t.completed_date,
                     ISNULL(t.estimated_hours, 0) AS estimated_hours,
                     ISNULL(t.actual_hours, 0) AS actual_hours,
-                    ISNULL(s.title, '-') AS story_name
+                    ISNULL(s.title, '-') AS story_name,
+                    ISNULL(NULLIF(CONCAT(creator.first_name_th, ' ', creator.last_name_th), ' '),
+                           CONCAT(creator.first_name, ' ', creator.last_name)) AS assigner_name
                 FROM pms.tasks t
                 INNER JOIN pms.stories s ON t.story_id = s.id
+                LEFT JOIN pms.employees creator ON t.created_by = creator.id
                 WHERE s.milestone_id = @milestoneId
                   AND t.assignee_id = @employeeId
                   AND t.is_active = 1
@@ -847,7 +864,10 @@ export async function getMilestoneEmployeeTasks(milestoneId: string, employeeId:
                 ORDER BY t.due_date, t.start_date, t.title
             `)
 
-        return { success: true, data: result.recordset }
+        // Add manday_hours to each row
+        const rows = result.recordset.map(r => ({ ...r, manday_hours: mandayHours }))
+
+        return { success: true, data: rows }
     } catch (error) {
         console.error('Error fetching milestone employee tasks:', error)
         return { success: false, error: 'Failed to fetch tasks' }

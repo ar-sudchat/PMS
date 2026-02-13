@@ -52,7 +52,7 @@ export default function ResourcePlanningPage() {
         loadData()
     }, [loadData])
 
-    if (isLoading) {
+    if (isLoading && !data) {
         return (
             <div className="container mx-auto py-4">
                 <div className="flex items-center justify-center py-16">

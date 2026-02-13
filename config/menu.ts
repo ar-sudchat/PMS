@@ -109,14 +109,6 @@ export const MENU_CONFIG: MenuModule[] = [
         ]
       },
       {
-        id: 'planning',
-        title: 'Planning',
-        titleTh: 'วางแผนโครงการ',
-        children: [
-          { id: 'project-planning', label: 'Project Planning', labelTh: 'วางแผนโครงการ', path: '/project-planning', icon: Target },
-        ]
-      },
-      {
         id: 'mkt-tracking',
         title: 'MKT Tracking',
         titleTh: 'ติดตาม MKT',

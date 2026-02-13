@@ -21,11 +21,27 @@ import {
     MktFilterOptions,
 } from '@/lib/actions/mkt-tracking-actions'
 
+import { getProjectById } from '@/lib/actions/project-actions'
+import {
+    Pagination,
+    PaginationContent,
+    PaginationItem,
+    PaginationLink,
+    PaginationNext,
+    PaginationPrevious,
+} from '@/components/ui/pagination'
+
 export default function MktTrackingPage() {
     const [projects, setProjects] = useState<MktProject[]>([])
     const [summary, setSummary] = useState<MktStageSummary[]>([])
     const [selectedStage, setSelectedStage] = useState<MktStageCode | 'ALL'>('ALL')
     const [isLoading, setIsLoading] = useState(true)
+
+    // Pagination
+    const [page, setPage] = useState(1)
+    const [total, setTotal] = useState(0)
+    const LIMIT = 10
+    const totalPages = Math.ceil(total / LIMIT)
 
     // Filter states
     const [filterOptions, setFilterOptions] = useState<MktFilterOptions | null>(null)
@@ -46,8 +62,13 @@ export default function MktTrackingPage() {
     const [historyProject, setHistoryProject] = useState<MktProject | null>(null)
     const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
     const [createDialogOpen, setCreateDialogOpen] = useState(false)
-    const [editProjectModalOpen, setEditProjectModalOpen] = useState(false)
-    const [projectToEdit, setProjectToEdit] = useState<MktProject | null>(null)
+
+    // ProjectModal for Editing (Main Project Modal)
+    const [editDetailsModal, setEditDetailsModal] = useState<{ open: boolean; project: any | null }>({
+        open: false,
+        project: null
+    })
+
 
     // Load filter options on mount
     useEffect(() => {
@@ -72,12 +93,15 @@ export default function MktTrackingPage() {
                     ownerId: selectedOwner?.value as string | undefined,
                     projectManagerId: selectedPM?.value as string | undefined,
                     search: searchTerm || undefined,
+                    page,
+                    limit: LIMIT
                 }),
                 fetchMktStageSummary(),
             ])
 
             if (projectsResult.success && projectsResult.data) {
                 setProjects(projectsResult.data)
+                setTotal(projectsResult.total || 0)
             }
             if (summaryResult.success && summaryResult.data) {
                 setSummary(summaryResult.data)
@@ -87,11 +111,16 @@ export default function MktTrackingPage() {
         } finally {
             setIsLoading(false)
         }
-    }, [selectedStage, selectedYear, selectedCustomer, selectedProject, selectedOwner, selectedPM, searchTerm])
+    }, [selectedStage, selectedYear, selectedCustomer, selectedProject, selectedOwner, selectedPM, searchTerm, page])
 
     useEffect(() => {
         loadData()
     }, [loadData])
+
+    // Reset page when filters change
+    useEffect(() => {
+        setPage(1)
+    }, [selectedStage, selectedYear, selectedCustomer, selectedProject, selectedOwner, selectedPM, searchTerm])
 
     const handleStageChange = (stage: MktStageCode | 'ALL') => {
         setSelectedStage(stage)
@@ -102,15 +131,29 @@ export default function MktTrackingPage() {
         setEditDialogOpen(true)
     }
 
+    const handleCodeClick = async (project: MktProject) => {
+        setIsLoading(true)
+        try {
+            const res = await getProjectById(project.id)
+            if (res.success && res.data) {
+                setEditDetailsModal({ open: true, project: res.data })
+            } else {
+                alert('Failed to load project details')
+            }
+        } catch (error) {
+            console.error('Error loading project details:', error)
+            alert('Failed to load project details')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const handleViewHistory = (project: MktProject) => {
         setHistoryProject(project)
         setHistoryPanelOpen(true)
     }
 
-    const handleEditProject = (project: MktProject) => {
-        setProjectToEdit(project)
-        setEditProjectModalOpen(true)
-    }
+
 
     const handleClearFilters = () => {
         setSelectedYear({ value: currentYear, label: String(currentYear) })
@@ -213,7 +256,7 @@ export default function MktTrackingPage() {
                         </Button>
                     </div>
 
-                    {isLoading ? (
+                    {isLoading && projects.length === 0 ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
@@ -230,14 +273,47 @@ export default function MktTrackingPage() {
                             <MktProjectTable
                                 projects={projects}
                                 onEdit={handleEdit}
-                                onEditProject={handleEditProject}
+                                onCodeClick={handleCodeClick}
                             />
+
+                            {/* Pagination */}
+                            {totalPages > 1 && (
+                                <div className="mt-4 flex justify-end">
+                                    <Pagination>
+                                        <PaginationContent>
+                                            <PaginationItem>
+                                                <PaginationPrevious
+                                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                                    className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                                />
+                                            </PaginationItem>
+                                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                                                <PaginationItem key={p}>
+                                                    <PaginationLink
+                                                        isActive={page === p}
+                                                        onClick={() => setPage(p)}
+                                                        className="cursor-pointer"
+                                                    >
+                                                        {p}
+                                                    </PaginationLink>
+                                                </PaginationItem>
+                                            ))}
+                                            <PaginationItem>
+                                                <PaginationNext
+                                                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                                    className={page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                                />
+                                            </PaginationItem>
+                                        </PaginationContent>
+                                    </Pagination>
+                                </div>
+                            )}
                         </>
                     )}
                 </CardContent>
             </Card>
 
-            {/* Edit Dialog */}
+            {/* Edit Dialog (MKT Specific) */}
             <MktDetailDialog
                 open={editDialogOpen}
                 onOpenChange={setEditDialogOpen}
@@ -254,7 +330,7 @@ export default function MktTrackingPage() {
                 projectTitle={historyProject ? `${historyProject.project_code} - ${historyProject.title}` : ''}
             />
 
-            {/* Create MKT Project Modal - Same as /projects page but with MKT pre-selected */}
+            {/* Create MKT Project Modal */}
             <ProjectModal
                 open={createDialogOpen}
                 onClose={() => setCreateDialogOpen(false)}
@@ -267,34 +343,20 @@ export default function MktTrackingPage() {
                 defaultProjectTypeCode="MKT"
             />
 
-            {/* Edit Project Modal */}
-            <ProjectModal
-                open={editProjectModalOpen}
-                onClose={() => {
-                    setEditProjectModalOpen(false)
-                    setProjectToEdit(null)
-                }}
-                mode="edit"
-                project={projectToEdit ? {
-                    id: projectToEdit.id,
-                    project_code: projectToEdit.project_code,
-                    project_year: parseInt(projectToEdit.project_code.substring(0, 2)) + 2000 || new Date().getFullYear(),
-                    name: projectToEdit.title,
-                    customer_id: projectToEdit.customer_id || '',
-                    project_manager_id: projectToEdit.project_manager_id || '',
-                    sold_mandays: 0,
-                    manday_rate: 0,
-                    total_value: 0,
-                    is_active: true,
-                    created_at: projectToEdit.created_at,
-                    updated_at: projectToEdit.created_at,
-                } : null}
-                onSuccess={() => {
-                    loadData()
-                    setEditProjectModalOpen(false)
-                    setProjectToEdit(null)
-                }}
-            />
+            {/* Edit Project Modal (Full Details) */}
+            {editDetailsModal.project && (
+                <ProjectModal
+                    open={editDetailsModal.open}
+                    onClose={() => setEditDetailsModal({ open: false, project: null })}
+                    mode="edit"
+                    project={editDetailsModal.project}
+                    onSuccess={() => { // Refresh both lists?
+                        loadData()
+                        setEditDetailsModal({ open: false, project: null })
+                    }}
+                />
+            )}
+
         </div>
     )
 }

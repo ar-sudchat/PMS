@@ -1,5 +1,6 @@
-'use client'
 
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,8 +27,13 @@ import {
     ResourcePlanningData,
     ResourceProject,
     ResourceMilestone,
-    removeMilestoneResource,
+    removeMilestoneResource
 } from '@/lib/actions/resource-planning-actions'
+import {
+    getProjects,
+    getProjectById
+} from '@/lib/actions/project-actions'
+import { ProjectModal } from '@/components/modals/ProjectModal'
 import { FilterOptions } from '@/app/(main)/resource-planning/page'
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 import { ResourceSummaryTable } from './ResourceSummaryTable'
@@ -81,6 +87,7 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
     const [activeTab, setActiveTab] = useState<'projects' | 'summary'>('projects')
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
     const [currentMonth, setCurrentMonth] = useState(new Date())
+    // Modals
     const [addDialog, setAddDialog] = useState<{
         open: boolean
         milestoneId: string
@@ -94,7 +101,12 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
         employeeId: string
         employeeName: string
         projectCode: string
-    }>({ open: false, milestoneId: '', milestoneName: '', employeeId: '', employeeName: '', projectCode: '' })
+        currentMonth: Date
+    }>({ open: false, milestoneId: '', milestoneName: '', employeeId: '', employeeName: '', projectCode: '', currentMonth: new Date() })
+
+    // Edit Project Modal
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [selectedProject, setSelectedProject] = useState<any>(null)
 
     // Filter state
     const [filterYear, setFilterYear] = useState<number | ''>(new Date().getFullYear())
@@ -137,7 +149,7 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
         return eachDayOfInterval({ start, end })
     }, [currentMonth])
 
-    const totalColSpan = 5 + monthDays.length + 1 // info cols + day cols + action col
+    const totalColSpan = 7 + monthDays.length + 1 // info cols (name+milestone+due+md+md+action) + day cols
 
     const handleRefresh = async () => {
         setIsRefreshing(true)
@@ -185,6 +197,7 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
             employeeId,
             employeeName,
             projectCode,
+            currentMonth,
         })
     }
 
@@ -559,23 +572,25 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
                     <Card>
                         <CardContent className="p-0">
                             <div className="overflow-auto max-h-[calc(100vh-320px)]">
-                                <table className="w-full text-sm border-collapse" style={{ minWidth: `${450 + monthDays.length * 30}px` }}>
+                                <table className="w-full text-sm border-collapse" style={{ minWidth: `${380 + monthDays.length * 26}px` }}>
                                     <thead>
                                         {/* Month day numbers */}
                                         <tr className="border-b bg-muted/50 sticky top-0 z-30">
-                                            <th className="text-left py-2 px-2 font-medium sticky left-0 bg-muted/50 z-40 min-w-[200px]">
+                                            <th className="text-left py-2 px-2 font-medium sticky left-0 bg-muted/50 z-40 min-w-[150px]">
                                                 โครงการ / Milestone / พนักงาน
                                             </th>
-                                            <th className="text-center py-2 px-1 font-medium min-w-[50px] bg-muted/50">MD</th>
-                                            <th className="text-center py-2 px-1 font-medium min-w-[55px] bg-muted/50" title="MD = Mandays (actual hours / 8)">MD</th>
-                                            <th className="text-center py-2 px-1 font-medium min-w-[35px] bg-muted/50"></th>
+                                            <th className="text-left py-2 px-1 font-medium min-w-[80px] bg-muted/50 text-[11px]">Milestone</th>
+                                            <th className="text-center py-2 px-1 font-medium min-w-[65px] bg-muted/50 text-[11px]">Due</th>
+                                            <th className="text-center py-2 px-1 font-medium min-w-[40px] bg-muted/50 text-[11px]">Budget</th>
+                                            <th className="text-center py-2 px-1 font-medium min-w-[40px] bg-muted/50 text-[11px]" title="MD = Mandays (actual hours / 8)">MD</th>
+                                            <th className="text-center py-2 px-0 font-medium min-w-[24px] bg-muted/50"></th>
                                             {monthDays.map((day, i) => {
                                                 const weekend = isWeekend(day)
                                                 const isToday = isSameDay(day, new Date())
                                                 return (
                                                     <th
                                                         key={i}
-                                                        className={`text-center py-1 px-0 font-normal min-w-[30px] w-[30px] ${weekend ? 'bg-gray-200' : 'bg-muted/50'} ${isToday ? 'bg-yellow-200' : ''}`}
+                                                        className={`text-center py-1 px-0 font-normal min-w-[26px] w-[26px] ${weekend ? 'bg-gray-200' : 'bg-muted/50'} ${isToday ? 'bg-yellow-200' : ''}`}
                                                     >
                                                         <div className="text-[10px] leading-tight">{format(day, 'd')}</div>
                                                         <div className="text-[8px] leading-tight text-muted-foreground">{format(day, 'EEE', { locale: th })}</div>
@@ -599,14 +614,33 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
                                                     <ProjectTimelineRows
                                                         key={project.id}
                                                         project={project}
-                                                        isExpanded={isExpanded}
+                                                        isExpanded={expandedProjects.has(project.id)}
                                                         resourceCount={resourceCount}
                                                         monthDays={monthDays}
                                                         onToggle={() => toggleProject(project.id)}
                                                         onAddResource={(ms) => openAddDialog(project, ms)}
                                                         onRemoveResource={handleRemoveResource}
-                                                        onViewTaskDetail={(msId, msName, empId, empName) => openTaskDetail(project.project_code, msId, msName, empId, empName)}
+                                                        onViewTaskDetail={(msId, msName, empId, empName) => {
+                                                            setTaskDetailDialog({
+                                                                open: true,
+                                                                milestoneId: msId,
+                                                                milestoneName: msName,
+                                                                employeeId: empId,
+                                                                employeeName: empName,
+                                                                projectCode: project.project_code,
+                                                                currentMonth,
+                                                            })
+                                                        }}
                                                         isDateInRange={isDateInRange}
+                                                        onEditProject={async (projectId) => {
+                                                            const res = await getProjectById(projectId)
+                                                            if (res.success && res.data) {
+                                                                setSelectedProject(res.data)
+                                                                setIsEditModalOpen(true)
+                                                            } else {
+                                                                alert('Failed to load project details')
+                                                            }
+                                                        }}
                                                     />
                                                 )
                                             })
@@ -641,7 +675,21 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
                 employeeId={taskDetailDialog.employeeId}
                 employeeName={taskDetailDialog.employeeName}
                 projectCode={taskDetailDialog.projectCode}
+                currentMonth={taskDetailDialog.currentMonth}
             />
+
+            {selectedProject && (
+                <ProjectModal
+                    open={isEditModalOpen}
+                    onClose={() => setIsEditModalOpen(false)}
+                    mode="edit"
+                    project={selectedProject}
+                    onSuccess={() => {
+                        setIsEditModalOpen(false)
+                        onRefresh()
+                    }}
+                />
+            )}
         </div>
     )
 }
@@ -659,6 +707,7 @@ function ProjectTimelineRows({
     onRemoveResource,
     onViewTaskDetail,
     isDateInRange,
+    onEditProject,
 }: {
     project: ResourceProject
     isExpanded: boolean
@@ -669,39 +718,115 @@ function ProjectTimelineRows({
     onRemoveResource: (resourceId: string, name: string) => void
     onViewTaskDetail: (milestoneId: string, milestoneName: string, employeeId: string, employeeName: string) => void
     isDateInRange: (day: Date, start: string, end: string) => boolean
+    onEditProject: (id: string) => void
 }) {
     // Calculate total MD across all milestones/resources
     const totalMD = Math.round(project.milestones.reduce(
         (sum, ms) => sum + ms.resources.reduce((s, r) => s + r.working_days, 0), 0
     ) * 100) / 100
 
+    // Calculate monthly MD across all milestones/resources
+    const projectMonthMD = Math.round(project.milestones.reduce(
+        (sum, ms) => sum + ms.resources.reduce((s, r) => s + calculateMonthlyMD(r, monthDays), 0), 0
+    ) * 100) / 100
+
+    const router = useRouter()
+
+    // Find the current milestone
+    const currentMilestone = project.current_milestone_config_id
+        ? project.milestones.find(ms => ms.milestone_config_id === project.current_milestone_config_id)
+        : null
+
+    const handleProjectClick = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (project.id) {
+            onEditProject(project.id)
+        } else {
+            console.error('Project ID missing:', project)
+            alert('ไม่พบรหัสโครงการ (Project ID missing)')
+        }
+    }
+
     return (
         <>
             {/* Project row */}
-            <tr className="border-b hover:bg-muted/30 cursor-pointer font-medium" onClick={onToggle}>
+            <tr className="border-b hover:bg-muted/30 cursor-pointer font-medium" onClick={() => {
+                console.log('Row clicked, toggling', project.id, project.project_code);
+                onToggle();
+            }}>
                 <td className="py-2 px-2 sticky left-0 bg-white z-10">
                     <div className="flex items-center gap-2">
                         {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                        <span className="font-semibold text-xs">{project.project_code}</span>
-                        <span className="text-xs text-muted-foreground truncate">{project.name}</span>
+                        <span
+                            onClick={handleProjectClick}
+                            className="font-semibold text-xs hover:underline text-blue-700 cursor-pointer shrink-0"
+                        >
+                            {project.project_code}
+                        </span>
+                        <span
+                            onClick={handleProjectClick}
+                            className="text-xs text-muted-foreground truncate hover:underline hover:text-blue-700 cursor-pointer"
+                        >
+                            {project.name}
+                        </span>
                     </div>
+                </td>
+                <td className="py-2 px-1">
+                    {currentMilestone && (
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: currentMilestone.milestone_color || '#6B7280' }} />
+                            <span className="text-[11px] font-medium text-slate-700 whitespace-nowrap">{currentMilestone.milestone_name}</span>
+                        </div>
+                    )}
+                </td>
+                <td className="py-2 px-1 text-center">
+                    {currentMilestone?.due_date && (
+                        <span className="text-[11px] text-slate-600 whitespace-nowrap">{formatDateShort(currentMilestone.due_date)}</span>
+                    )}
                 </td>
                 <td className="py-2 px-1 text-center text-[10px] font-semibold">
                     {project.sold_mandays > 0 ? project.sold_mandays : '-'}
                 </td>
-                <td className="py-2 px-1 text-center">
-                    {totalMD > 0 ? (
-                        <Badge variant="info" className="text-[10px]" title={`รวม ${totalMD} MD`}>
-                            {totalMD}<span className="opacity-60 ml-0.5">MD</span>
-                        </Badge>
+                <td className="py-2 px-1 text-center text-[10px]">
+                    {projectMonthMD > 0 ? (
+                        <span className="font-semibold" title={`เดือนนี้: ${projectMonthMD} / ทั้งหมด: ${totalMD}`}>
+                            <span className="text-blue-600">{projectMonthMD}</span>
+                            <span className="text-muted-foreground">/</span>
+                            {totalMD}
+                        </span>
+                    ) : totalMD > 0 ? (
+                        <span className="font-semibold">{totalMD}</span>
                     ) : (
-                        <Badge variant="secondary" className="text-[10px]">0</Badge>
+                        <span className="text-muted-foreground">0</span>
                     )}
                 </td>
                 <td className="py-2 px-1"></td>
-                {monthDays.map((day, i) => (
-                    <td key={i} className={`py-2 px-0 ${isWeekend(day) ? 'bg-gray-50' : ''} ${isSameDay(day, new Date()) ? 'bg-yellow-50' : ''}`} />
-                ))}
+                {monthDays.map((day, i) => {
+                    const weekend = isWeekend(day)
+                    const today = isSameDay(day, new Date())
+                    // Find milestones with due dates on this day
+                    const dueMilestones = project.milestones.filter(
+                        ms => ms.due_date && isSameDay(day, new Date(ms.due_date))
+                    )
+                    return (
+                        <td key={i} className={`py-1 px-0 ${weekend ? 'bg-gray-50' : ''} ${today ? 'bg-yellow-50' : ''}`}>
+                            {dueMilestones.length > 0 && (
+                                <div className="flex flex-col items-center gap-0.5">
+                                    {dueMilestones.map(ms => (
+                                        <div
+                                            key={ms.id}
+                                            className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                                            style={{ borderColor: ms.milestone_color || '#6B7280' }}
+                                            title={`${ms.milestone_name} Due`}
+                                        >
+                                            <div className="text-[6px] font-bold" style={{ color: ms.milestone_color || '#6B7280' }}>D</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </td>
+                    )
+                })}
             </tr>
 
             {/* Milestone + resource rows */}
@@ -712,13 +837,14 @@ function ProjectTimelineRows({
                     monthDays={monthDays}
                     onAddResource={() => onAddResource(ms)}
                     onRemoveResource={onRemoveResource}
+                    onViewTaskDetail={onViewTaskDetail}
                     isDateInRange={isDateInRange}
                 />
             ))}
 
             {isExpanded && project.milestones.length === 0 && (
                 <tr className="border-b bg-muted/10">
-                    <td colSpan={4 + monthDays.length} className="py-3 text-xs text-muted-foreground text-center">
+                    <td colSpan={6 + monthDays.length} className="py-3 text-xs text-muted-foreground text-center">
                         ไม่มี Milestone
                     </td>
                 </tr>
@@ -735,12 +861,14 @@ function MilestoneTimelineRows({
     monthDays,
     onAddResource,
     onRemoveResource,
+    onViewTaskDetail,
     isDateInRange,
 }: {
     milestone: ResourceMilestone
     monthDays: Date[]
     onAddResource: () => void
     onRemoveResource: (resourceId: string, name: string) => void
+    onViewTaskDetail: (milestoneId: string, milestoneName: string, employeeId: string, employeeName: string) => void
     isDateInRange: (day: Date, start: string, end: string) => boolean
 }) {
     // Check if milestone due_date falls in this month
@@ -750,6 +878,7 @@ function MilestoneTimelineRows({
 
     // Calculate milestone-level totals: MD (from hours) for PLAN, days for PM
     const msTotalMD = Math.round(milestone.resources.reduce((s, r) => s + r.working_days, 0) * 100) / 100
+    const msMonthMD = Math.round(milestone.resources.reduce((s, r) => s + calculateMonthlyMD(r, monthDays), 0) * 100) / 100
 
     return (
         <>
@@ -759,14 +888,24 @@ function MilestoneTimelineRows({
                     <div className="flex items-center gap-2 pl-5">
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: milestone.milestone_color || '#6B7280' }} />
                         <span className="text-[11px] font-medium">{milestone.milestone_name}</span>
-                        {milestone.due_date && (
-                            <span className="text-[10px] text-muted-foreground">Due: {formatDateShort(milestone.due_date)}</span>
-                        )}
                     </div>
+                </td>
+                <td className="py-1.5 px-1 bg-muted/20"></td>
+                <td className="py-1.5 px-1 text-center bg-muted/20">
+                    {milestone.due_date && (
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{formatDateShort(milestone.due_date)}</span>
+                    )}
                 </td>
                 <td className="py-1.5 px-1 text-center text-[10px] text-muted-foreground">{milestone.planned_mandays > 0 ? milestone.planned_mandays : '-'}</td>
                 <td className="py-1.5 px-1 text-center text-[10px]">
-                    {msTotalMD > 0 && (
+                    {msMonthMD > 0 ? (
+                        <span className="font-medium" title={`เดือนนี้: ${msMonthMD} MD / ทั้งหมด: ${msTotalMD} MD`}>
+                            <span className="text-blue-600">{msMonthMD}</span>
+                            <span className="text-muted-foreground mx-0.5">/</span>
+                            {msTotalMD}
+                            <span className="text-[8px] text-muted-foreground ml-0.5">MD</span>
+                        </span>
+                    ) : msTotalMD > 0 && (
                         <span className="font-medium" title={`รวม ${msTotalMD} MD`}>
                             {msTotalMD}<span className="text-[8px] text-muted-foreground ml-0.5">MD</span>
                         </span>
@@ -807,8 +946,22 @@ function MilestoneTimelineRows({
                     return isDateInRange(day, r.start_date, r.end_date)
                 }
 
-                // Count visible working days in current month (exclude weekends)
-                const visibleDays = monthDays.filter(d => !isWeekend(d) && isDayInResource(d)).length
+                // Calculate resource MD for this month
+                const resourceMonthMD = Math.round(calculateMonthlyMD(r, monthDays) * 100) / 100
+
+                // Calculate month-filtered task count
+                const monthStart = monthDays[0]
+                const monthEnd = monthDays[monthDays.length - 1]
+                const monthTaskCount = isPlan && r.date_ranges && r.date_ranges.length > 0
+                    ? r.date_ranges.filter(range => {
+                        const rs = new Date(range.start_date); rs.setHours(0, 0, 0, 0)
+                        const re = new Date(range.end_date); re.setHours(0, 0, 0, 0)
+                        const ms = new Date(monthStart); ms.setHours(0, 0, 0, 0)
+                        const me = new Date(monthEnd); me.setHours(0, 0, 0, 0)
+                        return rs <= me && re >= ms
+                    }).length
+                    : 0
+                const totalTaskCount = isPlan && r.date_ranges ? r.date_ranges.length : 0
 
                 return (
                     <tr key={`${r.source_type}-${r.id}`} className={`border-b hover:bg-blue-50/20 ${isPlan ? 'bg-emerald-50/30' : ''}`}>
@@ -823,54 +976,47 @@ function MilestoneTimelineRows({
                                 <span className="text-[11px] truncate max-w-[120px]">
                                     {r.employee_name}{r.employee_nickname ? ` (${r.employee_nickname})` : ''}
                                 </span>
-                                {isPlan && r.notes && (
-                                    <span className="text-[9px] text-emerald-600">({r.notes})</span>
+                                {isPlan && totalTaskCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            onViewTaskDetail(milestone.id, milestone.milestone_name, r.employee_id, r.employee_name)
+                                        }}
+                                        className="text-[9px] text-emerald-600 hover:text-emerald-800 hover:underline cursor-pointer bg-transparent border-0 p-0 inline-flex items-center"
+                                    >
+                                        ({monthTaskCount}/{totalTaskCount} tasks)
+                                    </button>
                                 )}
                             </div>
                         </td>
                         <td className="py-1 px-1"></td>
+                        <td className="py-1 px-1"></td>
+                        <td className="py-1 px-1"></td>
                         <td className="py-1 px-1 text-center text-[10px] font-semibold">
-                            {isPlan ? (
-                                // PLAN: show MD (mandays from hours/8)
-                                <span title={`${r.working_days} MD (จาก actual/estimated hours)`}>
-                                    {r.working_days > 0 ? (
-                                        <span className="text-emerald-700">{r.working_days}<span className="text-[8px] text-muted-foreground ml-0.5">MD</span></span>
-                                    ) : (
-                                        <span className="text-muted-foreground">-</span>
-                                    )}
+                            {resourceMonthMD > 0 ? (
+                                <span title={`เดือนนี้: ${resourceMonthMD} MD / ทั้งหมด: ${r.working_days} MD`}>
+                                    <span className="text-blue-600">{resourceMonthMD}</span>
+                                    <span className="text-muted-foreground mx-0.5">/</span>
+                                    {r.working_days}
+                                    <span className="text-[8px] text-muted-foreground ml-0.5">MD</span>
                                 </span>
                             ) : (
-                                // PM: show visible/total days
-                                visibleDays !== r.working_days ? (
-                                    <span title={`เดือนนี้ ${visibleDays} วัน / รวมทั้งหมด ${r.working_days} วัน`}>
-                                        <span className="text-blue-600">{visibleDays}</span>
-                                        <span className="text-muted-foreground">/{r.working_days}d</span>
-                                    </span>
-                                ) : (
-                                    <span>{r.working_days}d</span>
-                                )
+                                <span>{r.working_days} <span className="text-[8px] text-muted-foreground">MD</span></span>
                             )}
                         </td>
-                        <td className="py-1 px-1 text-center">
-                            {!isPlan && (
-                                <Button variant="ghost" size="icon" className="h-5 w-5 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => onRemoveResource(r.id, r.employee_name)}>
-                                    <Trash2 className="h-3 w-3" />
-                                </Button>
-                            )}
+                        <td className="py-2 px-1 text-center">
+                            <Button variant="ghost" size="xs" onClick={() => onRemoveResource(r.id, r.employee_name)} className="text-red-500 hover:text-red-700 hover:bg-red-50 h-6 w-6 p-0">
+                                <Trash2 className="h-3 w-3" />
+                            </Button>
                         </td>
                         {monthDays.map((day, i) => {
-                            const weekend = isWeekend(day)
                             const inRange = isDayInResource(day)
-                            const today = isSameDay(day, new Date())
+                            const weekend = isWeekend(day)
                             return (
-                                <td key={i} className={`py-1 px-0 ${weekend ? 'bg-gray-50' : ''} ${today ? 'bg-yellow-50' : ''}`}>
+                                <td key={i} className={`py-2 px-0 text-center ${weekend ? 'bg-gray-50' : ''} ${isSameDay(day, new Date()) ? 'bg-yellow-50' : ''}`}>
                                     {inRange && !weekend && (
-                                        <div className={`w-5 h-4 mx-auto rounded-sm ${isPlan ? cellColor + ' opacity-60' : cellColor + ' opacity-80'}`}
-                                            style={isPlan ? { backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.3) 2px, rgba(255,255,255,0.3) 4px)' } : {}}
-                                        />
-                                    )}
-                                    {inRange && weekend && (
-                                        <div className="w-5 h-4 mx-auto rounded-sm bg-gray-300 opacity-40" />
+                                        <div className={`w-full h-4 mx-auto ${cellColor} ${isPlan ? 'opacity-80' : ''}`} title={`${r.employee_name} (${r.role})`} />
                                     )}
                                 </td>
                             )
@@ -880,4 +1026,54 @@ function MilestoneTimelineRows({
             })}
         </>
     )
+}
+
+function calculateMonthlyMD(resource: ResourceMilestone['resources'][number], monthDays: Date[]): number {
+    // If ranges exist, use them. Else use start/end.
+    const ranges = resource.date_ranges && resource.date_ranges.length > 0
+        ? resource.date_ranges
+        : [{ start_date: resource.start_date, end_date: resource.end_date }]
+
+    let totalBusinessDays = 0
+
+    // Calculate total business days across all ranges
+    for (const range of ranges) {
+        const start = new Date(range.start_date)
+        const end = new Date(range.end_date)
+        start.setHours(0, 0, 0, 0)
+        end.setHours(0, 0, 0, 0)
+
+        let iter = new Date(start)
+        while (iter <= end) {
+            if (!isWeekend(iter)) totalBusinessDays++
+            iter.setDate(iter.getDate() + 1)
+        }
+    }
+
+    if (totalBusinessDays === 0) return 0
+
+    // Calculate month business days
+    const monthStart = monthDays[0]
+    const monthEnd = monthDays[monthDays.length - 1]
+
+    let monthBusinessDays = 0
+    for (const range of ranges) {
+        const start = new Date(range.start_date)
+        const end = new Date(range.end_date)
+        start.setHours(0, 0, 0, 0)
+        end.setHours(0, 0, 0, 0)
+
+        const overlapStart = start > monthStart ? start : monthStart
+        const overlapEnd = end < monthEnd ? end : monthEnd
+
+        if (overlapStart <= overlapEnd) {
+            let curr = new Date(overlapStart)
+            while (curr <= overlapEnd) {
+                if (!isWeekend(curr)) monthBusinessDays++
+                curr.setDate(curr.getDate() + 1)
+            }
+        }
+    }
+
+    return (monthBusinessDays / totalBusinessDays) * resource.working_days
 }

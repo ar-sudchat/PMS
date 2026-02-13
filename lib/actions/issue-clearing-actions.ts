@@ -278,7 +278,9 @@ export async function getActiveEmployeesForIssueClearing() {
                 e.employee_code AS code
             FROM pms.employees e
             INNER JOIN pms.timesheet_entries ts ON e.id = ts.employee_id
+            LEFT JOIN pms.positions pos ON e.position_id = pos.id
             WHERE e.status = 'Active'
+            AND pos.code = 'PG'
             ORDER BY name
         `)
 
@@ -341,11 +343,13 @@ export async function getIssueClearingKPI(params: {
                     AS DECIMAL(5,2)) AS clearing_rate
                 FROM pms.tasks t
                 INNER JOIN pms.employees e ON t.assignee_id = e.id
+                LEFT JOIN pms.positions pos ON e.position_id = pos.id
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.projects p ON s.project_id = p.id
                 LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
                 LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 WHERE ${whereClause}
+                AND pos.code = 'PG'
                 AND (p.id IS NULL OR p.is_active = 1)
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
@@ -406,11 +410,13 @@ export async function getTasksNotAsPlanned(params: {
                     p.name AS project_name
                 FROM pms.tasks t
                 INNER JOIN pms.employees e ON t.assignee_id = e.id
+                LEFT JOIN pms.positions pos ON e.position_id = pos.id
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.projects p ON s.project_id = p.id
                 LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
                 LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 WHERE ${whereClause}
+                AND pos.code = 'PG'
                 AND (p.id IS NULL OR p.is_active = 1)
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
@@ -461,11 +467,14 @@ export async function getIssueClearingMonthlyTrend(params: {
                         END
                     AS DECIMAL(5,2)) AS clearing_rate
                 FROM pms.tasks t
+                INNER JOIN pms.employees e ON t.assignee_id = e.id
+                LEFT JOIN pms.positions pos ON e.position_id = pos.id
                 LEFT JOIN pms.stories s ON t.story_id = s.id
                 LEFT JOIN pms.projects p ON s.project_id = p.id
                 LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
                 LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 WHERE ${whereClause}
+                AND pos.code = 'PG'
                 AND (p.id IS NULL OR p.is_active = 1)
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')

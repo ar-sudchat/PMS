@@ -356,7 +356,7 @@ export async function getProjects(filters?: ProjectFilters) {
         mc.name as current_milestone_name,
         mc.color as current_milestone_color,
 
-        -- Progress
+        // Progress
         ISNULL((SELECT SUM(actual_mandays) FROM pms.project_milestones WHERE project_id = p.id), 0) as actual_mandays,
 
         p.created_at
