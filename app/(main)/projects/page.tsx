@@ -154,7 +154,7 @@ export default function ProjectsPage() {
                 'PM': p.pm_name || '',
                 'Owner': p.owner_name || '',
                 'Current Milestone': p.current_milestone_name || '',
-                'Warranty End': p.warranty_end_date ? new Date(p.warranty_end_date).toLocaleDateString('th-TH') : ''
+                'Warranty End': p.warranty_end_date ? new Date(p.warranty_end_date).toLocaleDateString('en-GB') : ''
             }
 
             // Add Milestone Due Dates columns
@@ -162,7 +162,7 @@ export default function ProjectsPage() {
                 const projectMs = p.milestones?.find((pm: any) => pm.code === m.code)
                 const headerKey = `Due: ${m.code || m.name}`
                 row[headerKey] = projectMs?.due_date
-                    ? new Date(projectMs.due_date).toLocaleDateString('th-TH')
+                    ? new Date(projectMs.due_date).toLocaleDateString('en-GB')
                     : ''
             })
 

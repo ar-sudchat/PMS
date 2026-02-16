@@ -395,7 +395,7 @@ export async function getMandayControlMilestones(params: {
                     p.name AS project_name,
                     mc.name AS milestone_name,
                     pm.planned_mandays,
-                    pm.actual_mandays,
+                    ISNULL(ts_md.actual_mandays, 0) AS actual_mandays,
                     COALESCE(pm.weight_mdc, mc.default_weight_mdc,
                         CASE mc.name
                             WHEN 'Mapping Data' THEN 30
@@ -406,16 +406,26 @@ export async function getMandayControlMilestones(params: {
                             ELSE 0
                         END) AS weight_mdc,
                     CASE
-                        WHEN pm.actual_mandays IS NULL THEN 0
+                        WHEN ts_md.actual_mandays IS NULL THEN 0
                         WHEN pm.planned_mandays IS NULL OR pm.planned_mandays = 0 THEN 0
-                        WHEN pm.actual_mandays <= pm.planned_mandays THEN 100
-                        WHEN pm.actual_mandays <= pm.planned_mandays * 1.1 THEN 90
-                        WHEN pm.actual_mandays <= pm.planned_mandays * 1.2 THEN 70
+                        WHEN ts_md.actual_mandays <= pm.planned_mandays THEN 100
+                        WHEN ts_md.actual_mandays <= pm.planned_mandays * 1.1 THEN 90
+                        WHEN ts_md.actual_mandays <= pm.planned_mandays * 1.2 THEN 70
                         ELSE 50
                     END AS achievement_percent
                 FROM pms.project_milestones pm
                 INNER JOIN pms.projects p ON pm.project_id = p.id
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                LEFT JOIN (
+                    SELECT
+                        s.milestone_id,
+                        CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS actual_mandays
+                    FROM pms.timesheet_entries te
+                    INNER JOIN pms.tasks t ON te.task_id = t.id
+                    INNER JOIN pms.stories s ON t.story_id = s.id
+                    WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
+                    GROUP BY s.milestone_id
+                ) ts_md ON ts_md.milestone_id = pm.id
                 LEFT JOIN pms.project_status_configs psc ON p.status_id = psc.id
                 LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 ${whereClause}
