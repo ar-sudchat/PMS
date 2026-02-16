@@ -877,7 +877,7 @@ export function MandayMonitorClient({
                                                 tick={{ fontSize: 11 }}
                                             />
                                             <Tooltip
-                                                formatter={(value: number, name: string) => [
+                                                formatter={(value?: number, name?: string) => [
                                                     `${value} MD`,
                                                     name === 'mandays' ? 'ใช้ไป' : 'Budget'
                                                 ]}
