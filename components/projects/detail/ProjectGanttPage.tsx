@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Settings } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { ProjectDetail } from '@/lib/actions/project-detail-actions'
 import { GanttData, getGanttData, GanttTask } from '@/lib/actions/gantt-actions'
 import { GanttTabContent } from './GanttTabContent'
@@ -11,6 +13,7 @@ import { ProjectTabs } from './ProjectTabs'
 import { cn } from '@/lib/utils'
 import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
 import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryModal'
+import { ProjectModal } from '@/components/modals/ProjectModal'
 
 interface ProjectGanttPageProps {
     project: ProjectDetail
@@ -24,6 +27,7 @@ interface ProjectGanttPageProps {
 }
 
 export function ProjectGanttPage({ project, ganttData: initialGanttData, currentUser, activeTab }: ProjectGanttPageProps) {
+    const router = useRouter()
     const [ganttData, setGanttData] = useState(initialGanttData)
 
     // Modal States
@@ -33,11 +37,12 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
     const [storyModal, setStoryModal] = useState<{ open: boolean, milestoneId?: string, story?: any, mode: 'create' | 'edit' }>({
         open: false, mode: 'create'
     })
+    const [editProjectModal, setEditProjectModal] = useState(false)
 
     // Calculate if user can edit this project
     const canEdit = useMemo(() => {
         if (currentUser.role === 'admin') return true
-        if (currentUser.role === 'manager') return project.owner_id === currentUser.id
+        if (currentUser.role === 'manager') return project.project_owner_id === currentUser.id
         return false
     }, [currentUser, project])
 
@@ -140,6 +145,17 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {canEdit && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditProjectModal(true)}
+                                className="gap-2"
+                            >
+                                <Settings className="w-4 h-4" />
+                                Edit Project
+                            </Button>
+                        )}
                         {/* Global Actions if any */}
                     </div>
                 </div>
@@ -224,6 +240,17 @@ export function ProjectGanttPage({ project, ganttData: initialGanttData, current
                 onSuccess={handleModalSuccess}
                 mode={storyModal.mode}
                 story={storyModal.story}
+            />
+
+            <ProjectModal
+                open={editProjectModal}
+                onClose={() => setEditProjectModal(false)}
+                mode="edit"
+                project={project as any}
+                onSuccess={() => {
+                    router.refresh()
+                    setEditProjectModal(false)
+                }}
             />
         </div>
     )

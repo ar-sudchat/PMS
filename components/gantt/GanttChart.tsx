@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { GanttData, GanttTask, updateGanttTaskDates, updateGanttTaskProgress } from '@/lib/actions/gantt-actions'
 import 'dhtmlx-gantt/codebase/dhtmlxgantt.css'
 
@@ -17,6 +18,7 @@ interface GanttChartProps {
   onAddStory?: (projectId: string, milestoneId?: string) => void
   onAddTask?: (storyId: string) => void
   onRefresh?: () => void
+  onEditProject?: (projectId: string) => void // New prop for generic project editing
   // Keeping these optional for compatibility if parent doesn't pass them yet
   currentUser?: any
   projectId?: string
@@ -32,8 +34,10 @@ export function GanttChart({
   onContextMenu,
   onDataChange,
   onAddStory,
-  onAddTask
+  onAddTask,
+  onEditProject
 }: GanttChartProps) {
+  const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const ganttInstanceRef = useRef<any>(null)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -47,13 +51,22 @@ export function GanttChart({
     onDataChange,
     onAddStory,
     onAddTask,
+    onEditProject,
     readOnly
   })
 
   // Helper to get columns
   const getColumns = (isReadOnly: boolean) => {
     const columns = [
-      { name: 'text', label: 'Task', tree: true, width: 280, resize: true },
+      {
+        name: 'text', label: 'Task', tree: true, width: 280, resize: true,
+        template: (task: any) => {
+          if (task.entity_type === 'project') {
+            return `<span class="font-bold text-blue-700 hover:underline cursor-pointer">${task.text}</span>`
+          }
+          return task.text
+        }
+      },
       {
         name: 'assignee_name', label: 'Assignee', width: 100, align: 'center',
         template: (task: any) => {
@@ -101,6 +114,7 @@ export function GanttChart({
       onDataChange,
       onAddStory,
       onAddTask,
+      onEditProject,
       readOnly
     }
 
@@ -110,7 +124,7 @@ export function GanttChart({
       ganttInstanceRef.current.config.columns = getColumns(!!readOnly)
       ganttInstanceRef.current.render()
     }
-  }, [onTaskClick, onTaskDblClick, onContextMenu, onDataChange, onAddStory, onAddTask, readOnly])
+  }, [onTaskClick, onTaskDblClick, onContextMenu, onDataChange, onAddStory, onAddTask, onEditProject, readOnly])
 
   // ============================================
   // Initialize Gantt (runs once)
@@ -267,8 +281,18 @@ export function GanttChart({
             return false;
           }
 
-          // Handle normal selection
+          // Handle Project Click -> Navigate or Edit Modal
           const task = gantt.getTask(id)
+          if (task.entity_type === 'project') {
+            if (callbacksRef.current.onEditProject) {
+              callbacksRef.current.onEditProject(task.entity_id)
+            } else {
+              router.push(`/projects/${task.entity_id}`)
+            }
+            return false
+          }
+
+          // Handle normal selection
           callbacksRef.current.onTaskClick?.(task as unknown as GanttTask)
           return true
         })

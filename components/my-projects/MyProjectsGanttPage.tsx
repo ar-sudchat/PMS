@@ -12,7 +12,8 @@ import { AssignTaskModal } from '@/components/gantt/AssignTaskModal'
 import { WorkItemsModal } from '@/components/gantt/WorkItemsModal'
 import { DailyTaskWorkloadView } from '@/components/workload/DailyTaskWorkloadView'
 import { WeeklyWorkloadTable } from '@/components/workload/WeeklyWorkloadTable'
-import { getProjectFilterOptions } from '@/lib/actions/project-actions'
+import { getProjectFilterOptions, getProjectById } from '@/lib/actions/project-actions'
+import { ProjectModal } from '@/components/modals/ProjectModal'
 import {
     GanttData,
     GanttTask,
@@ -105,11 +106,16 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         storyId: string
     }>({ open: false, storyId: '' })
 
-    // Edit Task Modal state
     const [editTaskModal, setEditTaskModal] = useState<{
         open: boolean
         task: GanttTask | null
     }>({ open: false, task: null })
+
+    // Edit Project Modal
+    const [editProjectModal, setEditProjectModal] = useState<{
+        open: boolean
+        project: any | null
+    }>({ open: false, project: null })
 
     const [assignModal, setAssignModal] = useState<{
         open: boolean
@@ -472,6 +478,14 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                                     onDataChange={handleRefresh}
                                     onAddStory={handleAddStory}
                                     onAddTask={handleAddTask}
+                                    onEditProject={async (projectId) => {
+                                        const res = await getProjectById(projectId)
+                                        if (res.success && res.data) {
+                                            setEditProjectModal({ open: true, project: res.data })
+                                        } else {
+                                            alert('Failed to load project details')
+                                        }
+                                    }}
                                 />
                             ) : (
                                 <div className="flex items-center justify-center h-full text-slate-500">
@@ -525,6 +539,14 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                         data={workItemsData}
                         filters={filters}
                         onRefresh={handleRefresh}
+                        onEditProject={async (projectId) => {
+                            const res = await getProjectById(projectId)
+                            if (res.success && res.data) {
+                                setEditProjectModal({ open: true, project: res.data })
+                            } else {
+                                alert('Failed to load project details')
+                            }
+                        }}
                     />
                 ) : viewMode === 'weekly-workload' ? (
                     <div className="h-full overflow-y-auto p-4">
@@ -608,6 +630,20 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                     onClose={() => setWorkItemsModal({ ...workItemsModal, open: false })}
                     onChange={() => {
                         // Refresh Gantt data when work items change
+                        handleRefresh()
+                    }}
+                />
+            )}
+
+            {/* Edit Project Modal */}
+            {editProjectModal.project && (
+                <ProjectModal
+                    open={editProjectModal.open}
+                    onClose={() => setEditProjectModal({ open: false, project: null })}
+                    mode="edit"
+                    project={editProjectModal.project}
+                    onSuccess={() => {
+                        setEditProjectModal({ open: false, project: null })
                         handleRefresh()
                     }}
                 />

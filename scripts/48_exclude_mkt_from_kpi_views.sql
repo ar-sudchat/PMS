@@ -21,17 +21,21 @@ WITH MilestoneDelivery AS (
         mc.name AS milestone_name,
         pm.due_date,
         pm.completed_date,
-        -- Weight for Time to Delivery
-        COALESCE(pm.weight_ttd, mc.default_weight_ttd,
-            CASE mc.name
-                WHEN 'Mapping Data' THEN 30
-                WHEN 'System Test' THEN 30
-                WHEN 'User Acceptance Test' THEN 20
-                WHEN 'Go-Live' THEN 10
-                WHEN 'Close Go-Live' THEN 10
-                ELSE 0
-            END) AS milestone_weight,
-        -- Achievement percent (on-time delivery)
+        -- Weight for Time to Delivery (only count if completed)
+        CASE
+            WHEN pm.completed_date IS NOT NULL
+            THEN COALESCE(pm.weight_ttd, mc.default_weight_ttd,
+                CASE mc.name
+                    WHEN 'Mapping Data' THEN 30
+                    WHEN 'System Test' THEN 30
+                    WHEN 'User Acceptance Test' THEN 20
+                    WHEN 'Go-Live' THEN 10
+                    WHEN 'Close Go-Live' THEN 10
+                    ELSE 0
+                END)
+            ELSE 0
+        END AS milestone_weight,
+        -- Achievement percent (on-time delivery) - only for completed milestones
         CASE
             WHEN pm.completed_date IS NULL THEN 0
             WHEN pm.completed_date <= pm.due_date THEN 100
@@ -575,23 +579,33 @@ WITH ProjectMilestones AS (
         p.project_code,
         p.name AS project_name,
         p.project_owner_id,
+        ISNULL(p.sold_mandays, 0) AS sold_mandays,
         -- Go-Live milestone info
-        pm_golive.completed_date AS golive_completed_date,
+        gl.completed_date AS golive_completed_date,
         -- Close Go-Live milestone info
-        pm_close.completed_date AS close_golive_completed_date
+        cgl.completed_date AS close_golive_completed_date
     FROM pms.projects p
-    -- Join Go-Live milestone
-    INNER JOIN pms.project_milestones pm_golive ON pm_golive.project_id = p.id
-    INNER JOIN pms.milestone_configs mc_golive ON pm_golive.milestone_config_id = mc_golive.id
-        AND mc_golive.is_go_live = 1
-    -- Join Close Go-Live milestone (optional)
-    LEFT JOIN pms.project_milestones pm_close ON pm_close.project_id = p.id
-    LEFT JOIN pms.milestone_configs mc_close ON pm_close.milestone_config_id = mc_close.id
-        AND mc_close.is_post_go_live = 1
+    -- Get exactly ONE Go-Live milestone per project
+    CROSS APPLY (
+        SELECT TOP 1 pm1.completed_date
+        FROM pms.project_milestones pm1
+        INNER JOIN pms.milestone_configs mc1 ON pm1.milestone_config_id = mc1.id AND mc1.is_go_live = 1
+        WHERE pm1.project_id = p.id AND pm1.completed_date IS NOT NULL
+        ORDER BY pm1.completed_date
+    ) gl
+    -- Get exactly ONE Close Go-Live milestone per project (optional)
+    OUTER APPLY (
+        SELECT TOP 1 pm2.completed_date
+        FROM pms.project_milestones pm2
+        INNER JOIN pms.milestone_configs mc2 ON pm2.milestone_config_id = mc2.id
+            AND mc2.is_post_go_live = 1
+            AND ISNULL(mc2.is_go_live, 0) = 0  -- Exclude Go-Live milestone itself
+        WHERE pm2.project_id = p.id AND pm2.completed_date IS NOT NULL
+        ORDER BY pm2.completed_date DESC
+    ) cgl
     -- Exclude MKT projects
     LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
-    WHERE pm_golive.completed_date IS NOT NULL
-      AND p.is_active = 1
+    WHERE p.is_active = 1
       AND (pt.code IS NULL OR pt.code <> 'MKT')
 )
 SELECT
@@ -603,6 +617,7 @@ SELECT
     YEAR(pm.golive_completed_date) AS project_year,
     pm.golive_completed_date,
     pm.close_golive_completed_date,
+    pm.sold_mandays,
     -- Total Manday (work from Go-Live onwards)
     ISNULL((
         SELECT SUM(ts.hours) / 8.0

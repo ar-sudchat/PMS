@@ -86,7 +86,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
           { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
           { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3 },
-          { id: 'manday-control-dashboard', label: 'Project Tracking', labelTh: 'ติดตามโครงการ', path: '/kpi-record/manday-control', icon: Activity },
+          { id: 'project-status-overview', label: 'Project Status Overview', labelTh: 'ภาพรวมสถานะโครงการ', path: '/project-status-overview', icon: ClipboardList },
         ]
       }
     ]
@@ -104,7 +104,8 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
-          { id: 'resource-planning', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
+          { id: 'resource-planning-old', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
+          { id: 'resource-planning-board', label: 'Resource Planning Board', labelTh: 'บอร์ดวางแผนทรัพยากร', path: '/resource-planning', icon: Users },
         ]
       },
       {

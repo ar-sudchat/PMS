@@ -356,8 +356,8 @@ export async function getProjects(filters?: ProjectFilters) {
         mc.name as current_milestone_name,
         mc.color as current_milestone_color,
 
-        -- Progress
-        ISNULL((SELECT SUM(actual_mandays) FROM pms.project_milestones WHERE project_id = p.id), 0) as actual_mandays,
+        -- Progress (JOIN instead of subquery)
+        ISNULL(ms_sum.actual_mandays, 0) as actual_mandays,
 
         p.created_at
 
@@ -370,6 +370,11 @@ export async function getProjects(filters?: ProjectFilters) {
       LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
       LEFT JOIN pms.project_milestones cpm ON p.current_milestone_id = cpm.id
       LEFT JOIN pms.milestone_configs mc ON cpm.milestone_config_id = mc.id
+      LEFT JOIN (
+          SELECT project_id, SUM(actual_mandays) as actual_mandays
+          FROM pms.project_milestones
+          GROUP BY project_id
+      ) ms_sum ON ms_sum.project_id = p.id
       WHERE p.is_active = 1
     `
 
@@ -426,11 +431,42 @@ export async function getProjects(filters?: ProjectFilters) {
 
         const result = await request.query(query)
 
+        // Fetch milestones for all projects (for export due dates)
+        const projectIds = result.recordset.map((p: any) => p.id)
+        let milestonesMap: Record<string, any[]> = {}
+
+        if (projectIds.length > 0) {
+            const msRequest = pool.request()
+            const idPlaceholders = projectIds.map((id: string, i: number) => {
+                msRequest.input(`pid${i}`, sql.UniqueIdentifier, id)
+                return `@pid${i}`
+            })
+            const msResult = await msRequest.query(`
+                SELECT
+                    pm.project_id,
+                    mc.code,
+                    mc.name,
+                    pm.due_date,
+                    pm.completed_date,
+                    pm.status
+                FROM pms.project_milestones pm
+                LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                WHERE pm.project_id IN (${idPlaceholders.join(',')})
+                ORDER BY pm.sort_order
+            `)
+            for (const ms of msResult.recordset) {
+                const pid = String(ms.project_id).toLowerCase()
+                if (!milestonesMap[pid]) milestonesMap[pid] = []
+                milestonesMap[pid].push(ms)
+            }
+        }
+
         const projects = result.recordset.map((p: any) => ({
             ...p,
             progress_percent: p.sold_mandays > 0
                 ? Math.round((p.actual_mandays / p.sold_mandays) * 100)
-                : 0
+                : 0,
+            milestones: milestonesMap[String(p.id).toLowerCase()] || []
         }))
 
         return { success: true, data: projects }
@@ -527,7 +563,7 @@ export async function getProjectById(id: string) {
           pm.id,
           pm.milestone_config_id,
           pm.planned_mandays,
-          pm.actual_mandays,
+          ISNULL(ts_md.actual_mandays, 0) as actual_mandays,
           -- Legacy weight for backward comaptibility/display
           ISNULL(pm.weight_percent, 0) as weight_percent,
 
@@ -578,6 +614,17 @@ export async function getProjectById(id: string) {
 
         FROM pms.project_milestones pm
         LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+        LEFT JOIN (
+            SELECT
+                s.milestone_id,
+                CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS actual_mandays
+            FROM pms.timesheet_entries te
+            INNER JOIN pms.tasks t ON te.task_id = t.id
+            INNER JOIN pms.stories s ON t.story_id = s.id
+            WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
+            AND s.project_id = @project_id
+            GROUP BY s.milestone_id
+        ) ts_md ON ts_md.milestone_id = pm.id
         WHERE pm.project_id = @project_id
         ORDER BY pm.sort_order
       `)

@@ -8,6 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
+
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { MKT_STAGES } from '@/lib/constants/mkt-stages'
@@ -16,7 +17,7 @@ import { MktProject } from '@/lib/actions/mkt-tracking-actions'
 interface MktProjectTableProps {
     projects: MktProject[]
     onEdit: (project: MktProject) => void
-    onEditProject?: (project: MktProject) => void
+    onCodeClick?: (project: MktProject) => void
 }
 
 const stageColors: Record<string, string> = {
@@ -27,7 +28,7 @@ const stageColors: Record<string, string> = {
     PRICE_SENT: 'bg-teal-100 text-teal-800',
 }
 
-export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectTableProps) {
+export function MktProjectTable({ projects, onEdit, onCodeClick }: MktProjectTableProps) {
     const formatDate = (date: string | Date | null | undefined) => {
         if (!date) return '-'
         return format(new Date(date), 'dd-MM-yy')
@@ -73,19 +74,15 @@ export function MktProjectTable({ projects, onEdit, onEditProject }: MktProjectT
                                 onClick={() => onEdit(project)}
                             >
                                 <TableCell className="font-medium">
-                                    {onEditProject ? (
-                                        <button
-                                            className="text-blue-600 hover:text-blue-800 hover:underline"
-                                            onClick={(e) => {
-                                                e.stopPropagation()
-                                                onEditProject(project)
-                                            }}
-                                        >
-                                            {project.project_code}
-                                        </button>
-                                    ) : (
-                                        project.project_code
-                                    )}
+                                    <span
+                                        className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            onCodeClick?.(project)
+                                        }}
+                                    >
+                                        {project.project_code}
+                                    </span>
                                 </TableCell>
                                 <TableCell>
                                     <div className="max-w-[200px] font-medium truncate">

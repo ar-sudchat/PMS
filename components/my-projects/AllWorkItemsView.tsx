@@ -9,9 +9,10 @@ interface AllWorkItemsViewProps {
     data: ProjectWorkItemsGroup[]
     filters: any
     onRefresh: () => void
+    onEditProject?: (projectId: string) => void
 }
 
-export function AllWorkItemsView({ data, filters, onRefresh }: AllWorkItemsViewProps) {
+export function AllWorkItemsView({ data, filters, onRefresh, onEditProject }: AllWorkItemsViewProps) {
     const [selectedProjectId, setSelectedProjectId] = useState<string>('')
 
     // Auto-select first project
@@ -52,7 +53,11 @@ export function AllWorkItemsView({ data, filters, onRefresh }: AllWorkItemsViewP
                 {selectedProject ? (
                     <div className="h-full flex flex-col">
                         <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
-                            <h2 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                            <h2
+                                className="font-bold text-slate-900 text-lg flex items-center gap-2 cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                                onClick={() => onEditProject?.(selectedProject.projectId)}
+                                title="Click to edit project"
+                            >
                                 {selectedProject.projectCode}
                                 <span className="text-slate-400 font-normal">|</span>
                                 {selectedProject.projectName}

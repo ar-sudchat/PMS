@@ -72,6 +72,9 @@ import { ProjectMandayDetailDialog } from './ProjectMandayDetailDialog'
 import {
     LineChart,
     Line,
+    BarChart,
+    Bar,
+    Cell,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -108,7 +111,7 @@ export function MandayMonitorClient({
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [data, setData] = useState(initialData)
-    const [activeTab, setActiveTab] = useState<'projects' | 'employees' | 'missing'>('projects')
+    const [activeTab, setActiveTab] = useState<'projects' | 'employees'>('projects')
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
     const [detailDialogOpen, setDetailDialogOpen] = useState(false)
     const [missingData, setMissingData] = useState<MissingTimesheetResult | null>(null)
@@ -149,12 +152,12 @@ export function MandayMonitorClient({
         }
     }
 
-    // Auto-load when tab becomes active
+    // Auto-load missing timesheet data on mount
     useEffect(() => {
-        if (activeTab === 'missing' && !missingData) {
+        if (!missingData) {
             loadMissingData()
         }
-    }, [activeTab])
+    }, [])
 
     const handleProjectClick = (projectId: string) => {
         setSelectedProjectId(projectId)
@@ -206,6 +209,46 @@ export function MandayMonitorClient({
         ...t,
         monthName: MONTH_NAMES[t.month - 1]
     }))
+
+    // Period label
+    const periodLabel = useMemo(() => {
+        if (filters.periodType === 'month' && filters.month) {
+            return `เดือน${MONTH_NAMES[filters.month - 1]} ${filters.year}`
+        }
+        if (filters.periodType === 'quarter' && filters.quarter) {
+            return `ไตรมาส ${filters.quarter}/${filters.year}`
+        }
+        return `ปี ${filters.year}`
+    }, [filters])
+
+    // Manday breakdown data
+    const breakdownData = useMemo(() => {
+        const withManday = data.projects
+            .filter(p => p.actual_mandays > 0)
+            .sort((a, b) => b.actual_mandays - a.actual_mandays)
+
+        const totalUsed = withManday.reduce((s, p) => s + p.actual_mandays, 0)
+        const avg = withManday.length > 0 ? Math.round((totalUsed / withManday.length) * 10) / 10 : 0
+        const overCount = withManday.filter(p => p.budget_status === 'OVER').length
+
+        const barColorMap: Record<string, string> = {
+            OVER: '#ef4444',
+            WARNING: '#f59e0b',
+            NO_BUDGET: '#6b7280',
+            NORMAL: '#3b82f6',
+        }
+
+        const chartData = withManday.slice(0, 15).map(p => ({
+            name: p.project_code,
+            fullName: `${p.project_code} - ${p.project_name}`,
+            mandays: p.actual_mandays,
+            budget: p.budget_mandays,
+            color: barColorMap[p.budget_status] || '#3b82f6',
+            projectId: p.project_id,
+        }))
+
+        return { withManday, totalUsed, avg, overCount, chartData }
+    }, [data.projects])
 
     // Helper functions
     const getStatusColor = (status: string) => {
@@ -785,6 +828,121 @@ export function MandayMonitorClient({
                 </CardContent>
             </Card>
 
+            {/* Monthly Manday Breakdown */}
+            <Card className="border-0 shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <div className="p-1.5 bg-indigo-100 rounded-lg">
+                            <BarChart3 className="h-4 w-4 text-indigo-600" />
+                        </div>
+                        การใช้ Man-day {periodLabel}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {breakdownData.withManday.length === 0 ? (
+                        <p className="text-center text-gray-500 py-8">ไม่พบข้อมูลการใช้ Man-day ในช่วงนี้</p>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* Mini Summary Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-blue-600 font-medium">โครงการที่ใช้ MD</div>
+                                    <div className="text-2xl font-bold text-blue-900">{breakdownData.withManday.length}</div>
+                                </div>
+                                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-purple-600 font-medium">MD รวม</div>
+                                    <div className="text-2xl font-bold text-purple-900">{formatNumber(breakdownData.totalUsed)}</div>
+                                </div>
+                                <div className="bg-amber-50 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-amber-600 font-medium">เฉลี่ย/โครงการ</div>
+                                    <div className="text-2xl font-bold text-amber-900">{breakdownData.avg}</div>
+                                </div>
+                                <div className="bg-red-50 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-red-600 font-medium">เกินงบ</div>
+                                    <div className="text-2xl font-bold text-red-900">{breakdownData.overCount}</div>
+                                </div>
+                            </div>
+
+                            {/* Horizontal Bar Chart */}
+                            {breakdownData.chartData.length > 0 && (
+                                <div style={{ height: Math.max(200, breakdownData.chartData.length * 36) }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={breakdownData.chartData} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                            <XAxis type="number" tick={{ fontSize: 11 }} />
+                                            <YAxis
+                                                type="category"
+                                                dataKey="name"
+                                                width={70}
+                                                tick={{ fontSize: 11 }}
+                                            />
+                                            <Tooltip
+                                                formatter={(value: number, name: string) => [
+                                                    `${value} MD`,
+                                                    name === 'mandays' ? 'ใช้ไป' : 'Budget'
+                                                ]}
+                                                labelFormatter={(label) => {
+                                                    const item = breakdownData.chartData.find(d => d.name === label)
+                                                    return item?.fullName || label
+                                                }}
+                                            />
+                                            <Bar dataKey="mandays" name="mandays" radius={[0, 4, 4, 0]} barSize={20}>
+                                                {breakdownData.chartData.map((entry, idx) => (
+                                                    <Cell key={idx} fill={entry.color} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
+
+                            {/* Compact Table */}
+                            <div className="border rounded-lg overflow-hidden">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-gray-50">
+                                            <TableHead className="w-10 text-center">#</TableHead>
+                                            <TableHead>โครงการ</TableHead>
+                                            <TableHead className="text-right w-24">MD ใช้ไป</TableHead>
+                                            <TableHead className="text-right w-24">Budget</TableHead>
+                                            <TableHead className="text-right w-16">%</TableHead>
+                                            <TableHead className="text-center w-24">สถานะ</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {breakdownData.withManday.map((p, i) => (
+                                            <TableRow
+                                                key={p.project_id}
+                                                className="cursor-pointer hover:bg-blue-50/50"
+                                                onClick={() => handleProjectClick(p.project_id)}
+                                            >
+                                                <TableCell className="text-center text-gray-500 text-sm">{i + 1}</TableCell>
+                                                <TableCell>
+                                                    <span className="font-medium">{p.project_code}</span>
+                                                    <span className="text-gray-500 ml-2 text-sm">{p.project_name}</span>
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium">{p.actual_mandays}</TableCell>
+                                                <TableCell className="text-right text-gray-500">{p.budget_mandays || '—'}</TableCell>
+                                                <TableCell className="text-right text-sm">
+                                                    {p.budget_mandays > 0 ? `${p.percent_used}%` : '—'}
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <Badge className={getStatusColor(p.budget_status)}>
+                                                        {p.budget_status === 'OVER' ? 'Over' :
+                                                            p.budget_status === 'WARNING' ? 'Warning' :
+                                                                p.budget_status === 'NO_BUDGET' ? 'No Budget' : 'OK'}
+                                                    </Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
             {/* Top Projects & Employees */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Top Projects */}
@@ -885,6 +1043,170 @@ export function MandayMonitorClient({
                 </Card>
             </div>
 
+            {/* ตรวจสอบการคีย์เวลา - Standalone Section */}
+            <Card className="border-0 shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <div className="p-1.5 bg-orange-100 rounded-lg">
+                            <CalendarX className="h-4 w-4 text-orange-600" />
+                        </div>
+                        ตรวจสอบการคีย์เวลา
+                        {missingData && missingData.summary.employees_with_missing > 0 && (
+                            <Badge variant="destructive">{missingData.summary.employees_with_missing}</Badge>
+                        )}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        {/* Date Range Search */}
+                        <div className="flex flex-wrap items-end gap-4 p-4 bg-gray-50 rounded-lg">
+                            <div className="space-y-1">
+                                <Label className="text-sm flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    วันที่เริ่มต้น
+                                </Label>
+                                <Input
+                                    type="date"
+                                    value={missingStartDate}
+                                    onChange={(e) => setMissingStartDate(e.target.value)}
+                                    className="w-[160px]"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-sm flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    วันที่สิ้นสุด
+                                </Label>
+                                <Input
+                                    type="date"
+                                    value={missingEndDate}
+                                    onChange={(e) => setMissingEndDate(e.target.value)}
+                                    className="w-[160px]"
+                                />
+                            </div>
+                            <Button
+                                onClick={loadMissingData}
+                                disabled={isMissingLoading || !missingStartDate || !missingEndDate}
+                                className="gap-2"
+                            >
+                                {isMissingLoading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Search className="h-4 w-4" />
+                                )}
+                                ค้นหา
+                            </Button>
+                        </div>
+
+                        {isMissingLoading ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                                <span className="ml-2 text-gray-500">กำลังโหลด...</span>
+                            </div>
+                        ) : missingData ? (
+                            <div className="space-y-4">
+                                {/* Summary Cards */}
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                    <div className="bg-blue-50 rounded-lg p-4">
+                                        <div className="text-sm text-blue-600">พนักงาน SA/BA/PG</div>
+                                        <div className="text-2xl font-bold text-blue-900">{missingData.summary.total_employees}</div>
+                                    </div>
+                                    <div className="bg-red-50 rounded-lg p-4">
+                                        <div className="text-sm text-red-600">ไม่คีย์</div>
+                                        <div className="text-2xl font-bold text-red-900">{missingData.summary.employees_with_missing}</div>
+                                        <div className="text-xs text-red-500">({missingData.summary.total_missing_entries} วัน)</div>
+                                    </div>
+                                    <div className="bg-amber-50 rounded-lg p-4">
+                                        <div className="text-sm text-amber-600">&lt;5 ชม.</div>
+                                        <div className="text-2xl font-bold text-amber-900">{missingData.summary.employees_with_low_hours}</div>
+                                        <div className="text-xs text-amber-500">({missingData.summary.total_low_hours_entries} วัน)</div>
+                                    </div>
+                                    <div className="bg-emerald-50 rounded-lg p-4">
+                                        <div className="text-sm text-emerald-600">คีย์ครบ</div>
+                                        <div className="text-2xl font-bold text-emerald-900">
+                                            {missingData.summary.total_employees - missingData.summary.employees_with_missing - missingData.summary.employees_with_low_hours +
+                                                missingData.employees.filter(e => e.missing_count > 0 && e.low_hours_count > 0).length}
+                                        </div>
+                                    </div>
+                                    <div className="bg-purple-50 rounded-lg p-4">
+                                        <div className="text-sm text-purple-600">วันหยุด</div>
+                                        <div className="text-2xl font-bold text-purple-900">{missingData.summary.holidays.length}</div>
+                                        <div className="text-xs text-purple-500">ไม่มีใครคีย์</div>
+                                    </div>
+                                </div>
+
+                                {/* Holidays Display */}
+                                {missingData.summary.holidays.length > 0 && (
+                                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                        <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
+                                            <CalendarX className="h-4 w-4" />
+                                            วันหยุด (ไม่มี SA/BA/PG คนใดคีย์เวลา)
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                            {missingData.summary.holidays.map(date => (
+                                                <Badge key={date} className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
+                                                    {new Date(date).toLocaleDateString('th-TH', {
+                                                        weekday: 'short',
+                                                        day: 'numeric',
+                                                        month: 'short'
+                                                    })}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Period Info */}
+                                <div className="text-sm text-gray-500">
+                                    ตรวจสอบช่วง: {missingData.summary.period_start} - {missingData.summary.period_end}
+                                    <span className="ml-2 text-gray-400">(ไม่รวมวันเสาร์-อาทิตย์ และวันหยุด)</span>
+                                </div>
+
+                                {/* Employee Table */}
+                                <DataTable
+                                    columns={missingTimesheetColumns}
+                                    data={missingData.employees}
+                                    pageSize={15}
+                                    showPagination={true}
+                                    showPageSizeSelector={true}
+                                    emptyMessage="ไม่พบข้อมูลพนักงาน"
+                                    onRowClick={handleMissingEmployeeClick}
+                                />
+
+                                {/* Legend */}
+                                <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                        <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                        คีย์ครบแล้ว
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3 text-orange-600" />
+                                        มีปัญหา
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <AlertTriangle className="h-3 w-3 text-red-600" />
+                                        ขาด 5+ วัน
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <Badge className="h-4 bg-red-50 text-red-700 text-[10px]">ไม่คีย์</Badge>
+                                        วันที่ไม่ได้คีย์เลย
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <Badge className="h-4 bg-amber-50 text-amber-700 text-[10px]">&lt;5h</Badge>
+                                        คีย์ไม่ครบ 5 ชม.
+                                    </span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center text-gray-500 py-8">
+                                <Calendar className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                                <p>เลือกช่วงวันที่แล้วกด "ค้นหา"</p>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Project & Employee Tabs */}
             <Card className="border-0 shadow-lg">
                 <CardHeader className="pb-2">
@@ -913,22 +1235,6 @@ export function MandayMonitorClient({
                                 <Users className="h-4 w-4" />
                                 Employee Workload
                                 <Badge variant="secondary" className="ml-1">{data.employees.length}</Badge>
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('missing')}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                    activeTab === 'missing'
-                                        ? 'bg-white text-orange-600 shadow-sm'
-                                        : 'text-gray-600 hover:text-gray-900'
-                                }`}
-                            >
-                                <CalendarX className="h-4 w-4" />
-                                ตรวจสอบการคีย์เวลา
-                                {missingData && missingData.summary.employees_with_missing > 0 && (
-                                    <Badge variant="destructive" className="ml-1">
-                                        {missingData.summary.employees_with_missing}
-                                    </Badge>
-                                )}
                             </button>
                         </div>
                     </div>
@@ -975,157 +1281,6 @@ export function MandayMonitorClient({
                                     &gt;100% Over
                                 </span>
                             </div>
-                        </div>
-                    )}
-
-                    {/* Missing Timesheet Tab */}
-                    {activeTab === 'missing' && (
-                        <div className="space-y-4">
-                            {/* Date Range Search */}
-                            <div className="flex flex-wrap items-end gap-4 p-4 bg-gray-50 rounded-lg">
-                                <div className="space-y-1">
-                                    <Label className="text-sm flex items-center gap-1">
-                                        <Calendar className="h-3 w-3" />
-                                        วันที่เริ่มต้น
-                                    </Label>
-                                    <Input
-                                        type="date"
-                                        value={missingStartDate}
-                                        onChange={(e) => setMissingStartDate(e.target.value)}
-                                        className="w-[160px]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-sm flex items-center gap-1">
-                                        <Calendar className="h-3 w-3" />
-                                        วันที่สิ้นสุด
-                                    </Label>
-                                    <Input
-                                        type="date"
-                                        value={missingEndDate}
-                                        onChange={(e) => setMissingEndDate(e.target.value)}
-                                        className="w-[160px]"
-                                    />
-                                </div>
-                                <Button
-                                    onClick={loadMissingData}
-                                    disabled={isMissingLoading || !missingStartDate || !missingEndDate}
-                                    className="gap-2"
-                                >
-                                    {isMissingLoading ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <Search className="h-4 w-4" />
-                                    )}
-                                    ค้นหา
-                                </Button>
-                            </div>
-
-                            {isMissingLoading ? (
-                                <div className="flex items-center justify-center py-12">
-                                    <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                                    <span className="ml-2 text-gray-500">กำลังโหลด...</span>
-                                </div>
-                            ) : missingData ? (
-                                <div className="space-y-4">
-                                    {/* Summary Cards */}
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                        <div className="bg-blue-50 rounded-lg p-4">
-                                            <div className="text-sm text-blue-600">พนักงาน SA/BA/PG</div>
-                                            <div className="text-2xl font-bold text-blue-900">{missingData.summary.total_employees}</div>
-                                        </div>
-                                        <div className="bg-red-50 rounded-lg p-4">
-                                            <div className="text-sm text-red-600">ไม่คีย์</div>
-                                            <div className="text-2xl font-bold text-red-900">{missingData.summary.employees_with_missing}</div>
-                                            <div className="text-xs text-red-500">({missingData.summary.total_missing_entries} วัน)</div>
-                                        </div>
-                                        <div className="bg-amber-50 rounded-lg p-4">
-                                            <div className="text-sm text-amber-600">&lt;5 ชม.</div>
-                                            <div className="text-2xl font-bold text-amber-900">{missingData.summary.employees_with_low_hours}</div>
-                                            <div className="text-xs text-amber-500">({missingData.summary.total_low_hours_entries} วัน)</div>
-                                        </div>
-                                        <div className="bg-emerald-50 rounded-lg p-4">
-                                            <div className="text-sm text-emerald-600">คีย์ครบ</div>
-                                            <div className="text-2xl font-bold text-emerald-900">
-                                                {missingData.summary.total_employees - missingData.summary.employees_with_missing - missingData.summary.employees_with_low_hours +
-                                                    missingData.employees.filter(e => e.missing_count > 0 && e.low_hours_count > 0).length}
-                                            </div>
-                                        </div>
-                                        <div className="bg-purple-50 rounded-lg p-4">
-                                            <div className="text-sm text-purple-600">วันหยุด</div>
-                                            <div className="text-2xl font-bold text-purple-900">{missingData.summary.holidays.length}</div>
-                                            <div className="text-xs text-purple-500">ไม่มีใครคีย์</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Holidays Display */}
-                                    {missingData.summary.holidays.length > 0 && (
-                                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
-                                                <CalendarX className="h-4 w-4" />
-                                                วันหยุด (ไม่มี SA/BA/PG คนใดคีย์เวลา)
-                                            </div>
-                                            <div className="flex flex-wrap gap-1">
-                                                {missingData.summary.holidays.map(date => (
-                                                    <Badge key={date} className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
-                                                        {new Date(date).toLocaleDateString('th-TH', {
-                                                            weekday: 'short',
-                                                            day: 'numeric',
-                                                            month: 'short'
-                                                        })}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Period Info */}
-                                    <div className="text-sm text-gray-500">
-                                        ตรวจสอบช่วง: {missingData.summary.period_start} - {missingData.summary.period_end}
-                                        <span className="ml-2 text-gray-400">(ไม่รวมวันเสาร์-อาทิตย์ และวันหยุด)</span>
-                                    </div>
-
-                                    {/* Employee Table */}
-                                    <DataTable
-                                        columns={missingTimesheetColumns}
-                                        data={missingData.employees}
-                                        pageSize={15}
-                                        showPagination={true}
-                                        showPageSizeSelector={true}
-                                        emptyMessage="ไม่พบข้อมูลพนักงาน"
-                                        onRowClick={handleMissingEmployeeClick}
-                                    />
-
-                                    {/* Legend */}
-                                    <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-500">
-                                        <span className="flex items-center gap-1">
-                                            <CheckCircle className="h-3 w-3 text-emerald-600" />
-                                            คีย์ครบแล้ว
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <AlertCircle className="h-3 w-3 text-orange-600" />
-                                            มีปัญหา
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <AlertTriangle className="h-3 w-3 text-red-600" />
-                                            ขาด 5+ วัน
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <Badge className="h-4 bg-red-50 text-red-700 text-[10px]">ไม่คีย์</Badge>
-                                            วันที่ไม่ได้คีย์เลย
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <Badge className="h-4 bg-amber-50 text-amber-700 text-[10px]">&lt;5h</Badge>
-                                            คีย์ไม่ครบ 5 ชม.
-                                        </span>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-center text-gray-500 py-8">
-                                    <Calendar className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                                    <p>เลือกช่วงวันที่แล้วกด "ค้นหา"</p>
-                                </div>
-                            )}
                         </div>
                     )}
                 </CardContent>

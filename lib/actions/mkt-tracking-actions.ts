@@ -73,18 +73,87 @@ export interface MktProjectFilters {
     year?: number | 'ALL'
     projectId?: string
     ownerId?: string
+    page?: number
+    limit?: number
 }
 
 // Fetch MKT Projects with filters
 export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
     success: boolean
     data?: MktProject[]
+    total?: number
+    page?: number
+    limit?: number
     error?: string
 }> {
     try {
         const pool = await getConnection()
 
-        let query = `
+        let baseQuery = `
+            FROM pms.projects p
+            INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
+            LEFT JOIN pms.customers c ON c.id = p.customer_id
+            LEFT JOIN pms.employees changed_by ON changed_by.id = p.mkt_stage_changed_by
+            LEFT JOIN pms.employees pm ON pm.id = p.project_manager_id
+            LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
+            LEFT JOIN pms.employees creator ON creator.id = p.created_by
+            LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
+            WHERE pt.code = 'MKT'
+            AND (psc.code IS NULL OR psc.code != 'CANCELLED')
+        `
+
+        const request = pool.request()
+
+        // Apply filters
+        if (filters?.stage && filters.stage !== 'ALL') {
+            baseQuery += ` AND ISNULL(p.mkt_stage, 'NEW') = @stage`
+            request.input('stage', filters.stage)
+        }
+
+        if (filters?.search) {
+            baseQuery += ` AND (p.project_code LIKE @search OR p.name LIKE @search OR c.name LIKE @search)`
+            request.input('search', `%${filters.search}%`)
+        }
+
+        if (filters?.projectManagerId) {
+            baseQuery += ` AND p.project_manager_id = @pmId`
+            request.input('pmId', filters.projectManagerId)
+        }
+
+        if (filters?.customerId) {
+            baseQuery += ` AND p.customer_id = @customerId`
+            request.input('customerId', filters.customerId)
+        }
+
+        if (filters?.year && filters.year !== 'ALL') {
+            baseQuery += ` AND YEAR(p.created_at) = @year`
+            request.input('year', filters.year)
+        }
+
+        if (filters?.projectId) {
+            baseQuery += ` AND p.id = @filterProjectId`
+            request.input('filterProjectId', filters.projectId)
+        }
+
+        if (filters?.ownerId) {
+            baseQuery += ` AND p.project_owner_id = @ownerId`
+            request.input('ownerId', filters.ownerId)
+        }
+
+        // Count total
+        const countQuery = `SELECT COUNT(*) as total ${baseQuery}`
+        const countResult = await request.query(countQuery)
+        const total = countResult.recordset[0].total
+
+        // Pagination
+        const page = filters?.page || 1
+        const limit = filters?.limit || 10
+        const offset = (page - 1) * limit
+
+        request.input('offset', offset)
+        request.input('limit', limit)
+
+        const selectQuery = `
             SELECT
                 p.id,
                 p.project_code,
@@ -119,70 +188,30 @@ export async function fetchMktProjects(filters?: MktProjectFilters): Promise<{
                 p.created_by,
                 COALESCE(creator.first_name_th + ' ' + creator.last_name_th, creator.first_name + ' ' + creator.last_name) AS created_by_name,
                 DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) AS days_in_stage
-            FROM pms.projects p
-            INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
-            LEFT JOIN pms.customers c ON c.id = p.customer_id
-            LEFT JOIN pms.employees changed_by ON changed_by.id = p.mkt_stage_changed_by
-            LEFT JOIN pms.employees pm ON pm.id = p.project_manager_id
-            LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
-            LEFT JOIN pms.employees creator ON creator.id = p.created_by
-            LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
-            WHERE pt.code = 'MKT'
-            AND (psc.code IS NULL OR psc.code != 'CANCELLED')
+            ${baseQuery}
+            ORDER BY
+                CASE ISNULL(p.mkt_stage, 'NEW')
+                    WHEN 'NEW' THEN 1
+                    WHEN 'CONTACT' THEN 2
+                    WHEN 'ESTIMATING' THEN 3
+                    WHEN 'QUOTED' THEN 4
+                    WHEN 'PRICE_SENT' THEN 5
+                    ELSE 6
+                END,
+                p.created_at DESC
+            OFFSET @offset ROWS
+            FETCH NEXT @limit ROWS ONLY
         `
 
-        const request = pool.request()
+        const result = await request.query(selectQuery)
 
-        // Apply filters
-        if (filters?.stage && filters.stage !== 'ALL') {
-            query += ` AND ISNULL(p.mkt_stage, 'NEW') = @stage`
-            request.input('stage', filters.stage)
+        return {
+            success: true,
+            data: result.recordset,
+            total,
+            page,
+            limit
         }
-
-        if (filters?.search) {
-            query += ` AND (p.project_code LIKE @search OR p.name LIKE @search OR c.name LIKE @search)`
-            request.input('search', `%${filters.search}%`)
-        }
-
-        if (filters?.projectManagerId) {
-            query += ` AND p.project_manager_id = @pmId`
-            request.input('pmId', filters.projectManagerId)
-        }
-
-        if (filters?.customerId) {
-            query += ` AND p.customer_id = @customerId`
-            request.input('customerId', filters.customerId)
-        }
-
-        if (filters?.year && filters.year !== 'ALL') {
-            query += ` AND YEAR(p.created_at) = @year`
-            request.input('year', filters.year)
-        }
-
-        if (filters?.projectId) {
-            query += ` AND p.id = @filterProjectId`
-            request.input('filterProjectId', filters.projectId)
-        }
-
-        if (filters?.ownerId) {
-            query += ` AND p.project_owner_id = @ownerId`
-            request.input('ownerId', filters.ownerId)
-        }
-
-        query += ` ORDER BY
-            CASE ISNULL(p.mkt_stage, 'NEW')
-                WHEN 'NEW' THEN 1
-                WHEN 'CONTACT' THEN 2
-                WHEN 'ESTIMATING' THEN 3
-                WHEN 'QUOTED' THEN 4
-                WHEN 'PRICE_SENT' THEN 5
-                ELSE 6
-            END,
-            p.created_at DESC`
-
-        const result = await request.query(query)
-
-        return { success: true, data: result.recordset }
     } catch (error) {
         console.error('Error fetching MKT projects:', error)
         return { success: false, error: 'Failed to fetch MKT projects' }
