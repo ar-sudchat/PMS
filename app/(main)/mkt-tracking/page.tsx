@@ -3,12 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Loader2, Search, Plus, RotateCcw } from 'lucide-react'
+import { Loader2, Search, Plus, RotateCcw, LayoutDashboard, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { MktStageFilter } from '@/components/mkt-tracking/MktStageFilter'
 import { MktProjectTable } from '@/components/mkt-tracking/MktProjectTable'
 import { MktDetailDialog } from '@/components/mkt-tracking/MktDetailDialog'
 import { MktHistoryPanel } from '@/components/mkt-tracking/MktHistoryPanel'
+import { MktDashboard } from '@/components/mkt-tracking/MktDashboard'
 import { ProjectModal } from '@/components/modals/ProjectModal'
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 import { MktStageCode } from '@/lib/constants/mkt-stages'
@@ -16,9 +18,12 @@ import {
     fetchMktProjects,
     fetchMktStageSummary,
     fetchMktFilterOptions,
+    fetchMktDashboardData,
+    backfillMktMilestones,
     MktProject,
     MktStageSummary,
     MktFilterOptions,
+    MktDashboardData,
 } from '@/lib/actions/mkt-tracking-actions'
 
 import { getProjectById } from '@/lib/actions/project-actions'
@@ -32,10 +37,18 @@ import {
 } from '@/components/ui/pagination'
 
 export default function MktTrackingPage() {
+    // Tab state
+    const [activeTab, setActiveTab] = useState('list')
+
+    // List tab states
     const [projects, setProjects] = useState<MktProject[]>([])
     const [summary, setSummary] = useState<MktStageSummary[]>([])
     const [selectedStage, setSelectedStage] = useState<MktStageCode | 'ALL'>('ALL')
     const [isLoading, setIsLoading] = useState(true)
+
+    // Dashboard tab states
+    const [dashboardData, setDashboardData] = useState<MktDashboardData | null>(null)
+    const [isDashboardLoading, setIsDashboardLoading] = useState(true)
 
     // Pagination
     const [page, setPage] = useState(1)
@@ -70,17 +83,41 @@ export default function MktTrackingPage() {
     })
 
 
-    // Load filter options on mount
+    // Load filter options on mount + backfill MKT milestones for existing projects
     useEffect(() => {
-        const loadFilterOptions = async () => {
+        const init = async () => {
+            // Backfill MKT milestones for existing projects that don't have one
+            await backfillMktMilestones()
+
             const result = await fetchMktFilterOptions()
             if (result.success && result.data) {
                 setFilterOptions(result.data)
             }
         }
-        loadFilterOptions()
+        init()
     }, [])
 
+    // Load dashboard data
+    const loadDashboardData = useCallback(async () => {
+        setIsDashboardLoading(true)
+        try {
+            const result = await fetchMktDashboardData({
+                year: selectedYear?.value as number | undefined,
+                customerId: selectedCustomer?.value as string | undefined,
+                projectManagerId: selectedPM?.value as string | undefined,
+                ownerId: selectedOwner?.value as string | undefined,
+            })
+            if (result.success && result.data) {
+                setDashboardData(result.data)
+            }
+        } catch (error) {
+            console.error('Failed to load dashboard data:', error)
+        } finally {
+            setIsDashboardLoading(false)
+        }
+    }, [selectedYear, selectedCustomer, selectedPM, selectedOwner])
+
+    // Load list data
     const loadData = useCallback(async () => {
         setIsLoading(true)
         try {
@@ -113,9 +150,14 @@ export default function MktTrackingPage() {
         }
     }, [selectedStage, selectedYear, selectedCustomer, selectedProject, selectedOwner, selectedPM, searchTerm, page])
 
+    // Load data based on active tab
     useEffect(() => {
-        loadData()
-    }, [loadData])
+        if (activeTab === 'dashboard') {
+            loadDashboardData()
+        } else {
+            loadData()
+        }
+    }, [activeTab, loadDashboardData, loadData])
 
     // Reset page when filters change
     useEffect(() => {
@@ -170,146 +212,181 @@ export default function MktTrackingPage() {
             {/* Main Content */}
             <Card>
                 <CardContent className="pt-4">
-                    {/* Header with Button */}
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold">MKT Tracking</h2>
-                        <Button onClick={() => setCreateDialogOpen(true)}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Create Project
-                        </Button>
-                    </div>
+                    <Tabs value={activeTab} onValueChange={setActiveTab}>
+                        {/* Header with Tabs and Button */}
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold">MKT Tracking</h2>
+                            <div className="flex items-center gap-3">
+                                <TabsList>
+                                    <TabsTrigger value="dashboard" className="gap-1.5">
+                                        <LayoutDashboard className="h-4 w-4" />
+                                        Dashboard
+                                    </TabsTrigger>
+                                    <TabsTrigger value="list" className="gap-1.5">
+                                        <List className="h-4 w-4" />
+                                        รายการ
+                                    </TabsTrigger>
+                                </TabsList>
+                                <Button onClick={() => setCreateDialogOpen(true)}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Create Project
+                                </Button>
+                            </div>
+                        </div>
 
-                    {/* Filters */}
-                    <div className="flex flex-wrap items-center gap-3 mb-4">
-                        <div className="relative flex-1 min-w-[250px]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="ค้นหา รหัส, ชื่อ, ลูกค้า..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-9"
-                            />
-                        </div>
-                        <div className="w-[120px]">
-                            <SmartCombobox
-                                placeholder="ปี..."
-                                options={filterOptions?.years.map(year => ({
-                                    value: year,
-                                    label: String(year)
-                                })) || []}
-                                value={selectedYear}
-                                onChange={setSelectedYear}
-                                searchable={false}
-                            />
-                        </div>
-                        <div className="w-[260px]">
-                            <SmartCombobox
-                                placeholder="ลูกค้า..."
-                                options={filterOptions?.customers.map(c => ({
-                                    value: c.id,
-                                    label: c.name
-                                })) || []}
-                                value={selectedCustomer}
-                                onChange={setSelectedCustomer}
-                            />
-                        </div>
-                        <div className="w-[320px]">
-                            <SmartCombobox
-                                placeholder="โครงการ..."
-                                options={filterOptions?.projects.map(p => ({
-                                    value: p.id,
-                                    label: `${p.project_code} - ${p.name}`
-                                })) || []}
-                                value={selectedProject}
-                                onChange={setSelectedProject}
-                            />
-                        </div>
-                        <div className="w-[180px]">
-                            <SmartCombobox
-                                placeholder="Owner..."
-                                options={filterOptions?.owners.map(o => ({
-                                    value: o.id,
-                                    label: o.full_name
-                                })) || []}
-                                value={selectedOwner}
-                                onChange={setSelectedOwner}
-                            />
-                        </div>
-                        <div className="w-[180px]">
-                            <SmartCombobox
-                                placeholder="PM..."
-                                options={filterOptions?.pms?.map(pm => ({
-                                    value: pm.id,
-                                    label: pm.full_name
-                                })) || []}
-                                value={selectedPM}
-                                onChange={setSelectedPM}
-                            />
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={handleClearFilters}
-                            title="ล้างตัวกรอง"
-                        >
-                            <RotateCcw className="h-4 w-4" />
-                        </Button>
-                    </div>
-
-                    {isLoading && projects.length === 0 ? (
-                        <div className="flex items-center justify-center py-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : (
-                        <>
-                            {/* Stage Filter */}
-                            <MktStageFilter
-                                selectedStage={selectedStage}
-                                onStageChange={handleStageChange}
-                                summary={summary}
-                            />
-
-                            {/* Project Table */}
-                            <MktProjectTable
-                                projects={projects}
-                                onEdit={handleEdit}
-                                onCodeClick={handleCodeClick}
-                            />
-
-                            {/* Pagination */}
-                            {totalPages > 1 && (
-                                <div className="mt-4 flex justify-end">
-                                    <Pagination>
-                                        <PaginationContent>
-                                            <PaginationItem>
-                                                <PaginationPrevious
-                                                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                                                    className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                                                />
-                                            </PaginationItem>
-                                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                                                <PaginationItem key={p}>
-                                                    <PaginationLink
-                                                        isActive={page === p}
-                                                        onClick={() => setPage(p)}
-                                                        className="cursor-pointer"
-                                                    >
-                                                        {p}
-                                                    </PaginationLink>
-                                                </PaginationItem>
-                                            ))}
-                                            <PaginationItem>
-                                                <PaginationNext
-                                                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                                    className={page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                                                />
-                                            </PaginationItem>
-                                        </PaginationContent>
-                                    </Pagination>
+                        {/* Filters */}
+                        <div className="flex flex-wrap items-center gap-3 mb-4">
+                            {activeTab === 'list' && (
+                                <div className="relative flex-1 min-w-[250px]">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="ค้นหา รหัส, ชื่อ, ลูกค้า..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-9"
+                                    />
                                 </div>
                             )}
-                        </>
-                    )}
+                            <div className="w-[120px]">
+                                <SmartCombobox
+                                    placeholder="ปี..."
+                                    options={filterOptions?.years.map(year => ({
+                                        value: year,
+                                        label: String(year)
+                                    })) || []}
+                                    value={selectedYear}
+                                    onChange={setSelectedYear}
+                                    searchable={false}
+                                />
+                            </div>
+                            <div className="w-[260px]">
+                                <SmartCombobox
+                                    placeholder="ลูกค้า..."
+                                    options={filterOptions?.customers.map(c => ({
+                                        value: c.id,
+                                        label: c.name
+                                    })) || []}
+                                    value={selectedCustomer}
+                                    onChange={setSelectedCustomer}
+                                />
+                            </div>
+                            {activeTab === 'list' && (
+                                <div className="w-[320px]">
+                                    <SmartCombobox
+                                        placeholder="โครงการ..."
+                                        options={filterOptions?.projects.map(p => ({
+                                            value: p.id,
+                                            label: `${p.project_code} - ${p.name}`
+                                        })) || []}
+                                        value={selectedProject}
+                                        onChange={setSelectedProject}
+                                    />
+                                </div>
+                            )}
+                            <div className="w-[180px]">
+                                <SmartCombobox
+                                    placeholder="Owner..."
+                                    options={filterOptions?.owners.map(o => ({
+                                        value: o.id,
+                                        label: o.full_name
+                                    })) || []}
+                                    value={selectedOwner}
+                                    onChange={setSelectedOwner}
+                                />
+                            </div>
+                            <div className="w-[180px]">
+                                <SmartCombobox
+                                    placeholder="PM..."
+                                    options={filterOptions?.pms?.map(pm => ({
+                                        value: pm.id,
+                                        label: pm.full_name
+                                    })) || []}
+                                    value={selectedPM}
+                                    onChange={setSelectedPM}
+                                />
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleClearFilters}
+                                title="ล้างตัวกรอง"
+                            >
+                                <RotateCcw className="h-4 w-4" />
+                            </Button>
+                        </div>
+
+                        {/* Dashboard Tab */}
+                        <TabsContent value="dashboard">
+                            <MktDashboard
+                                data={dashboardData}
+                                isLoading={isDashboardLoading}
+                                filters={{
+                                    year: selectedYear?.value as number | undefined,
+                                    customerId: selectedCustomer?.value as string | undefined,
+                                    projectManagerId: selectedPM?.value as string | undefined,
+                                    ownerId: selectedOwner?.value as string | undefined,
+                                }}
+                            />
+                        </TabsContent>
+
+                        {/* List Tab */}
+                        <TabsContent value="list">
+                            {isLoading && projects.length === 0 ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Stage Filter */}
+                                    <MktStageFilter
+                                        selectedStage={selectedStage}
+                                        onStageChange={handleStageChange}
+                                        summary={summary}
+                                    />
+
+                                    {/* Project Table */}
+                                    <MktProjectTable
+                                        projects={projects}
+                                        onEdit={handleEdit}
+                                        onCodeClick={handleCodeClick}
+                                    />
+
+                                    {/* Pagination */}
+                                    {totalPages > 1 && (
+                                        <div className="mt-4 flex justify-end">
+                                            <Pagination>
+                                                <PaginationContent>
+                                                    <PaginationItem>
+                                                        <PaginationPrevious
+                                                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                                                            className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                                        />
+                                                    </PaginationItem>
+                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                                                        <PaginationItem key={p}>
+                                                            <PaginationLink
+                                                                isActive={page === p}
+                                                                onClick={() => setPage(p)}
+                                                                className="cursor-pointer"
+                                                            >
+                                                                {p}
+                                                            </PaginationLink>
+                                                        </PaginationItem>
+                                                    ))}
+                                                    <PaginationItem>
+                                                        <PaginationNext
+                                                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                                            className={page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                                        />
+                                                    </PaginationItem>
+                                                </PaginationContent>
+                                            </Pagination>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </TabsContent>
+                    </Tabs>
                 </CardContent>
             </Card>
 
@@ -350,7 +427,7 @@ export default function MktTrackingPage() {
                     onClose={() => setEditDetailsModal({ open: false, project: null })}
                     mode="edit"
                     project={editDetailsModal.project}
-                    onSuccess={() => { // Refresh both lists?
+                    onSuccess={() => {
                         loadData()
                         setEditDetailsModal({ open: false, project: null })
                     }}

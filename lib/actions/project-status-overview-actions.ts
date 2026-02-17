@@ -22,6 +22,7 @@ export interface StatusProject {
     golive_due_date: string | null
     grouping_month: number
     budget_mandays: number
+    actual_mandays: number
 }
 
 export interface StatusOverviewFilters {
@@ -161,6 +162,18 @@ export async function getProjectStatusOverview(filters?: StatusOverviewFilters):
 
                 ISNULL(p.sold_mandays, 0) AS budget_mandays,
 
+                -- Actual mandays from timesheet (exclude cancelled tasks and cancelled timesheet entries)
+                ISNULL((
+                    SELECT CAST(SUM(te.hours) / 8.0 AS DECIMAL(10,1))
+                    FROM pms.timesheet_entries te
+                    INNER JOIN pms.tasks t ON te.task_id = t.id
+                    INNER JOIN pms.stories s ON t.story_id = s.id
+                    INNER JOIN pms.project_milestones pm_ts ON s.milestone_id = pm_ts.id
+                    WHERE pm_ts.project_id = p.id
+                      AND t.status <> 'cancelled'
+                      AND te.status <> 'cancelled'
+                ), 0) AS actual_mandays,
+
                 -- Grouping date
                 COALESCE(
                     (SELECT TOP 1 pm4.due_date FROM pms.project_milestones pm4
@@ -274,6 +287,7 @@ export async function getProjectStatusOverview(filters?: StatusOverviewFilters):
                 golive_due_date: r.golive_due_date ? r.golive_due_date.toISOString() : null,
                 grouping_month: gMonth,
                 budget_mandays: r.budget_mandays || 0,
+                actual_mandays: parseFloat(r.actual_mandays) || 0,
             }
         })
 

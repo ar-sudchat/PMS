@@ -834,6 +834,11 @@ export async function createMktProject(data: CreateMktProjectData): Promise<{
         const mktTypeId = typeResult.recordset[0].id
         const currentYear = new Date().getFullYear()
 
+        // Get default status (PLANNING)
+        const statusResult = await pool.request()
+            .query(`SELECT TOP 1 id FROM pms.project_status_configs WHERE code = 'PLANNING'`)
+        const statusId = statusResult.recordset.length > 0 ? statusResult.recordset[0].id : null
+
         // Create the project
         const result = await pool.request()
             .input('project_code', data.project_code)
@@ -846,20 +851,37 @@ export async function createMktProject(data: CreateMktProjectData): Promise<{
             .input('project_owner_id', data.project_owner_id || null)
             .input('project_type_id', mktTypeId)
             .input('mkt_stage', 'NEW')
+            .input('status_id', statusId)
             .input('created_by', user.id)
             .query(`
                 INSERT INTO pms.projects
                 (project_code, project_year, name, name_th, description, customer_id,
                  project_manager_id, project_owner_id, project_type_id, mkt_stage,
-                 mkt_stage_changed_at, mkt_stage_changed_by, created_by, created_at)
+                 mkt_stage_changed_at, mkt_stage_changed_by, status_id, created_by, created_at)
                 OUTPUT INSERTED.id
                 VALUES
                 (@project_code, @project_year, @name, @name_th, @description, @customer_id,
                  @project_manager_id, @project_owner_id, @project_type_id, @mkt_stage,
-                 GETDATE(), @created_by, @created_by, GETDATE())
+                 GETDATE(), @created_by, @status_id, @created_by, GETDATE())
             `)
 
         const projectId = result.recordset[0].id
+
+        // Auto-create MKT milestone for the project
+        const mktMilestoneConfig = await pool.request()
+            .query(`SELECT id FROM pms.milestone_configs WHERE code = 'MKT'`)
+
+        if (mktMilestoneConfig.recordset.length > 0) {
+            await pool.request()
+                .input('project_id', projectId)
+                .input('milestone_config_id', mktMilestoneConfig.recordset[0].id)
+                .query(`
+                    INSERT INTO pms.project_milestones
+                    (project_id, milestone_config_id, planned_mandays, weight_percent, sort_order, progress_percent)
+                    VALUES
+                    (@project_id, @milestone_config_id, 0, 100, 0, 0)
+                `)
+        }
 
         // Log the creation
         await pool.request()
@@ -877,6 +899,56 @@ export async function createMktProject(data: CreateMktProjectData): Promise<{
     } catch (error) {
         console.error('Error creating MKT project:', error)
         return { success: false, error: 'Failed to create MKT project' }
+    }
+}
+
+// Backfill MKT milestone for existing MKT projects that don't have one
+export async function backfillMktMilestones(): Promise<{
+    success: boolean
+    count?: number
+    error?: string
+}> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+
+        // 1. Backfill MKT milestones
+        const result = await pool.request()
+            .query(`
+                INSERT INTO pms.project_milestones (project_id, milestone_config_id, planned_mandays, weight_percent, sort_order, progress_percent)
+                SELECT p.id, mc.id, 0, 100, 0, 0
+                FROM pms.projects p
+                INNER JOIN pms.project_types pt ON p.project_type_id = pt.id
+                CROSS JOIN pms.milestone_configs mc
+                WHERE pt.code = 'MKT'
+                  AND mc.code = 'MKT'
+                  AND p.is_active = 1
+                  AND NOT EXISTS (
+                      SELECT 1 FROM pms.project_milestones pm
+                      WHERE pm.project_id = p.id AND pm.milestone_config_id = mc.id
+                  )
+            `)
+
+        // 2. Set status_id = PLANNING for MKT projects that have NULL status_id
+        await pool.request()
+            .query(`
+                UPDATE p
+                SET p.status_id = psc.id
+                FROM pms.projects p
+                INNER JOIN pms.project_types pt ON p.project_type_id = pt.id
+                CROSS JOIN pms.project_status_configs psc
+                WHERE pt.code = 'MKT'
+                  AND psc.code = 'PLANNING'
+                  AND p.is_active = 1
+                  AND p.status_id IS NULL
+            `)
+
+        return { success: true, count: result.rowsAffected[0] }
+    } catch (error) {
+        console.error('Error backfilling MKT milestones:', error)
+        return { success: false, error: 'Failed to backfill milestones' }
     }
 }
 
@@ -967,5 +1039,446 @@ export async function fetchMktFilterOptions(): Promise<{
     } catch (error) {
         console.error('Error fetching filter options:', error)
         return { success: false, error: 'Failed to fetch filter options' }
+    }
+}
+
+// ============================================================
+// Dashboard Data
+// ============================================================
+
+export interface MktDashboardKpi {
+    totalProjects: number
+    totalMandays: number
+    meetingScheduled: number
+    waitingQuote: number
+    quoted: number
+    quotedPercent: number
+    avgDaysToQuote: number
+    devAccepted: number
+    devPending: number
+}
+
+export interface MktDashboardPipeline {
+    stage: MktStageCode
+    label: string
+    count: number
+    value: number
+    mandays: number
+    color: string
+}
+
+export interface MktDashboardInsight {
+    type: 'warning' | 'success' | 'info'
+    message: string
+}
+
+export interface MktDashboardAging {
+    label: string
+    count: number
+    color: string
+}
+
+export interface MktDashboardCustomer {
+    customerName: string
+    projectCount: number
+    totalMandays: number
+    color: string
+}
+
+export interface MktDashboardTeamWorkload {
+    name: string
+    totalProjects: number
+    pendingProjects: number
+    avgDays: number
+}
+
+export interface MktDashboardPendingProject {
+    id: string
+    project_code: string
+    title: string
+    client_name: string
+    mkt_stage: MktStageCode
+    created_at: string
+    mkt_meeting_date: string | null
+    days_in_stage: number
+    project_owner_name: string | null
+}
+
+export interface MktDashboardData {
+    kpi: MktDashboardKpi
+    pipeline: MktDashboardPipeline[]
+    insights: MktDashboardInsight[]
+    agingDistribution: MktDashboardAging[]
+    customerDistribution: MktDashboardCustomer[]
+    teamWorkload: MktDashboardTeamWorkload[]
+    pendingProjects: MktDashboardPendingProject[]
+}
+
+export interface MktDashboardFilters {
+    year?: number
+    customerId?: string
+    projectManagerId?: string
+    ownerId?: string
+}
+
+const STAGE_COLORS: Record<string, string> = {
+    NEW: '#3B82F6',
+    CONTACT: '#A855F7',
+    ESTIMATING: '#EAB308',
+    QUOTED: '#22C55E',
+    PRICE_SENT: '#14B8A6',
+}
+
+export async function fetchMktDashboardData(filters?: MktDashboardFilters): Promise<{
+    success: boolean
+    data?: MktDashboardData
+    error?: string
+}> {
+    try {
+        const pool = await getConnection()
+
+        // Build shared WHERE clause
+        let filterClause = `
+            WHERE pt.code = 'MKT'
+            AND (psc.code IS NULL OR psc.code != 'CANCELLED')
+        `
+        const filterParams: { name: string; value: any }[] = []
+
+        if (filters?.year) {
+            filterClause += ` AND YEAR(p.created_at) = @filterYear`
+            filterParams.push({ name: 'filterYear', value: filters.year })
+        }
+        if (filters?.customerId) {
+            filterClause += ` AND p.customer_id = @filterCustomerId`
+            filterParams.push({ name: 'filterCustomerId', value: filters.customerId })
+        }
+        if (filters?.projectManagerId) {
+            filterClause += ` AND p.project_manager_id = @filterPmId`
+            filterParams.push({ name: 'filterPmId', value: filters.projectManagerId })
+        }
+        if (filters?.ownerId) {
+            filterClause += ` AND p.project_owner_id = @filterOwnerId`
+            filterParams.push({ name: 'filterOwnerId', value: filters.ownerId })
+        }
+
+        const applyParams = (req: any) => {
+            filterParams.forEach(p => req.input(p.name, p.value))
+            return req
+        }
+
+        const baseFrom = `
+            FROM pms.projects p
+            INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
+            LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
+        `
+
+        // 1. Pipeline summary (count + value per stage)
+        const pipelineReq = applyParams(pool.request())
+        const pipelineResult = await pipelineReq.query(`
+            SELECT
+                ISNULL(p.mkt_stage, 'NEW') AS mkt_stage,
+                COUNT(*) AS project_count,
+                ISNULL(SUM(p.mkt_expected_value), 0) AS total_value,
+                ISNULL(SUM(p.mkt_mandays), 0) AS total_mandays
+            ${baseFrom}
+            ${filterClause}
+            GROUP BY p.mkt_stage
+        `)
+
+        // 2. Avg days to quote + DEV acceptance counts
+        const avgReq = applyParams(pool.request())
+        const avgResult = await avgReq.query(`
+            SELECT
+                AVG(DATEDIFF(day, p.created_at, p.mkt_quote_sent_date)) AS avg_days,
+                SUM(CASE WHEN p.mkt_dev_accepted_date IS NOT NULL THEN 1 ELSE 0 END) AS dev_accepted,
+                SUM(CASE WHEN p.mkt_dev_accepted_date IS NULL THEN 1 ELSE 0 END) AS dev_pending
+            ${baseFrom}
+            ${filterClause}
+        `)
+
+        // 3. Aging distribution
+        const agingReq = applyParams(pool.request())
+        const agingResult = await agingReq.query(`
+            SELECT
+                aging_group,
+                COUNT(*) AS cnt
+            FROM (
+                SELECT
+                    CASE
+                        WHEN DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) < 3 THEN 'FRESH'
+                        WHEN DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) <= 7 THEN 'MODERATE'
+                        ELSE 'OVERDUE'
+                    END AS aging_group
+                ${baseFrom}
+                ${filterClause}
+                AND ISNULL(p.mkt_stage, 'NEW') NOT IN ('QUOTED', 'PRICE_SENT')
+            ) sub
+            GROUP BY aging_group
+        `)
+
+        // 4. Customer distribution (top customers by project count + mandays)
+        const customerReq = applyParams(pool.request())
+        const customerResult = await customerReq.query(`
+            SELECT TOP 10
+                ISNULL(c.name, 'ไม่ระบุลูกค้า') AS customer_name,
+                COUNT(*) AS project_count,
+                ISNULL(SUM(p.mkt_mandays), 0) AS total_mandays
+            ${baseFrom}
+            LEFT JOIN pms.customers c ON c.id = p.customer_id
+            ${filterClause}
+            GROUP BY c.name
+            ORDER BY project_count DESC, total_mandays DESC
+        `)
+
+        // 5. Team workload
+        const teamReq = applyParams(pool.request())
+        const teamResult = await teamReq.query(`
+            SELECT
+                COALESCE(owner.first_name_th + ' ' + owner.last_name_th, owner.first_name + ' ' + owner.last_name) AS owner_name,
+                COUNT(*) AS total_projects,
+                SUM(CASE WHEN ISNULL(p.mkt_stage, 'NEW') NOT IN ('QUOTED', 'PRICE_SENT') THEN 1 ELSE 0 END) AS pending_projects,
+                AVG(DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE())) AS avg_days
+            ${baseFrom}
+            LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
+            ${filterClause}
+            AND p.project_owner_id IS NOT NULL
+            GROUP BY owner.first_name_th, owner.last_name_th, owner.first_name, owner.last_name
+            ORDER BY pending_projects DESC
+        `)
+
+        // 5. Pending projects (not yet quoted)
+        const pendingReq = applyParams(pool.request())
+        const pendingResult = await pendingReq.query(`
+            SELECT
+                p.id,
+                p.project_code,
+                p.name AS title,
+                c.name AS client_name,
+                ISNULL(p.mkt_stage, 'NEW') AS mkt_stage,
+                p.created_at,
+                p.mkt_meeting_date,
+                DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) AS days_in_stage,
+                COALESCE(owner.first_name_th + ' ' + owner.last_name_th, owner.first_name + ' ' + owner.last_name) AS project_owner_name
+            ${baseFrom}
+            LEFT JOIN pms.customers c ON c.id = p.customer_id
+            LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
+            ${filterClause}
+            AND ISNULL(p.mkt_stage, 'NEW') NOT IN ('QUOTED', 'PRICE_SENT')
+            ORDER BY DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) DESC
+        `)
+
+        // Process pipeline data
+        const stageMap = new Map<string, { project_count: number; total_value: number; total_mandays: number }>(
+            pipelineResult.recordset.map((r: any) => [r.mkt_stage || 'NEW', r])
+        )
+        const pipeline: MktDashboardPipeline[] = MKT_STAGES.map(s => ({
+            stage: s.code,
+            label: s.label,
+            count: stageMap.get(s.code)?.project_count || 0,
+            value: stageMap.get(s.code)?.total_value || 0,
+            mandays: stageMap.get(s.code)?.total_mandays || 0,
+            color: STAGE_COLORS[s.code] || '#6B7280',
+        }))
+
+        const totalProjects = pipeline.reduce((sum, p) => sum + p.count, 0)
+        const contactCount = stageMap.get('CONTACT')?.project_count || 0
+        const quotedCount = (stageMap.get('QUOTED')?.project_count || 0) + (stageMap.get('PRICE_SENT')?.project_count || 0)
+        const waitingCount = totalProjects - quotedCount
+        const avgDaysToQuote = avgResult.recordset[0]?.avg_days || 0
+
+        // Build KPI
+        const totalMandays = pipeline.reduce((sum, p) => sum + p.mandays, 0)
+
+        const devAccepted = avgResult.recordset[0]?.dev_accepted || 0
+        const devPending = avgResult.recordset[0]?.dev_pending || 0
+
+        const kpi: MktDashboardKpi = {
+            totalProjects,
+            totalMandays,
+            meetingScheduled: contactCount,
+            waitingQuote: waitingCount,
+            quoted: quotedCount,
+            quotedPercent: totalProjects > 0 ? Math.round((quotedCount / totalProjects) * 100) : 0,
+            avgDaysToQuote: Math.round(avgDaysToQuote * 10) / 10,
+            devAccepted,
+            devPending,
+        }
+
+        // Build aging distribution
+        const agingMap = new Map<string, number>(agingResult.recordset.map((r: any) => [r.aging_group, r.cnt]))
+        const agingDistribution: MktDashboardAging[] = [
+            { label: '< 3 วัน', count: agingMap.get('FRESH') || 0, color: '#22C55E' },
+            { label: '3-7 วัน', count: agingMap.get('MODERATE') || 0, color: '#EAB308' },
+            { label: '> 7 วัน', count: agingMap.get('OVERDUE') || 0, color: '#EF4444' },
+        ]
+
+        // Build insights
+        const insights: MktDashboardInsight[] = []
+
+        // Bottleneck insight
+        const preSalesStages = pipeline.filter(p => !['QUOTED', 'PRICE_SENT'].includes(p.stage))
+        if (preSalesStages.length > 0 && waitingCount > 0) {
+            const bottleneck = preSalesStages.reduce((max, s) => s.count > max.count ? s : max, preSalesStages[0])
+            if (bottleneck.count > 0) {
+                const pct = Math.round((bottleneck.count / waitingCount) * 100)
+                insights.push({
+                    type: 'warning',
+                    message: `${pct}% ของงานรอดำเนินการค้างอยู่ที่ขั้น "${bottleneck.label}" (${bottleneck.count} โครงการ)`
+                })
+            }
+        }
+
+        // Avg days insight
+        if (avgDaysToQuote > 0) {
+            insights.push({
+                type: avgDaysToQuote <= 5 ? 'success' : 'info',
+                message: `เวลาเฉลี่ยจากรับงานถึงเสนอราคา ${kpi.avgDaysToQuote} วัน`
+            })
+        }
+
+        // Quoted rate insight
+        if (totalProjects > 0) {
+            insights.push({
+                type: kpi.quotedPercent >= 50 ? 'success' : 'info',
+                message: `อัตราเสนอราคาสำเร็จ ${kpi.quotedPercent}% (${quotedCount} จาก ${totalProjects} โครงการ)`
+            })
+        }
+
+
+        // Build team workload
+        const teamWorkload: MktDashboardTeamWorkload[] = teamResult.recordset.map((r: any) => ({
+            name: r.owner_name || 'ไม่ระบุ',
+            totalProjects: r.total_projects,
+            pendingProjects: r.pending_projects,
+            avgDays: Math.round(r.avg_days * 10) / 10,
+        }))
+
+        // Build customer distribution
+        const CUSTOMER_COLORS = ['#3B82F6', '#A855F7', '#EAB308', '#22C55E', '#14B8A6', '#EF4444', '#F97316', '#EC4899', '#6366F1', '#84CC16']
+        const customerDistribution: MktDashboardCustomer[] = customerResult.recordset.map((r: any, i: number) => ({
+            customerName: r.customer_name,
+            projectCount: r.project_count,
+            totalMandays: r.total_mandays,
+            color: CUSTOMER_COLORS[i % CUSTOMER_COLORS.length],
+        }))
+
+        return {
+            success: true,
+            data: {
+                kpi,
+                pipeline,
+                insights,
+                agingDistribution,
+                customerDistribution,
+                teamWorkload,
+                pendingProjects: pendingResult.recordset,
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching dashboard data:', error)
+        return { success: false, error: 'Failed to fetch dashboard data' }
+    }
+}
+
+// ============================================================
+// Dashboard Drilldown (fetch projects for popup)
+// ============================================================
+
+export interface MktDrilldownProject {
+    id: string
+    project_code: string
+    title: string
+    client_name: string
+    mkt_stage: string
+    mkt_mandays: number
+    mkt_dev_accepted_date: string | null
+    project_owner_name: string | null
+    days_in_stage: number
+    created_at: string
+}
+
+export type MktDrilldownType =
+    | { type: 'all' }
+    | { type: 'stage'; stage: string }
+    | { type: 'stages'; stages: string[] }
+    | { type: 'devAccepted' }
+    | { type: 'devPending' }
+    | { type: 'customer'; customerName: string }
+
+export async function fetchMktDrilldownProjects(
+    filters: MktDashboardFilters,
+    drilldown: MktDrilldownType
+): Promise<{ success: boolean; data?: MktDrilldownProject[]; error?: string }> {
+    try {
+        const pool = await getConnection()
+
+        let filterClause = `
+            WHERE pt.code = 'MKT'
+            AND (psc.code IS NULL OR psc.code != 'CANCELLED')
+        `
+        const request = pool.request()
+
+        if (filters.year) {
+            filterClause += ` AND YEAR(p.created_at) = @filterYear`
+            request.input('filterYear', filters.year)
+        }
+        if (filters.customerId) {
+            filterClause += ` AND p.customer_id = @filterCustomerId`
+            request.input('filterCustomerId', filters.customerId)
+        }
+        if (filters.projectManagerId) {
+            filterClause += ` AND p.project_manager_id = @filterPmId`
+            request.input('filterPmId', filters.projectManagerId)
+        }
+        if (filters.ownerId) {
+            filterClause += ` AND p.project_owner_id = @filterOwnerId`
+            request.input('filterOwnerId', filters.ownerId)
+        }
+
+        // Drilldown-specific filters
+        if (drilldown.type === 'stage') {
+            filterClause += ` AND ISNULL(p.mkt_stage, 'NEW') = @drillStage`
+            request.input('drillStage', drilldown.stage)
+        } else if (drilldown.type === 'stages') {
+            filterClause += ` AND ISNULL(p.mkt_stage, 'NEW') IN (${drilldown.stages.map((_, i) => `@ds${i}`).join(',')})`
+            drilldown.stages.forEach((s, i) => request.input(`ds${i}`, s))
+        } else if (drilldown.type === 'devAccepted') {
+            filterClause += ` AND p.mkt_dev_accepted_date IS NOT NULL`
+        } else if (drilldown.type === 'devPending') {
+            filterClause += ` AND p.mkt_dev_accepted_date IS NULL`
+        } else if (drilldown.type === 'customer') {
+            if (drilldown.customerName === 'ไม่ระบุลูกค้า') {
+                filterClause += ` AND p.customer_id IS NULL`
+            } else {
+                filterClause += ` AND c.name = @drillCustomer`
+                request.input('drillCustomer', drilldown.customerName)
+            }
+        }
+
+        const result = await request.query(`
+            SELECT
+                p.id,
+                p.project_code,
+                p.name AS title,
+                ISNULL(c.name, 'ไม่ระบุ') AS client_name,
+                ISNULL(p.mkt_stage, 'NEW') AS mkt_stage,
+                ISNULL(p.mkt_mandays, 0) AS mkt_mandays,
+                p.mkt_dev_accepted_date,
+                COALESCE(owner.first_name_th + ' ' + owner.last_name_th, owner.first_name + ' ' + owner.last_name) AS project_owner_name,
+                DATEDIFF(day, ISNULL(p.mkt_stage_changed_at, p.created_at), GETDATE()) AS days_in_stage,
+                p.created_at
+            FROM pms.projects p
+            INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
+            LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
+            LEFT JOIN pms.customers c ON c.id = p.customer_id
+            LEFT JOIN pms.employees owner ON owner.id = p.project_owner_id
+            ${filterClause}
+            ORDER BY p.created_at DESC
+        `)
+
+        return { success: true, data: result.recordset }
+    } catch (error) {
+        console.error('Error fetching drilldown projects:', error)
+        return { success: false, error: 'Failed to fetch drilldown data' }
     }
 }

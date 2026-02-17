@@ -15,7 +15,8 @@ CREATE PROCEDURE pms.sp_get_gantt_data
     @status_id UNIQUEIDENTIFIER = NULL,
     @search NVARCHAR(255) = NULL,
     @milestone_ids NVARCHAR(MAX) = NULL, -- Comma separated IDs
-    @assignee_id UNIQUEIDENTIFIER = NULL -- Filter by task assignee
+    @assignee_id UNIQUEIDENTIFIER = NULL, -- Filter by task assignee
+    @project_type_id UNIQUEIDENTIFIER = NULL -- Filter by project type
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -40,6 +41,7 @@ BEGIN
           AND (@manager_id IS NULL OR p.project_manager_id = @manager_id)
           AND (@owner_id IS NULL OR p.project_owner_id = @owner_id)
           AND (@status_id IS NULL OR p.status_id = @status_id)
+          AND (@project_type_id IS NULL OR p.project_type_id = @project_type_id)
           AND (@search IS NULL OR (p.name LIKE '%' + @search + '%' OR p.project_code LIKE '%' + @search + '%'))
           AND (
               @milestone_ids IS NULL
@@ -63,6 +65,7 @@ BEGIN
           AND (@manager_id IS NULL OR p.project_manager_id = @manager_id)
           AND (@owner_id IS NULL OR p.project_owner_id = @owner_id)
           AND (@status_id IS NULL OR p.status_id = @status_id)
+          AND (@project_type_id IS NULL OR p.project_type_id = @project_type_id)
           AND (@search IS NULL OR (p.name LIKE '%' + @search + '%' OR p.project_code LIKE '%' + @search + '%'))
           AND (
               @milestone_ids IS NULL

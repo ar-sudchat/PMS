@@ -16,6 +16,7 @@ import {
     Search,
     Plus,
     Trash2,
+    Pencil,
     ChevronDown,
     ChevronRight,
     ChevronLeft,
@@ -27,6 +28,7 @@ import {
     ResourcePlanningData,
     ResourceProject,
     ResourceMilestone,
+    MilestoneResource,
     removeMilestoneResource
 } from '@/lib/actions/resource-planning-actions'
 import {
@@ -39,6 +41,7 @@ import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 import { ResourceSummaryTable } from './ResourceSummaryTable'
 import { ConflictAlert } from './ConflictAlert'
 import { AddResourceDialog } from './AddResourceDialog'
+import { EditResourceDialog } from './EditResourceDialog'
 import { TaskDetailDialog } from './TaskDetailDialog'
 import {
     format,
@@ -103,6 +106,14 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
         projectCode: string
         currentMonth: Date
     }>({ open: false, milestoneId: '', milestoneName: '', employeeId: '', employeeName: '', projectCode: '', currentMonth: new Date() })
+
+    // Edit Resource Dialog
+    const [editDialog, setEditDialog] = useState<{
+        open: boolean
+        resource: MilestoneResource | null
+        milestoneName: string
+        projectCode: string
+    }>({ open: false, resource: null, milestoneName: '', projectCode: '' })
 
     // Edit Project Modal
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -178,6 +189,10 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
         } else {
             toast.error(result.error || 'เกิดข้อผิดพลาด')
         }
+    }
+
+    const openEditResource = (resource: MilestoneResource, milestoneName: string, projectCode: string) => {
+        setEditDialog({ open: true, resource, milestoneName, projectCode })
     }
 
     const openAddDialog = (project: ResourceProject, milestone: ResourceMilestone) => {
@@ -632,6 +647,7 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
                                                             })
                                                         }}
                                                         isDateInRange={isDateInRange}
+                                                        onEditResource={(resource, msName) => openEditResource(resource, msName, project.project_code)}
                                                         onEditProject={async (projectId) => {
                                                             const res = await getProjectById(projectId)
                                                             if (res.success && res.data) {
@@ -678,6 +694,15 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
                 currentMonth={taskDetailDialog.currentMonth}
             />
 
+            <EditResourceDialog
+                open={editDialog.open}
+                onOpenChange={(open) => setEditDialog(prev => ({ ...prev, open }))}
+                resource={editDialog.resource}
+                milestoneName={editDialog.milestoneName}
+                projectCode={editDialog.projectCode}
+                onSuccess={onRefresh}
+            />
+
             {selectedProject && (
                 <ProjectModal
                     open={isEditModalOpen}
@@ -706,6 +731,7 @@ function ProjectTimelineRows({
     onAddResource,
     onRemoveResource,
     onViewTaskDetail,
+    onEditResource,
     isDateInRange,
     onEditProject,
 }: {
@@ -717,6 +743,7 @@ function ProjectTimelineRows({
     onAddResource: (ms: ResourceMilestone) => void
     onRemoveResource: (resourceId: string, name: string) => void
     onViewTaskDetail: (milestoneId: string, milestoneName: string, employeeId: string, employeeName: string) => void
+    onEditResource: (resource: MilestoneResource, milestoneName: string) => void
     isDateInRange: (day: Date, start: string, end: string) => boolean
     onEditProject: (id: string) => void
 }) {
@@ -838,6 +865,7 @@ function ProjectTimelineRows({
                     onAddResource={() => onAddResource(ms)}
                     onRemoveResource={onRemoveResource}
                     onViewTaskDetail={onViewTaskDetail}
+                    onEditResource={onEditResource}
                     isDateInRange={isDateInRange}
                 />
             ))}
@@ -862,6 +890,7 @@ function MilestoneTimelineRows({
     onAddResource,
     onRemoveResource,
     onViewTaskDetail,
+    onEditResource,
     isDateInRange,
 }: {
     milestone: ResourceMilestone
@@ -869,6 +898,7 @@ function MilestoneTimelineRows({
     onAddResource: () => void
     onRemoveResource: (resourceId: string, name: string) => void
     onViewTaskDetail: (milestoneId: string, milestoneName: string, employeeId: string, employeeName: string) => void
+    onEditResource: (resource: MilestoneResource, milestoneName: string) => void
     isDateInRange: (day: Date, start: string, end: string) => boolean
 }) {
     // Check if milestone due_date falls in this month
@@ -963,8 +993,21 @@ function MilestoneTimelineRows({
                     : 0
                 const totalTaskCount = isPlan && r.date_ranges ? r.date_ranges.length : 0
 
+                const handleRowClick = () => {
+                    if (isPlan) {
+                        onViewTaskDetail(milestone.id, milestone.milestone_name, r.employee_id, r.employee_name)
+                    } else {
+                        onEditResource(r, milestone.milestone_name)
+                    }
+                }
+
                 return (
-                    <tr key={`${r.source_type}-${r.id}`} className={`border-b hover:bg-blue-50/20 ${isPlan ? 'bg-emerald-50/30' : ''}`}>
+                    <tr
+                        key={`${r.source_type}-${r.id}`}
+                        className={`border-b cursor-pointer ${isPlan ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-blue-50/40'}`}
+                        onClick={handleRowClick}
+                        title={isPlan ? 'คลิกเพื่อดูรายละเอียด Task' : 'คลิกเพื่อแก้ไข'}
+                    >
                         <td className={`py-1 px-2 sticky left-0 z-10 ${isPlan ? 'bg-emerald-50/30' : 'bg-white'}`}>
                             <div className="flex items-center gap-1.5 pl-8">
                                 <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${sourceClass}`}>
@@ -977,21 +1020,23 @@ function MilestoneTimelineRows({
                                     {r.employee_name}{r.employee_nickname ? ` (${r.employee_nickname})` : ''}
                                 </span>
                                 {isPlan && totalTaskCount > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            onViewTaskDetail(milestone.id, milestone.milestone_name, r.employee_id, r.employee_name)
-                                        }}
-                                        className="text-[9px] text-emerald-600 hover:text-emerald-800 hover:underline cursor-pointer bg-transparent border-0 p-0 inline-flex items-center"
-                                    >
+                                    <span className="text-[9px] text-emerald-600 inline-flex items-center">
                                         ({monthTaskCount}/{totalTaskCount} tasks)
-                                    </button>
+                                    </span>
+                                )}
+                                {!isPlan && r.notes && (
+                                    <span className="text-[9px] text-muted-foreground truncate max-w-[80px]" title={r.notes}>
+                                        - {r.notes}
+                                    </span>
                                 )}
                             </div>
                         </td>
                         <td className="py-1 px-1"></td>
-                        <td className="py-1 px-1"></td>
+                        <td className="py-1 px-1 text-center text-[10px] text-muted-foreground whitespace-nowrap">
+                            {!isPlan && r.start_date && r.end_date && (
+                                <span>{formatDateShort(r.start_date)} - {formatDateShort(r.end_date)}</span>
+                            )}
+                        </td>
                         <td className="py-1 px-1"></td>
                         <td className="py-1 px-1 text-center text-[10px] font-semibold">
                             {resourceMonthMD > 0 ? (
@@ -1006,9 +1051,18 @@ function MilestoneTimelineRows({
                             )}
                         </td>
                         <td className="py-2 px-1 text-center">
-                            <Button variant="ghost" size="xs" onClick={() => onRemoveResource(r.id, r.employee_name)} className="text-red-500 hover:text-red-700 hover:bg-red-50 h-6 w-6 p-0">
-                                <Trash2 className="h-3 w-3" />
-                            </Button>
+                            <div className="flex items-center gap-0.5 justify-center">
+                                {!isPlan && (
+                                    <Button variant="ghost" size="xs" onClick={(e) => { e.stopPropagation(); onEditResource(r, milestone.milestone_name) }} className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 h-6 w-6 p-0">
+                                        <Pencil className="h-3 w-3" />
+                                    </Button>
+                                )}
+                                {!isPlan && (
+                                    <Button variant="ghost" size="xs" onClick={(e) => { e.stopPropagation(); onRemoveResource(r.id, r.employee_name) }} className="text-red-500 hover:text-red-700 hover:bg-red-50 h-6 w-6 p-0">
+                                        <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                )}
+                            </div>
                         </td>
                         {monthDays.map((day, i) => {
                             const inRange = isDayInResource(day)

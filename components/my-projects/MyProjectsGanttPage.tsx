@@ -38,6 +38,7 @@ interface Filters {
     managerId: string
     ownerId: string
     statusId: string
+    projectTypeId: string
     milestoneIds: string[]
     search: string
     assigneeId: string
@@ -50,6 +51,7 @@ interface FilterOptions {
     years: number[]
     statuses: { id: string; code: string; name: string; color: string }[]
     milestones: { id: string; code: string; name: string; color: string }[]
+    projectTypes: { id: string; code: string; name: string }[]
 }
 
 export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGanttPageProps) {
@@ -68,7 +70,8 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         owners: [],
         years: [],
         statuses: [],
-        milestones: []
+        milestones: [],
+        projectTypes: []
     })
 
     const [filters, setFilters] = useState<Filters>({
@@ -77,6 +80,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
         managerId: '',
         ownerId: currentUser?.employeeId || currentUser?.id || '', // Default to login user
         statusId: '',
+        projectTypeId: '', // Will be set to DEV after loading filter options
         milestoneIds: [],
         search: '',
         assigneeId: ''
@@ -146,6 +150,16 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                     setFilters(prev => ({ ...prev, statusId: activeStatus.id }))
                 }
             }
+
+            // Set default project type to DEV
+            if (!filters.projectTypeId && result.data.projectTypes?.length > 0) {
+                const devType = result.data.projectTypes.find(
+                    (t: any) => t.code === 'DEV'
+                )
+                if (devType) {
+                    setFilters(prev => ({ ...prev, projectTypeId: devType.id }))
+                }
+            }
         }
     }
 
@@ -160,6 +174,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                 managerId: filters.managerId || undefined,
                 ownerId: filters.ownerId || undefined,
                 statusId: filters.statusId || undefined,
+                projectTypeId: filters.projectTypeId || undefined,
                 milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
                 search: filters.search || undefined,
                 assigneeId: filters.assigneeId || undefined
@@ -174,6 +189,7 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                 managerId: filters.managerId || undefined,
                 ownerId: filters.ownerId || undefined,
                 statusId: filters.statusId || undefined,
+                projectTypeId: filters.projectTypeId || undefined,
                 milestoneIds: filters.milestoneIds.length > 0 ? filters.milestoneIds : undefined,
                 search: filters.search || undefined
             })
@@ -319,6 +335,21 @@ export function MyProjectsGanttPage({ initialData, currentUser }: MyProjectsGant
                                 <option value="">All Years</option>
                                 {filterOptions.years.map(year => (
                                     <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Project Type */}
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Project Type</label>
+                            <select
+                                value={filters.projectTypeId}
+                                onChange={(e) => handleFilterChange('projectTypeId', e.target.value)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[120px] bg-white"
+                            >
+                                <option value="">All Types</option>
+                                {filterOptions.projectTypes.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
                                 ))}
                             </select>
                         </div>
