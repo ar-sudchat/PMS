@@ -153,8 +153,9 @@ export async function getDevProjectsWithMilestones(): Promise<{
             LEFT JOIN pms.project_status_configs psc ON psc.id = p.status_id
             WHERE pt.code = 'DEV'
               AND p.is_active = 1
-              AND (psc.code IS NULL OR psc.code NOT IN ('CLOSED', 'WARRANTY', 'CANCELLED'))
-            ORDER BY p.project_code DESC
+              AND (psc.code IS NULL OR psc.code NOT IN ('CLOSED', 'WARRANTY', 'CANCELLED', 'ON_HOLD'))
+            ORDER BY CASE WHEN p.current_milestone_id IS NULL THEN 1 ELSE 0 END,
+                     p.project_code DESC
         `)
 
         if (projectResult.recordset.length === 0) {

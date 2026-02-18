@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Search, ChevronDown, Check } from 'lucide-react'
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { StatusOverviewData, StatusProject, StatusFilterOptions, StatusOverviewFilters, getProjectStatusOverview } from '@/lib/actions/project-status-overview-actions'
 import { ProjectModal } from '@/components/modals/ProjectModal'
 import { getProjectById } from '@/lib/actions/project-actions'
@@ -119,6 +120,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
     const [isMilestoneDropdownOpen, setIsMilestoneDropdownOpen] = useState(false)
     const [editModal, setEditModal] = useState<{ open: boolean; project: any | null }>({ open: false, project: null })
     const [customerPopup, setCustomerPopup] = useState<{ open: boolean; name: string } | null>(null)
+    const [focusTab, setFocusTab] = useState<'table' | 'chart' | 'timesheet'>('table')
 
     const handleProjectClick = async (p: StatusProject) => {
         try {
@@ -318,17 +320,18 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
         }
     }, [projects, focusMonth])
 
-    // Customer counts with budget mandays
+    // Customer counts with budget mandays and actual mandays
     const customerCounts = useMemo(() => {
-        const map: Record<string, { count: number; budgetMd: number }> = {}
+        const map: Record<string, { count: number; budgetMd: number; actualMd: number }> = {}
         projects.forEach(p => {
             const name = p.customer_name || 'ไม่ระบุ'
-            if (!map[name]) map[name] = { count: 0, budgetMd: 0 }
+            if (!map[name]) map[name] = { count: 0, budgetMd: 0, actualMd: 0 }
             map[name].count += 1
             map[name].budgetMd += p.budget_mandays || 0
+            map[name].actualMd += p.actual_mandays || 0
         })
         const entries = Object.entries(map)
-            .map(([name, v]) => ({ name, count: v.count, budgetMd: v.budgetMd }))
+            .map(([name, v]) => ({ name, count: v.count, budgetMd: v.budgetMd, actualMd: Math.round(v.actualMd * 10) / 10 }))
         // Internal first, then sort by budget mandays desc
         entries.sort((a, b) => {
             const aInternal = a.name.toLowerCase().includes('internal') ? 1 : 0
@@ -338,6 +341,51 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
         })
         return entries
     }, [projects])
+
+    // Pie chart data for focus month
+    const focusPieData = useMemo(() => {
+        const counts: Record<string, number> = {}
+        for (const p of focusProjects) {
+            const label = p.current_milestone_label || 'Wait'
+            counts[label] = (counts[label] || 0) + 1
+        }
+        return MS_DISPLAY_ORDER
+            .filter(label => (counts[label] || 0) > 0)
+            .map(label => ({
+                name: label,
+                value: counts[label],
+                color: MS_COLORS[label]?.c || '#64748b',
+            }))
+    }, [focusProjects])
+
+    // Customer color palette
+    const CUST_COLORS = ['#2563eb', '#0891b2', '#7c3aed', '#d97706', '#16a34a', '#dc2626', '#ea580c', '#0d9488', '#4f46e5', '#be185d', '#059669', '#9333ea']
+
+    // Timesheet by customer for focus month
+    const timesheetPieData = useMemo(() => {
+        const map: Record<string, { md: number; budget: number; projects: number }> = {}
+        for (const p of focusProjects) {
+            const name = p.customer_name || 'ไม่ระบุ'
+            if (!map[name]) map[name] = { md: 0, budget: 0, projects: 0 }
+            map[name].md += p.actual_mandays || 0
+            map[name].budget += p.budget_mandays || 0
+            map[name].projects += 1
+        }
+        return Object.entries(map)
+            .map(([name, v], i) => ({
+                name,
+                value: Math.round(v.md * 10) / 10,
+                budget: v.budget,
+                projects: v.projects,
+                color: CUST_COLORS[i % CUST_COLORS.length],
+            }))
+            .filter(d => d.value > 0 || d.budget > 0)
+            .sort((a, b) => b.value - a.value)
+    }, [focusProjects])
+
+    const totalActualMd = useMemo(() =>
+        Math.round(timesheetPieData.reduce((s, d) => s + d.value, 0) * 10) / 10
+    , [timesheetPieData])
 
     const today = new Date()
     const dateStr = `${today.getDate()} ${THAI_M[today.getMonth() + 1]} ${today.getFullYear()}`
@@ -532,12 +580,267 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                             <div style={{ background: '#fff', borderRadius: 10, padding: 40, textAlign: 'center', color: '#94a3b8' }}>กำลังโหลด...</div>
                         ) : (
                             <>
-                                <MonthProjectTable
-                                    title={`${getThaiMonthShort(focusMonth)} ${filters.year}`}
-                                    projects={focusProjects}
-                                    isFocus={true}
-                                    onProjectClick={handleProjectClick}
-                                />
+                                {/* Focus section with tabs */}
+                                <div style={{
+                                    background: '#fff', borderRadius: 10,
+                                    border: '2px solid #3b82f6',
+                                    overflow: 'hidden',
+                                    boxShadow: '0 2px 8px rgba(59,130,246,0.08)',
+                                }}>
+                                    {/* Tab header */}
+                                    <div style={{
+                                        padding: '0 14px',
+                                        background: '#eff6ff',
+                                        borderBottom: '1px solid #dbeafe',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                                            <span style={{ background: '#3b82f6', color: '#fff', padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700, marginRight: 8 }}>FOCUS</span>
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8', marginRight: 16 }}>
+                                                {getThaiMonthShort(focusMonth)} {filters.year}
+                                            </span>
+                                            {([
+                                                { key: 'table' as const, label: 'ตาราง' },
+                                                { key: 'chart' as const, label: 'สถานะ' },
+                                                { key: 'timesheet' as const, label: 'Timesheet' },
+                                            ]).map(tab => (
+                                                <button
+                                                    key={tab.key}
+                                                    onClick={() => setFocusTab(tab.key)}
+                                                    style={{
+                                                        padding: '8px 16px',
+                                                        fontSize: 12, fontWeight: 700,
+                                                        background: 'none', border: 'none', cursor: 'pointer',
+                                                        color: focusTab === tab.key ? '#1d4ed8' : '#94a3b8',
+                                                        borderBottom: focusTab === tab.key ? '2px solid #1d4ed8' : '2px solid transparent',
+                                                        transition: 'all .15s',
+                                                    }}
+                                                >
+                                                    {tab.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>{focusProjects.length} รายการ</span>
+                                    </div>
+
+                                    {/* Tab content */}
+                                    {focusTab === 'table' ? (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr style={{ background: '#fafbfc' }}>
+                                                    {['#', 'โปรเจกต์', 'สถานะปัจจุบัน', 'Mapping', 'System Test', 'UAT', 'GO-LIVE'].map(h => (
+                                                        <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #f1f5f9' }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {focusProjects.map((p, i) => {
+                                                    const style = getMsStyle(p.current_milestone_label, p.current_milestone_color)
+                                                    return (
+                                                        <tr key={p.project_id + '-' + i} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                            <td style={{ padding: '7px 8px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textAlign: 'center', width: 28 }}>{i + 1}</td>
+                                                            <td style={{ padding: '7px 12px', fontSize: 12, fontWeight: 500, color: '#1e293b', maxWidth: 350, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                <span
+                                                                    onClick={() => handleProjectClick(p)}
+                                                                    style={{ cursor: 'pointer' }}
+                                                                    onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                                                                    onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+                                                                >
+                                                                    {p.project_name}
+                                                                </span>
+                                                                <span style={{ color: '#b0b8c4', fontSize: 10, marginLeft: 4 }}>#{p.project_code}</span>
+                                                            </td>
+                                                            <td style={{ padding: '7px 8px' }}>
+                                                                <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: style.b, color: style.c }}>{p.current_milestone_label}</span>
+                                                            </td>
+                                                            <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(p.mapping_due_date)}</td>
+                                                            <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(p.systemtest_due_date)}</td>
+                                                            <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(p.uat_due_date)}</td>
+                                                            <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(p.golive_due_date)}</td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    ) : focusTab === 'chart' ? (
+                                        <div style={{ padding: '28px 24px' }}>
+                                            {focusPieData.length === 0 ? (
+                                                <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40, fontSize: 13 }}>ไม่มีข้อมูลสำหรับเดือนนี้</div>
+                                            ) : (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 40 }}>
+                                                    {/* Donut chart with center label */}
+                                                    <div style={{ position: 'relative', width: 240, height: 240, flexShrink: 0 }}>
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <PieChart>
+                                                                <Pie
+                                                                    data={focusPieData}
+                                                                    cx="50%"
+                                                                    cy="50%"
+                                                                    innerRadius={70}
+                                                                    outerRadius={110}
+                                                                    paddingAngle={3}
+                                                                    dataKey="value"
+                                                                    startAngle={90}
+                                                                    endAngle={-270}
+                                                                    label={false}
+                                                                >
+                                                                    {focusPieData.map((entry, idx) => (
+                                                                        <Cell key={idx} fill={entry.color} stroke="#fff" strokeWidth={3} style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.1))' }} />
+                                                                    ))}
+                                                                </Pie>
+                                                                <Tooltip
+                                                                    formatter={(value: number, name: string) => [`${value} โปรเจกต์`, name]}
+                                                                    contentStyle={{ borderRadius: 10, fontSize: 12, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '8px 14px' }}
+                                                                />
+                                                            </PieChart>
+                                                        </ResponsiveContainer>
+                                                        {/* Center text */}
+                                                        <div style={{
+                                                            position: 'absolute', top: '50%', left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            textAlign: 'center', pointerEvents: 'none',
+                                                        }}>
+                                                            <div style={{ fontSize: 32, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{focusProjects.length}</div>
+                                                            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>โปรเจกต์</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Legend with progress bars */}
+                                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>
+                                                            สถานะโปรเจกต์
+                                                            <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>
+                                                                {getThaiMonthShort(focusMonth)} {filters.year}
+                                                            </span>
+                                                        </div>
+                                                        {focusPieData.map((d, i) => {
+                                                            const pct = focusProjects.length > 0 ? Math.round((d.value / focusProjects.length) * 100) : 0
+                                                            return (
+                                                                <div key={i} style={{
+                                                                    padding: '10px 14px', borderRadius: 10,
+                                                                    background: `${d.color}08`,
+                                                                    border: `1px solid ${d.color}20`,
+                                                                    display: 'flex', alignItems: 'center', gap: 12,
+                                                                    transition: 'all .15s',
+                                                                }}>
+                                                                    <div style={{
+                                                                        width: 10, height: 10, borderRadius: 99,
+                                                                        background: d.color, flexShrink: 0,
+                                                                        boxShadow: `0 0 0 3px ${d.color}25`,
+                                                                    }} />
+                                                                    <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, minWidth: 90 }}>{d.name}</span>
+                                                                    <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
+                                                                        <div style={{
+                                                                            width: `${pct}%`, height: '100%',
+                                                                            background: `linear-gradient(90deg, ${d.color}, ${d.color}cc)`,
+                                                                            borderRadius: 99,
+                                                                            transition: 'width .4s ease',
+                                                                        }} />
+                                                                    </div>
+                                                                    <span style={{ fontSize: 16, fontWeight: 800, color: d.color, minWidth: 24, textAlign: 'right' }}>{d.value}</span>
+                                                                    <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, minWidth: 36 }}>{pct}%</span>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : focusTab === 'timesheet' ? (
+                                        <div style={{ padding: '28px 24px' }}>
+                                            {timesheetPieData.length === 0 || totalActualMd === 0 ? (
+                                                <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40, fontSize: 13 }}>ไม่มีข้อมูล Timesheet สำหรับเดือนนี้</div>
+                                            ) : (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 40 }}>
+                                                    {/* Donut chart */}
+                                                    <div style={{ position: 'relative', width: 240, height: 240, flexShrink: 0 }}>
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <PieChart>
+                                                                <Pie
+                                                                    data={timesheetPieData}
+                                                                    cx="50%"
+                                                                    cy="50%"
+                                                                    innerRadius={70}
+                                                                    outerRadius={110}
+                                                                    paddingAngle={3}
+                                                                    dataKey="value"
+                                                                    startAngle={90}
+                                                                    endAngle={-270}
+                                                                    label={false}
+                                                                >
+                                                                    {timesheetPieData.map((entry, idx) => (
+                                                                        <Cell key={idx} fill={entry.color} stroke="#fff" strokeWidth={3} style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.1))' }} />
+                                                                    ))}
+                                                                </Pie>
+                                                                <Tooltip
+                                                                    formatter={(value: number, name: string) => [`${value} MD`, name]}
+                                                                    contentStyle={{ borderRadius: 10, fontSize: 12, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '8px 14px' }}
+                                                                />
+                                                            </PieChart>
+                                                        </ResponsiveContainer>
+                                                        <div style={{
+                                                            position: 'absolute', top: '50%', left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            textAlign: 'center', pointerEvents: 'none',
+                                                        }}>
+                                                            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{totalActualMd}</div>
+                                                            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>Manday</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Legend */}
+                                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>
+                                                            Timesheet ตามลูกค้า
+                                                            <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>
+                                                                {getThaiMonthShort(focusMonth)} {filters.year}
+                                                            </span>
+                                                        </div>
+                                                        {timesheetPieData.map((d, i) => {
+                                                            const pct = totalActualMd > 0 ? Math.round((d.value / totalActualMd) * 100) : 0
+                                                            return (
+                                                                <div key={i}
+                                                                    onClick={() => setCustomerPopup({ open: true, name: d.name })}
+                                                                    style={{
+                                                                    padding: '10px 14px', borderRadius: 10,
+                                                                    background: `${d.color}08`,
+                                                                    border: `1px solid ${d.color}20`,
+                                                                    display: 'flex', alignItems: 'center', gap: 10,
+                                                                    cursor: 'pointer', transition: 'all .15s',
+                                                                }}
+                                                                    onMouseEnter={e => { e.currentTarget.style.background = `${d.color}15`; e.currentTarget.style.borderColor = `${d.color}40` }}
+                                                                    onMouseLeave={e => { e.currentTarget.style.background = `${d.color}08`; e.currentTarget.style.borderColor = `${d.color}20` }}
+                                                                >
+                                                                    <div style={{
+                                                                        width: 10, height: 10, borderRadius: 99,
+                                                                        background: d.color, flexShrink: 0,
+                                                                        boxShadow: `0 0 0 3px ${d.color}25`,
+                                                                    }} />
+                                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                                        <div style={{ fontSize: 13, color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                                                                        <div style={{ fontSize: 10, color: '#94a3b8' }}>{d.projects} โปรเจกต์</div>
+                                                                    </div>
+                                                                    <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 60 }}>
+                                                                        <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Actual</div>
+                                                                        <div style={{ fontSize: 16, fontWeight: 800, color: d.color, lineHeight: 1.2 }}>{d.value}</div>
+                                                                    </div>
+                                                                    <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 50 }}>
+                                                                        <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Budget</div>
+                                                                        <div style={{ fontSize: 14, fontWeight: 700, color: '#64748b', lineHeight: 1.2 }}>{d.budget || '—'}</div>
+                                                                    </div>
+                                                                    <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 36 }}>
+                                                                        <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>%</div>
+                                                                        <div style={{ fontSize: 14, fontWeight: 700, color: d.value > d.budget && d.budget > 0 ? '#dc2626' : '#334155', lineHeight: 1.2 }}>{pct}%</div>
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : null}
+                                </div>
                                 {otherMonths.length > 0 && (
                                     <div>
                                         <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>เดือนอื่น ๆ</div>
@@ -581,19 +884,21 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                         {/* Customer Count */}
                         <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <div style={{ padding: '8px 12px', fontSize: 13, fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9' }}>จำนวนตามลูกค้า</div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 60px', padding: '6px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 55px 55px', padding: '6px 12px', borderBottom: '1px solid #f1f5f9' }}>
                                 <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>ลูกค้า</div>
                                 <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>จำนวน</div>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>Budget MD</div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>Budget</div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>Actual</div>
                             </div>
                             {customerCounts.map((cc, i) => (
-                                <div key={i} onClick={() => setCustomerPopup({ open: true, name: cc.name })} style={{ display: 'grid', gridTemplateColumns: '1fr 50px 60px', padding: '7px 12px', borderBottom: '1px solid #f8fafc', alignItems: 'center', cursor: 'pointer' }}
+                                <div key={i} onClick={() => setCustomerPopup({ open: true, name: cc.name })} style={{ display: 'grid', gridTemplateColumns: '1fr 40px 55px 55px', padding: '7px 12px', borderBottom: '1px solid #f8fafc', alignItems: 'center', cursor: 'pointer' }}
                                     onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                 >
                                     <span style={{ fontSize: 12, fontWeight: 500, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cc.name}</span>
                                     <span style={{ fontSize: 14, fontWeight: 800, color: '#1e40af', textAlign: 'center' }}>{cc.count}</span>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textAlign: 'center' }}>{cc.budgetMd > 0 ? cc.budgetMd : '—'}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: cc.actualMd > cc.budgetMd && cc.budgetMd > 0 ? '#dc2626' : '#059669', textAlign: 'center' }}>{cc.actualMd > 0 ? cc.actualMd : '—'}</span>
                                 </div>
                             ))}
                         </div>
@@ -606,6 +911,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                 const custName = customerPopup.name
                 const custProjects = projects.filter(p => (p.customer_name || 'ไม่ระบุ') === custName)
                 const totalBudget = custProjects.reduce((s, p) => s + (p.budget_mandays || 0), 0)
+                const totalActual = custProjects.reduce((s, p) => s + (p.actual_mandays || 0), 0)
                 return (
                     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => setCustomerPopup(null)} />
@@ -613,7 +919,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                             <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
                                     <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{custName}</div>
-                                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{custProjects.length} โปรเจกต์ | Budget MD รวม {totalBudget}</div>
+                                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{custProjects.length} โปรเจกต์ | Actual {totalActual} MD | Budget {totalBudget} MD</div>
                                 </div>
                                 <button onClick={() => setCustomerPopup(null)} style={{ background: 'none', border: 'none', fontSize: 20, color: '#94a3b8', cursor: 'pointer', padding: '4px 8px' }}>×</button>
                             </div>
@@ -621,7 +927,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr style={{ background: '#fafbfc' }}>
-                                            {['#', 'โปรเจกต์', 'สถานะปัจจุบัน', 'Budget MD', 'UAT', 'GO-LIVE'].map(h => (
+                                            {['#', 'โปรเจกต์', 'สถานะปัจจุบัน', 'Actual MD', 'Budget MD', 'UAT', 'GO-LIVE'].map(h => (
                                                 <th key={h} style={{ textAlign: 'left', padding: '6px 12px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #f1f5f9' }}>{h}</th>
                                             ))}
                                         </tr>
@@ -646,6 +952,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                                                     <td style={{ padding: '7px 8px' }}>
                                                         <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: ms.b, color: ms.c }}>{p.current_milestone_label}</span>
                                                     </td>
+                                                    <td style={{ padding: '7px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center', color: (p.actual_mandays || 0) > (p.budget_mandays || 0) ? '#dc2626' : '#0f172a' }}>{p.actual_mandays > 0 ? p.actual_mandays : '—'}</td>
                                                     <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{p.budget_mandays > 0 ? p.budget_mandays : '—'}</td>
                                                     <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(p.uat_due_date)}</td>
                                                     <td style={{ padding: '7px 8px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDate(p.golive_due_date)}</td>

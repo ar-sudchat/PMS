@@ -90,6 +90,7 @@ export async function getGlobalWorkItems(filters?: {
     statusId?: string
     search?: string
     milestoneIds?: string[]
+    projectTypeId?: string
 }): Promise<{ success: boolean; data: ProjectWorkItemsGroup[]; error?: string }> {
     try {
         const user = await getCurrentUser()
@@ -114,6 +115,7 @@ export async function getGlobalWorkItems(filters?: {
             .input('status_id', sql.UniqueIdentifier, filters?.statusId || null)
             .input('milestone_ids', sql.NVarChar, milestoneIdsStr)
             .input('search', sql.NVarChar, filters?.search ? `%${filters.search}%` : null)
+            .input('project_type_id', sql.UniqueIdentifier, filters?.projectTypeId || null)
             .query(`
                 -- 1. Get filtered Projects
                 SELECT DISTINCT p.id, p.project_code, p.name
@@ -127,6 +129,7 @@ export async function getGlobalWorkItems(filters?: {
                 AND (@manager_id IS NULL OR p.project_manager_id = @manager_id)
                 AND (@owner_id IS NULL OR p.project_owner_id = @owner_id)
                 AND (@status_id IS NULL OR ps.id = @status_id)
+                AND (@project_type_id IS NULL OR p.project_type_id = @project_type_id)
                 AND (@search IS NULL OR p.project_code LIKE @search OR p.name LIKE @search)
                 AND (
                     -- Access Control: Owner, Manager, Assignee, or Admin (simplified to check existence in tasks or role)

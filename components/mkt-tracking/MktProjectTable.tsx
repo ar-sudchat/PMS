@@ -31,13 +31,23 @@ const stageColors: Record<string, string> = {
 export function MktProjectTable({ projects, onEdit, onCodeClick }: MktProjectTableProps) {
     const formatDate = (date: string | Date | null | undefined) => {
         if (!date) return '-'
-        return format(new Date(date), 'dd-MM-yy')
+        return format(new Date(date), 'dd-MM')
     }
 
     // Extract first name only
     const getFirstName = (fullName: string | null | undefined) => {
         if (!fullName) return '-'
         return fullName.split(' ')[0]
+    }
+
+    const formatNumber = (val: number | null | undefined) => {
+        if (val == null || val === 0) return '-'
+        return val.toLocaleString('th-TH')
+    }
+
+    const formatCurrency = (val: number | null | undefined) => {
+        if (val == null || val === 0) return '-'
+        return val.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
     }
 
     return (
@@ -56,13 +66,14 @@ export function MktProjectTable({ projects, onEdit, onCodeClick }: MktProjectTab
                         <TableHead>วันประชุมล่าสุด</TableHead>
                         <TableHead>วันส่งราคา</TableHead>
                         <TableHead>DEV รับงาน</TableHead>
-                        <TableHead className="text-center">วันในสถานะ</TableHead>
+                        <TableHead className="text-right">Manday</TableHead>
+                        <TableHead className="text-right">มูลค่า (บาท)</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {projects.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
                                 ไม่พบข้อมูล
                             </TableCell>
                         </TableRow>
@@ -120,10 +131,11 @@ export function MktProjectTable({ projects, onEdit, onCodeClick }: MktProjectTab
                                 <TableCell className="whitespace-nowrap">
                                     {formatDate(project.mkt_dev_accepted_date)}
                                 </TableCell>
-                                <TableCell className="text-center">
-                                    <Badge variant="outline">
-                                        {project.days_in_stage} วัน
-                                    </Badge>
+                                <TableCell className="text-right whitespace-nowrap">
+                                    {formatNumber(project.mkt_mandays)}
+                                </TableCell>
+                                <TableCell className="text-right whitespace-nowrap">
+                                    {formatCurrency(project.mkt_expected_value)}
                                 </TableCell>
                             </TableRow>
                         ))

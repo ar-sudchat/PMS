@@ -34,6 +34,8 @@ export interface MandayByProject {
     percent_used: number
     budget_status: 'NORMAL' | 'WARNING' | 'OVER' | 'NO_BUDGET'
     employee_count: number
+    has_milestone_over: boolean
+    over_milestone_count: number
 }
 
 export interface MandayByEmployee {
@@ -345,7 +347,9 @@ export async function getMandayByProject(
                     WHEN ISNULL(md.actual_mandays, 0) > ISNULL(p.sold_mandays, 0) * 0.9 THEN 'WARNING'
                     ELSE 'NORMAL'
                 END AS budget_status,
-                ISNULL(md.employee_count, 0) AS employee_count
+                ISNULL(md.employee_count, 0) AS employee_count,
+                CASE WHEN ISNULL(ms_over.over_count, 0) > 0 THEN 1 ELSE 0 END AS has_milestone_over,
+                ISNULL(ms_over.over_count, 0) AS over_milestone_count
             FROM pms.projects p
             LEFT JOIN pms.customers c ON p.customer_id = c.id
             LEFT JOIN pms.employees pm ON p.project_manager_id = pm.id
@@ -364,6 +368,13 @@ export async function getMandayByProject(
                 AND ${whereClause}
                 GROUP BY s.project_id
             ) md ON p.id = md.project_id
+            LEFT JOIN (
+                SELECT
+                    vma.project_id,
+                    SUM(CASE WHEN vma.planned_mandays > 0 AND vma.calculated_actual_mandays > vma.planned_mandays THEN 1 ELSE 0 END) AS over_count
+                FROM pms.vw_milestone_actual_mandays vma
+                GROUP BY vma.project_id
+            ) ms_over ON p.id = ms_over.project_id
             WHERE p.is_active = 1
             AND (ps.code IS NULL OR ps.code NOT IN ('CANCELLED'))
             ${additionalWhere}

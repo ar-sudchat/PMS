@@ -72,9 +72,6 @@ import { ProjectMandayDetailDialog } from './ProjectMandayDetailDialog'
 import {
     LineChart,
     Line,
-    BarChart,
-    Bar,
-    Cell,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -111,13 +108,15 @@ export function MandayMonitorClient({
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [data, setData] = useState(initialData)
-    const [activeTab, setActiveTab] = useState<'projects' | 'employees'>('projects')
+    const [activeTab, setActiveTab] = useState<'projects' | 'breakdown' | 'timesheet' | 'employees'>('projects')
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
     const [detailDialogOpen, setDetailDialogOpen] = useState(false)
     const [missingData, setMissingData] = useState<MissingTimesheetResult | null>(null)
     const [isMissingLoading, setIsMissingLoading] = useState(false)
     const [selectedMissingEmployee, setSelectedMissingEmployee] = useState<MissingTimesheetEmployee | null>(null)
     const [missingDetailDialogOpen, setMissingDetailDialogOpen] = useState(false)
+    const [breakdownFilter, setBreakdownFilter] = useState<'all' | 'OVER' | 'WARNING' | 'NORMAL' | 'NO_BUDGET'>('all')
+    const [projectFilter, setProjectFilter] = useState<'all' | 'OVER' | 'WARNING' | 'NORMAL' | 'NO_BUDGET' | 'MS_OVER'>('all')
 
     // Missing timesheet date range
     const getDefaultDateRange = () => {
@@ -231,24 +230,39 @@ export function MandayMonitorClient({
         const avg = withManday.length > 0 ? Math.round((totalUsed / withManday.length) * 10) / 10 : 0
         const overCount = withManday.filter(p => p.budget_status === 'OVER').length
 
-        const barColorMap: Record<string, string> = {
-            OVER: '#ef4444',
-            WARNING: '#f59e0b',
-            NO_BUDGET: '#6b7280',
-            NORMAL: '#3b82f6',
-        }
-
-        const chartData = withManday.slice(0, 15).map(p => ({
-            name: p.project_code,
-            fullName: `${p.project_code} - ${p.project_name}`,
-            mandays: p.actual_mandays,
-            budget: p.budget_mandays,
-            color: barColorMap[p.budget_status] || '#3b82f6',
-            projectId: p.project_id,
-        }))
-
-        return { withManday, totalUsed, avg, overCount, chartData }
+        return { withManday, totalUsed, avg, overCount }
     }, [data.projects])
+
+    // Filtered breakdown data
+    const filteredBreakdown = useMemo(() => {
+        if (breakdownFilter === 'all') return breakdownData.withManday
+        return breakdownData.withManday.filter(p => p.budget_status === breakdownFilter)
+    }, [breakdownData.withManday, breakdownFilter])
+
+    const breakdownMaxMD = useMemo(() => {
+        return filteredBreakdown.length > 0
+            ? Math.max(...filteredBreakdown.map(p => p.actual_mandays))
+            : 1
+    }, [filteredBreakdown])
+
+    // Bar gradient colors by status
+    const getBarStyle = (status: string) => {
+        switch (status) {
+            case 'OVER': return 'bg-gradient-to-r from-red-400 to-red-500'
+            case 'WARNING': return 'bg-gradient-to-r from-amber-400 to-amber-500'
+            case 'NO_BUDGET': return 'bg-gradient-to-r from-gray-400 to-gray-500'
+            default: return 'bg-gradient-to-r from-blue-400 to-blue-500'
+        }
+    }
+
+    const getBarGlow = (status: string) => {
+        switch (status) {
+            case 'OVER': return 'shadow-red-200'
+            case 'WARNING': return 'shadow-amber-200'
+            case 'NO_BUDGET': return 'shadow-gray-200'
+            default: return 'shadow-blue-200'
+        }
+    }
 
     // Helper functions
     const getStatusColor = (status: string) => {
@@ -329,12 +343,17 @@ export function MandayMonitorClient({
             accessorKey: 'budget_status',
             header: () => <div className="text-center">Status</div>,
             cell: ({ row }) => (
-                <div className="text-center">
+                <div className="text-center flex items-center justify-center gap-1.5">
                     <Badge className={getStatusColor(row.original.budget_status)}>
                         {row.original.budget_status === 'OVER' ? 'Over' :
                             row.original.budget_status === 'WARNING' ? 'Warning' :
                                 row.original.budget_status === 'NO_BUDGET' ? 'No Budget' : 'OK'}
                     </Badge>
+                    {row.original.has_milestone_over && (
+                        <span title={`${row.original.over_milestone_count} milestone เกินงบ`} className="text-orange-500">
+                            <AlertTriangle className="h-4 w-4" />
+                        </span>
+                    )}
                 </div>
             ),
         },
@@ -828,6 +847,7 @@ export function MandayMonitorClient({
                 </CardContent>
             </Card>
 
+<<<<<<< HEAD
             {/* Monthly Manday Breakdown */}
             <Card className="border-0 shadow-lg">
                 <CardHeader>
@@ -1208,10 +1228,13 @@ export function MandayMonitorClient({
             </Card>
 
             {/* Project & Employee Tabs */}
+=======
+            {/* Project & Employee & Timesheet Tabs */}
+>>>>>>> origin/maclab-ag
             <Card className="border-0 shadow-lg">
                 <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
-                        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg flex-wrap">
                             <button
                                 onClick={() => setActiveTab('projects')}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
@@ -1223,6 +1246,32 @@ export function MandayMonitorClient({
                                 <FolderKanban className="h-4 w-4" />
                                 Project Budget Status
                                 <Badge variant="secondary" className="ml-1">{data.projects.length}</Badge>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('breakdown')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'breakdown'
+                                        ? 'bg-white text-indigo-600 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                            >
+                                <BarChart3 className="h-4 w-4" />
+                                การใช้ Man-day
+                                <Badge variant="secondary" className="ml-1">{breakdownData.withManday.length}</Badge>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('timesheet')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                                    activeTab === 'timesheet'
+                                        ? 'bg-white text-orange-600 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                            >
+                                <CalendarX className="h-4 w-4" />
+                                ตรวจสอบการคีย์เวลา
+                                {missingData && missingData.summary.employees_with_missing > 0 && (
+                                    <Badge variant="destructive" className="ml-1">{missingData.summary.employees_with_missing}</Badge>
+                                )}
                             </button>
                             <button
                                 onClick={() => setActiveTab('employees')}
@@ -1240,21 +1289,453 @@ export function MandayMonitorClient({
                     </div>
                 </CardHeader>
                 <CardContent>
+                    {/* Manday Breakdown Tab */}
+                    {activeTab === 'breakdown' && (
+                        breakdownData.withManday.length === 0 ? (
+                            <p className="text-center text-gray-500 py-8">ไม่พบข้อมูลการใช้ Man-day ในช่วงนี้</p>
+                        ) : (
+                            <div className="space-y-6">
+                                {/* KPI Strip */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-4 text-center border border-blue-100">
+                                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent"></div>
+                                        <div className="text-2xl mb-1">📋</div>
+                                        <div className="text-[11px] text-blue-600 font-medium uppercase tracking-wider">โครงการที่ใช้ MD</div>
+                                        <div className="text-3xl font-bold text-blue-900 mt-1">{breakdownData.withManday.length}</div>
+                                        <div className="text-[10px] text-blue-500 mt-1">โครงการ</div>
+                                    </div>
+                                    <div className="relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4 text-center border border-purple-100">
+                                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-purple-400 to-transparent"></div>
+                                        <div className="text-2xl mb-1">⏱️</div>
+                                        <div className="text-[11px] text-purple-600 font-medium uppercase tracking-wider">MD รวม</div>
+                                        <div className="text-3xl font-bold text-purple-900 mt-1">{formatNumber(breakdownData.totalUsed)}</div>
+                                        <div className="text-[10px] text-purple-500 mt-1">วัน</div>
+                                    </div>
+                                    <div className="relative overflow-hidden bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-xl p-4 text-center border border-amber-100">
+                                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent"></div>
+                                        <div className="text-2xl mb-1">📊</div>
+                                        <div className="text-[11px] text-amber-600 font-medium uppercase tracking-wider">เฉลี่ย / โครงการ</div>
+                                        <div className="text-3xl font-bold text-amber-900 mt-1">{breakdownData.avg}</div>
+                                        <div className="text-[10px] text-amber-500 mt-1">วัน / โครงการ</div>
+                                    </div>
+                                    <div className="relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100/50 rounded-xl p-4 text-center border border-red-100">
+                                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-red-400 to-transparent"></div>
+                                        <div className="text-2xl mb-1">⚠️</div>
+                                        <div className="text-[11px] text-red-600 font-medium uppercase tracking-wider">เกินงบประมาณ</div>
+                                        <div className="text-3xl font-bold text-red-900 mt-1">{breakdownData.overCount}</div>
+                                        <div className="text-[10px] text-red-500 mt-1">โครงการ</div>
+                                    </div>
+                                </div>
+
+                                {/* Filter Pills & Legend */}
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex gap-2">
+                                        {[
+                                            { key: 'all' as const, label: 'ทั้งหมด', count: breakdownData.withManday.length },
+                                            { key: 'OVER' as const, label: 'เกินงบ', count: breakdownData.withManday.filter(p => p.budget_status === 'OVER').length },
+                                            { key: 'NORMAL' as const, label: 'ปกติ', count: breakdownData.withManday.filter(p => p.budget_status === 'NORMAL').length },
+                                            { key: 'WARNING' as const, label: 'ใกล้เต็ม', count: breakdownData.withManday.filter(p => p.budget_status === 'WARNING').length },
+                                            { key: 'NO_BUDGET' as const, label: 'ไม่มีงบ', count: breakdownData.withManday.filter(p => p.budget_status === 'NO_BUDGET').length },
+                                        ].filter(f => f.key === 'all' || f.count > 0).map(f => (
+                                            <button
+                                                key={f.key}
+                                                onClick={() => setBreakdownFilter(f.key)}
+                                                className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                                                    breakdownFilter === f.key
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200'
+                                                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                {f.label}
+                                                <span className={`ml-1.5 ${breakdownFilter === f.key ? 'text-indigo-200' : 'text-gray-400'}`}>
+                                                    {f.count}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-4 text-[11px] text-gray-500">
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-3 h-1.5 rounded-sm bg-gradient-to-r from-red-400 to-red-500"></span>
+                                            เกินงบ
+                                        </span>
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-3 h-1.5 rounded-sm bg-gradient-to-r from-blue-400 to-blue-500"></span>
+                                            ปกติ
+                                        </span>
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-3 h-1.5 rounded-sm bg-gradient-to-r from-amber-400 to-amber-500"></span>
+                                            ใกล้เต็ม
+                                        </span>
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-3 h-1.5 rounded-sm bg-gradient-to-r from-gray-400 to-gray-500"></span>
+                                            ไม่มีงบ
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Horizontal Bar Rows */}
+                                <div className="border rounded-xl overflow-hidden">
+                                <div className="max-h-[480px] overflow-y-auto space-y-0 divide-y divide-gray-100">
+                                    {filteredBreakdown.map((p, i) => {
+                                        const barWidth = breakdownMaxMD > 0 ? (p.actual_mandays / breakdownMaxMD) * 100 : 0
+                                        const remain = p.budget_mandays > 0 ? Math.round((p.budget_mandays - p.actual_mandays) * 100) / 100 : 0
+
+                                        return (
+                                            <button
+                                                key={p.project_id}
+                                                onClick={() => handleProjectClick(p.project_id)}
+                                                className="w-full grid grid-cols-[280px_1fr_64px] items-center gap-5 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left group"
+                                            >
+                                                {/* Project Info */}
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <span className={`text-sm font-semibold min-w-[22px] text-right ${i < 3 ? 'text-amber-500' : 'text-gray-400'}`}>
+                                                        {i + 1}
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-semibold text-sm text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
+                                                                {p.project_name}
+                                                            </span>
+                                                            {p.budget_status === 'OVER' && (
+                                                                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-50 text-red-600">
+                                                                    เกินงบ
+                                                                </span>
+                                                            )}
+                                                            <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 text-indigo-400 transition-opacity shrink-0" />
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-400 font-mono">#{p.project_code}</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Bar */}
+                                                <div className="relative h-7 bg-gray-100 rounded-md overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-md ${getBarStyle(p.budget_status)} shadow-sm ${getBarGlow(p.budget_status)} transition-all duration-700 ease-out relative overflow-hidden`}
+                                                        style={{ width: `${Math.min(barWidth, 100)}%` }}
+                                                    >
+                                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_3s_ease-in-out_infinite]"></div>
+                                                        {barWidth > 20 && (
+                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-white drop-shadow-sm">
+                                                                {p.actual_mandays.toFixed(2)} MD
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {/* Budget marker line */}
+                                                    {p.budget_mandays > 0 && breakdownMaxMD > 0 && (
+                                                        <div
+                                                            className="absolute top-0 bottom-0 w-px border-l-2 border-dashed border-gray-400/50"
+                                                            style={{ left: `${Math.min((p.budget_mandays / breakdownMaxMD) * 100, 100)}%` }}
+                                                            title={`Budget: ${p.budget_mandays} MD`}
+                                                        ></div>
+                                                    )}
+                                                </div>
+
+                                                {/* Value */}
+                                                <div className="text-right">
+                                                    <div className={`text-base font-bold ${
+                                                        p.budget_status === 'OVER' ? 'text-red-600' :
+                                                        p.budget_status === 'WARNING' ? 'text-amber-600' :
+                                                        p.budget_status === 'NO_BUDGET' ? 'text-gray-500' :
+                                                        'text-blue-600'
+                                                    }`}>
+                                                        {p.actual_mandays.toFixed(2)}
+                                                    </div>
+                                                    {p.budget_mandays > 0 && (
+                                                        <div className={`text-[10px] ${remain < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                            {remain > 0 ? '+' : ''}{remain.toFixed(2)} MD
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                                </div>
+
+                                {/* Footer note */}
+                                <p className="text-xs text-gray-400 text-center">
+                                    ข้อมูล {periodLabel} — แสดงเฉพาะโครงการที่มีการใช้ Man-day | เส้นประ = งบประมาณ MD
+                                </p>
+                            </div>
+                        )
+                    )}
+
                     {/* Project Budget Tab */}
                     {activeTab === 'projects' && (
-                        <DataTable
-                            columns={projectColumns}
-                            data={data.projects}
-                            pageSize={10}
-                            showPagination={true}
-                            showPageSizeSelector={true}
-                            emptyMessage="ไม่พบข้อมูลโครงการ"
-                        />
+                        <div className="space-y-6">
+                            {/* KPI Summary Cards */}
+                            {(() => {
+                                const total = data.projects.length
+                                const overCount = data.projects.filter(p => p.budget_status === 'OVER').length
+                                const warningCount = data.projects.filter(p => p.budget_status === 'WARNING').length
+                                const normalCount = data.projects.filter(p => p.budget_status === 'NORMAL').length
+                                const noBudgetCount = data.projects.filter(p => p.budget_status === 'NO_BUDGET').length
+                                const totalBudget = data.projects.reduce((s, p) => s + p.budget_mandays, 0)
+                                const totalUsed = data.projects.reduce((s, p) => s + p.actual_mandays, 0)
+                                const totalRemain = Math.round((totalBudget - totalUsed) * 100) / 100
+
+                                const msOverCount = data.projects.filter(p => p.has_milestone_over).length
+
+                                const cards: { key: 'all' | 'OVER' | 'WARNING' | 'NORMAL' | 'NO_BUDGET' | 'MS_OVER'; label: string; count: number; icon: React.ReactNode; colors: string; border: string; activeRing: string }[] = [
+                                    { key: 'all', label: 'โครงการทั้งหมด', count: total, icon: <FolderKanban className="h-5 w-5 text-blue-500 mx-auto mb-1" />, colors: 'from-blue-50 to-blue-100/50', border: 'border-blue-100', activeRing: 'ring-blue-400' },
+                                    { key: 'OVER', label: 'เกินงบ (รวม)', count: overCount, icon: <AlertTriangle className="h-5 w-5 text-red-500 mx-auto mb-1" />, colors: 'from-red-50 to-red-100/50', border: 'border-red-100', activeRing: 'ring-red-400' },
+                                    { key: 'MS_OVER', label: 'MS เกินงบ', count: msOverCount, icon: <AlertTriangle className="h-5 w-5 text-orange-500 mx-auto mb-1" />, colors: 'from-orange-50 to-orange-100/50', border: 'border-orange-100', activeRing: 'ring-orange-400' },
+                                    { key: 'WARNING', label: 'ใกล้เต็ม', count: warningCount, icon: <AlertCircle className="h-5 w-5 text-amber-500 mx-auto mb-1" />, colors: 'from-amber-50 to-amber-100/50', border: 'border-amber-100', activeRing: 'ring-amber-400' },
+                                    { key: 'NORMAL', label: 'ปกติ', count: normalCount, icon: <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto mb-1" />, colors: 'from-emerald-50 to-emerald-100/50', border: 'border-emerald-100', activeRing: 'ring-emerald-400' },
+                                    { key: 'NO_BUDGET', label: 'ไม่มีงบ', count: noBudgetCount, icon: <Target className="h-5 w-5 text-gray-500 mx-auto mb-1" />, colors: 'from-gray-50 to-gray-100/50', border: 'border-gray-200', activeRing: 'ring-gray-400' },
+                                ]
+
+                                return (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                                        {cards.map(c => (
+                                            <button
+                                                key={c.key}
+                                                onClick={() => setProjectFilter(prev => prev === c.key ? 'all' : c.key)}
+                                                className={`relative overflow-hidden bg-gradient-to-br ${c.colors} rounded-xl p-4 text-center border ${c.border} transition-all cursor-pointer hover:scale-[1.03] hover:shadow-md ${
+                                                    projectFilter === c.key ? `ring-2 ${c.activeRing} shadow-lg scale-[1.03]` : ''
+                                                }`}
+                                            >
+                                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-current to-transparent"></div>
+                                                {c.icon}
+                                                <div className="text-[11px] font-medium uppercase tracking-wider">{c.label}</div>
+                                                <div className="text-2xl font-bold mt-1">{c.count}</div>
+                                            </button>
+                                        ))}
+                                        <div className="relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4 text-center border border-purple-100">
+                                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-purple-400 to-transparent"></div>
+                                            <Clock className="h-5 w-5 text-purple-500 mx-auto mb-1" />
+                                            <div className="text-[11px] text-purple-600 font-medium uppercase tracking-wider">MD คงเหลือรวม</div>
+                                            <div className={`text-2xl font-bold mt-1 ${totalRemain < 0 ? 'text-red-600' : 'text-purple-900'}`}>
+                                                {totalRemain.toFixed(1)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+
+                            {/* Filter indicator */}
+                            {projectFilter !== 'all' && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-500">กรอง:</span>
+                                    <Badge className={projectFilter === 'MS_OVER' ? 'bg-orange-100 text-orange-700 border-orange-300' : getStatusColor(projectFilter)}>
+                                        {projectFilter === 'OVER' ? 'เกินงบ (รวม)' : projectFilter === 'MS_OVER' ? 'MS เกินงบ' : projectFilter === 'WARNING' ? 'ใกล้เต็ม' : projectFilter === 'NORMAL' ? 'ปกติ' : 'ไม่มีงบ'}
+                                    </Badge>
+                                    <button
+                                        onClick={() => setProjectFilter('all')}
+                                        className="text-xs text-gray-400 hover:text-gray-600 underline"
+                                    >
+                                        ล้างตัวกรอง
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Full Project Table */}
+                            <DataTable
+                                columns={projectColumns}
+                                data={
+                                    projectFilter === 'all' ? data.projects :
+                                    projectFilter === 'MS_OVER' ? data.projects.filter(p => p.has_milestone_over) :
+                                    data.projects.filter(p => p.budget_status === projectFilter)
+                                }
+                                pageSize={10}
+                                showPagination={true}
+                                showPageSizeSelector={true}
+                                emptyMessage="ไม่พบข้อมูลโครงการ"
+                            />
+                        </div>
+                    )}
+
+                    {/* Timesheet Check Tab */}
+                    {activeTab === 'timesheet' && (
+                        <div className="space-y-4">
+                            {/* Date Range Search */}
+                            <div className="flex flex-wrap items-end gap-4 p-4 bg-gray-50 rounded-lg">
+                                <div className="space-y-1">
+                                    <Label className="text-sm flex items-center gap-1">
+                                        <Calendar className="h-3 w-3" />
+                                        วันที่เริ่มต้น
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={missingStartDate}
+                                        onChange={(e) => setMissingStartDate(e.target.value)}
+                                        className="w-[160px]"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-sm flex items-center gap-1">
+                                        <Calendar className="h-3 w-3" />
+                                        วันที่สิ้นสุด
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={missingEndDate}
+                                        onChange={(e) => setMissingEndDate(e.target.value)}
+                                        className="w-[160px]"
+                                    />
+                                </div>
+                                <Button
+                                    onClick={loadMissingData}
+                                    disabled={isMissingLoading || !missingStartDate || !missingEndDate}
+                                    className="gap-2"
+                                >
+                                    {isMissingLoading ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Search className="h-4 w-4" />
+                                    )}
+                                    ค้นหา
+                                </Button>
+                            </div>
+
+                            {isMissingLoading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                                    <span className="ml-2 text-gray-500">กำลังโหลด...</span>
+                                </div>
+                            ) : missingData ? (
+                                <div className="space-y-4">
+                                    {/* Summary Cards */}
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                        <div className="bg-blue-50 rounded-lg p-4">
+                                            <div className="text-sm text-blue-600">พนักงาน SA/BA/PG</div>
+                                            <div className="text-2xl font-bold text-blue-900">{missingData.summary.total_employees}</div>
+                                        </div>
+                                        <div className="bg-red-50 rounded-lg p-4">
+                                            <div className="text-sm text-red-600">ไม่คีย์</div>
+                                            <div className="text-2xl font-bold text-red-900">{missingData.summary.employees_with_missing}</div>
+                                            <div className="text-xs text-red-500">({missingData.summary.total_missing_entries} วัน)</div>
+                                        </div>
+                                        <div className="bg-amber-50 rounded-lg p-4">
+                                            <div className="text-sm text-amber-600">&lt;5 ชม.</div>
+                                            <div className="text-2xl font-bold text-amber-900">{missingData.summary.employees_with_low_hours}</div>
+                                            <div className="text-xs text-amber-500">({missingData.summary.total_low_hours_entries} วัน)</div>
+                                        </div>
+                                        <div className="bg-emerald-50 rounded-lg p-4">
+                                            <div className="text-sm text-emerald-600">คีย์ครบ</div>
+                                            <div className="text-2xl font-bold text-emerald-900">
+                                                {missingData.summary.total_employees - missingData.summary.employees_with_missing - missingData.summary.employees_with_low_hours +
+                                                    missingData.employees.filter(e => e.missing_count > 0 && e.low_hours_count > 0).length}
+                                            </div>
+                                        </div>
+                                        <div className="bg-purple-50 rounded-lg p-4">
+                                            <div className="text-sm text-purple-600">วันหยุด</div>
+                                            <div className="text-2xl font-bold text-purple-900">{missingData.summary.holidays.length}</div>
+                                            <div className="text-xs text-purple-500">ไม่มีใครคีย์</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Holidays Display */}
+                                    {missingData.summary.holidays.length > 0 && (
+                                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                            <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
+                                                <CalendarX className="h-4 w-4" />
+                                                วันหยุด (ไม่มี SA/BA/PG คนใดคีย์เวลา)
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {missingData.summary.holidays.map(date => (
+                                                    <Badge key={date} className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
+                                                        {new Date(date).toLocaleDateString('th-TH', {
+                                                            weekday: 'short',
+                                                            day: 'numeric',
+                                                            month: 'short'
+                                                        })}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Period Info */}
+                                    <div className="text-sm text-gray-500">
+                                        ตรวจสอบช่วง: {missingData.summary.period_start} - {missingData.summary.period_end}
+                                        <span className="ml-2 text-gray-400">(ไม่รวมวันเสาร์-อาทิตย์ และวันหยุด)</span>
+                                    </div>
+
+                                    {/* Employee Table */}
+                                    <DataTable
+                                        columns={missingTimesheetColumns}
+                                        data={missingData.employees}
+                                        pageSize={15}
+                                        showPagination={true}
+                                        showPageSizeSelector={true}
+                                        emptyMessage="ไม่พบข้อมูลพนักงาน"
+                                        onRowClick={handleMissingEmployeeClick}
+                                    />
+
+                                    {/* Legend */}
+                                    <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-500">
+                                        <span className="flex items-center gap-1">
+                                            <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                            คีย์ครบแล้ว
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <AlertCircle className="h-3 w-3 text-orange-600" />
+                                            มีปัญหา
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <AlertTriangle className="h-3 w-3 text-red-600" />
+                                            ขาด 5+ วัน
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Badge className="h-4 bg-red-50 text-red-700 text-[10px]">ไม่คีย์</Badge>
+                                            วันที่ไม่ได้คีย์เลย
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Badge className="h-4 bg-amber-50 text-amber-700 text-[10px]">&lt;5h</Badge>
+                                            คีย์ไม่ครบ 5 ชม.
+                                        </span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center text-gray-500 py-8">
+                                    <Calendar className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                                    <p>เลือกช่วงวันที่แล้วกด &quot;ค้นหา&quot;</p>
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     {/* Employee Workload Tab */}
                     {activeTab === 'employees' && (
-                        <div>
+                        <div className="space-y-6">
+                            {/* Top Employees */}
+                            {data.topEmployees.length > 0 && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {data.topEmployees.map((emp, idx) => (
+                                        <div key={emp.employee_id} className="space-y-2 p-3 rounded-lg border">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className="text-sm font-bold text-gray-400">{idx + 1}</span>
+                                                    <span className="font-medium truncate">{emp.employee_name}</span>
+                                                    {emp.position_code && (
+                                                        <Badge variant="outline" className="text-xs shrink-0">
+                                                            {emp.position_code}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <Badge variant="secondary" className="shrink-0">
+                                                    {emp.total_mandays} MD
+                                                </Badge>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Progress
+                                                    value={Math.min(emp.workload_percent, 100)}
+                                                    className={`h-1.5 flex-1 ${getProgressColor(emp.workload_percent)}`}
+                                                />
+                                                <span className={`text-xs w-10 text-right ${getWorkloadColor(emp.workload_percent)}`}>
+                                                    {emp.workload_percent}%
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-400">
+                                                {emp.project_count} โครงการ | {emp.working_days} วันทำงาน
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Full Employee Table */}
                             <DataTable
                                 columns={employeeColumns}
                                 data={data.employees}

@@ -807,7 +807,28 @@ export async function createProject(data: ProjectFormData) {
 
         const projectId = projectResult.recordset[0].id
 
-        // 2. Insert Milestones
+        // 2. Auto-add MKT milestone if project type is MKT and no milestones provided
+        if (data.milestones.length === 0 && data.project_type_id) {
+            const ptCheck = await transaction.request()
+                .input('ptId', data.project_type_id)
+                .query(`SELECT code FROM pms.project_types WHERE id = @ptId`)
+            if (ptCheck.recordset.length > 0 && ptCheck.recordset[0].code === 'MKT') {
+                const mktMc = await transaction.request()
+                    .query(`SELECT id FROM pms.milestone_configs WHERE code = 'MKT'`)
+                if (mktMc.recordset.length > 0) {
+                    await transaction.request()
+                        .input('project_id', projectId)
+                        .input('milestone_config_id', mktMc.recordset[0].id)
+                        .query(`
+                            INSERT INTO pms.project_milestones
+                            (project_id, milestone_config_id, planned_mandays, weight_percent, sort_order, progress_percent)
+                            VALUES (@project_id, @milestone_config_id, 0, 100, 0, 0)
+                        `)
+                }
+            }
+        }
+
+        // Insert Milestones
         for (let i = 0; i < data.milestones.length; i++) {
             const m = data.milestones[i]
             if (!m.milestone_config_id) continue; // Skip empty milestones

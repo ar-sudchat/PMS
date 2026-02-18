@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 
 interface DeliverablesTabProps {
     milestones: MilestoneRow[]
@@ -27,7 +28,8 @@ interface DeliverablesTabProps {
 export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh, deliverableChanges = {}, onDeliverableChange, pendingDeletes = new Set(), onMarkDelete }: DeliverablesTabProps) {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null)
-    const [newDocData, setNewDocData] = useState({ name: '', is_required: true })
+    const [newDocData, setNewDocData] = useState({ name: '', is_required: true, configId: '' })
+    const [selectedDocOption, setSelectedDocOption] = useState<Option | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Helper to format date for input (YYYY-MM-DD)
@@ -117,8 +119,23 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
 
     const handleOpenAddModal = (msId: string) => {
         setSelectedMilestoneId(msId)
-        setNewDocData({ name: '', is_required: true })
+        setNewDocData({ name: '', is_required: true, configId: '' })
+        setSelectedDocOption(null)
         setIsAddModalOpen(true)
+    }
+
+    // Get deliverable config options for the selected milestone
+    const getDocOptions = (): Option[] => {
+        if (!selectedMilestoneId) return []
+        const milestone = milestones.find(m => m.id === selectedMilestoneId)
+        if (!milestone) return []
+        const existingConfigIds = milestone.deliverables?.map(d => d.deliverable_config_id) || []
+        return deliverableConfigs
+            .filter(c => c.milestone_config_id === milestone.milestone_config_id && !existingConfigIds.includes(c.id))
+            .map(c => ({
+                value: c.id,
+                label: c.name_th || c.name,
+            }))
     }
 
     // handleVerify replaced by onDeliverableChange prop logic in render
@@ -135,22 +152,27 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
     }
 
     const handleCreateCustom = async () => {
-        if (!selectedMilestoneId || !newDocData.name.trim()) return
+        if (!selectedMilestoneId || !selectedDocOption) return
 
         setIsSubmitting(true)
-        const result = await createCustomDeliverable({
-            project_milestone_id: selectedMilestoneId,
-            name: newDocData.name,
-            is_required: newDocData.is_required
-        })
-        setIsSubmitting(false)
+        try {
+            const configId = selectedDocOption.value as string
+            const result = await createDeliverableFromConfig({
+                project_milestone_id: selectedMilestoneId,
+                deliverable_config_id: configId
+            })
 
-        if (result.success) {
-            toast.success('Custom document added')
-            setIsAddModalOpen(false)
-            onRefresh?.()
-        } else {
-            toast.error(result.error)
+            if (result.success) {
+                toast.success('เพิ่มเอกสารสำเร็จ')
+                setIsAddModalOpen(false)
+                onRefresh?.()
+            } else {
+                toast.error(result.error || 'ไม่สามารถเพิ่มเอกสารได้')
+            }
+        } catch (error) {
+            toast.error('ไม่สามารถเพิ่มเอกสารได้')
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -481,31 +503,27 @@ export function DeliverablesTab({ milestones, deliverableConfigs = [], onRefresh
             <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Add Custom Document</DialogTitle>
+                        <DialogTitle>เพิ่มเอกสาร</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label>Document Name</Label>
-                            <Input
-                                value={newDocData.name}
-                                onChange={(e) => setNewDocData({ ...newDocData, name: e.target.value })}
-                                placeholder="e.g. Additional Report"
+                            <Label>เลือกเอกสาร</Label>
+                            <SmartCombobox
+                                placeholder="เลือกเอกสาร..."
+                                options={getDocOptions()}
+                                value={selectedDocOption}
+                                onChange={setSelectedDocOption}
                             />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                id="custom-req"
-                                checked={newDocData.is_required}
-                                onChange={(e) => setNewDocData({ ...newDocData, is_required: e.target.checked })}
-                            />
-                            <Label htmlFor="custom-req">Required (Counts for KPI)</Label>
+                            {getDocOptions().length === 0 && (
+                                <p className="text-xs text-muted-foreground">ไม่มีเอกสารให้เลือก (เพิ่มครบแล้ว)</p>
+                            )}
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleCreateCustom} disabled={isSubmitting || !newDocData.name.trim()}>
+                        <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>ยกเลิก</Button>
+                        <Button onClick={handleCreateCustom} disabled={isSubmitting || !selectedDocOption}>
                             {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            Add Document
+                            เพิ่มเอกสาร
                         </Button>
                     </DialogFooter>
                 </DialogContent>
