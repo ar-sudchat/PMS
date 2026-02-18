@@ -446,7 +446,7 @@ function InsightsPanel({ insights }: { insights: MktDashboardInsight[] }) {
 // ============================================================
 
 function StatusDonut({ pipeline, onDrilldown }: { pipeline: MktDashboardPipeline[]; onDrilldown: DrilldownHandler }) {
-    const chartData = pipeline.filter(p => p.count > 0)
+    const chartData = pipeline.filter(p => p.count > 0) as (MktDashboardPipeline & Record<string, unknown>)[]
     const total = pipeline.reduce((sum, p) => sum + p.count, 0)
 
     return (
@@ -477,7 +477,7 @@ function StatusDonut({ pipeline, onDrilldown }: { pipeline: MktDashboardPipeline
                                         ))}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: number, name: string) => [`${value} โครงการ`, name]}
+                                        formatter={(value?: number, name?: string) => [`${value} โครงการ`, name || '']}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>

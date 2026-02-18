@@ -72,6 +72,9 @@ import { ProjectMandayDetailDialog } from './ProjectMandayDetailDialog'
 import {
     LineChart,
     Line,
+    BarChart,
+    Bar,
+    Cell,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -230,7 +233,23 @@ export function MandayMonitorClient({
         const avg = withManday.length > 0 ? Math.round((totalUsed / withManday.length) * 10) / 10 : 0
         const overCount = withManday.filter(p => p.budget_status === 'OVER').length
 
-        return { withManday, totalUsed, avg, overCount }
+        const getChartColor = (status: string) => {
+            switch (status) {
+                case 'OVER': return '#ef4444'
+                case 'WARNING': return '#f59e0b'
+                case 'NO_BUDGET': return '#9ca3af'
+                default: return '#3b82f6'
+            }
+        }
+
+        const chartData = withManday.slice(0, 20).map(p => ({
+            name: p.project_code?.substring(0, 10) || 'N/A',
+            fullName: p.project_name || p.project_code || 'N/A',
+            mandays: p.actual_mandays,
+            color: getChartColor(p.budget_status),
+        }))
+
+        return { withManday, totalUsed, avg, overCount, chartData }
     }, [data.projects])
 
     // Filtered breakdown data
@@ -847,7 +866,6 @@ export function MandayMonitorClient({
                 </CardContent>
             </Card>
 
-<<<<<<< HEAD
             {/* Monthly Manday Breakdown */}
             <Card className="border-0 shadow-lg">
                 <CardHeader>
@@ -1227,10 +1245,7 @@ export function MandayMonitorClient({
                 </CardContent>
             </Card>
 
-            {/* Project & Employee Tabs */}
-=======
             {/* Project & Employee & Timesheet Tabs */}
->>>>>>> origin/maclab-ag
             <Card className="border-0 shadow-lg">
                 <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
