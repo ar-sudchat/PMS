@@ -390,6 +390,7 @@ export async function updateMktDetails(
 
         if (data.mkt_mandays !== undefined) {
             setClauses.push('mkt_mandays = @mandays')
+            setClauses.push('sold_mandays = @mandays') // Sync to project sold_mandays
             request.input('mandays', data.mkt_mandays)
         }
 
@@ -450,6 +451,7 @@ export async function updateMktDetails(
 
         if (data.mkt_notes !== undefined) {
             setClauses.push('mkt_notes = @notes')
+            setClauses.push('description = @notes') // Sync to project description
             request.input('notes', data.mkt_notes)
         }
 
@@ -464,6 +466,17 @@ export async function updateMktDetails(
             INNER JOIN pms.project_types pt ON pt.id = p.project_type_id
             WHERE p.id = @projectId AND pt.code = 'MKT'
         `)
+
+        // Auto-sync contract_value after mkt_expected_value or mkt_discount change
+        if (data.mkt_expected_value !== undefined || data.mkt_discount !== undefined) {
+            await pool.request()
+                .input('projectId', projectId)
+                .query(`
+                    UPDATE pms.projects
+                    SET contract_value = ISNULL(mkt_expected_value, 0) - ISNULL(mkt_discount, 0)
+                    WHERE id = @projectId
+                `)
+        }
 
         // Log the update
         await pool.request()

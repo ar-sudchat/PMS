@@ -18,10 +18,13 @@ import {
     deleteProjectDeliverable
 } from '@/lib/actions/project-actions'
 import { getProjectTypes, ProjectType } from '@/lib/actions/project-type-actions'
+import { getProjectGroups, ProjectGroup } from '@/lib/actions/project-group-actions'
+import { getChanceConfigs, ChanceConfig } from '@/lib/actions/chance-actions'
 import { getProjectAttachments, updateProjectAttachments, Attachment } from '@/lib/actions/attachment-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { MilestonesTab } from './ProjectModal/MilestonesTab'
 import { DeliverablesTab } from './ProjectModal/DeliverablesTab'
+import { PaymentConditionTab } from './PaymentConditionTab'
 import FileUpload from '@/components/ui/FileUpload'
 
 interface ProjectModalProps {
@@ -35,7 +38,7 @@ interface ProjectModalProps {
 
 export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultProjectTypeCode }: ProjectModalProps) {
     // Active Tab
-    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables' | 'attachments'>('info')
+    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables' | 'payment' | 'attachments'>('info')
 
     // Attachments State
     const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -47,6 +50,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         name: '',
         name_th: '',
         customer_id: '',
+        prime_id: '',
+        partner_id: '',
         project_manager_id: '',
         description: '',
         sold_mandays: 0,
@@ -56,6 +61,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         current_milestone_id: '',
         project_owner_id: '',
         project_type_id: '',
+        project_group_id: '',
+        chance_id: '',
+        contract_value: 0,
     })
 
     // Form State - Milestones
@@ -68,11 +76,14 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
     const [deliverableConfigs, setDeliverableConfigs] = useState<any[]>([])
     const [statusConfigs, setStatusConfigs] = useState<any[]>([])
     const [projectTypes, setProjectTypes] = useState<ProjectType[]>([])
+    const [projectGroups, setProjectGroups] = useState<ProjectGroup[]>([])
+    const [chanceConfigs, setChanceConfigs] = useState<ChanceConfig[]>([])
 
     // Computed: Get selected project type settings
     const selectedProjectType = projectTypes.find(t => t.id === formData.project_type_id)
     const showMilestonesTab = selectedProjectType?.has_milestones !== false
     const showDeliverablesTab = selectedProjectType?.has_deliverables !== false
+    const showPaymentTab = showMilestonesTab
 
     // Loading & Error
     const [isLoading, setIsLoading] = useState(false)
@@ -125,6 +136,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     name: projectData.name,
                     name_th: projectData.name_th || '',
                     customer_id: projectData.customer_id,
+                    prime_id: projectData.prime_id || '',
+                    partner_id: projectData.partner_id || '',
                     project_manager_id: projectData.project_manager_id,
                     description: projectData.description || '',
                     sold_mandays: projectData.sold_mandays,
@@ -134,6 +147,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     current_milestone_id: projectData.current_milestone_id || '',
                     project_owner_id: projectData.project_owner_id || '',
                     project_type_id: projectData.project_type_id || '',
+                    project_group_id: projectData.project_group_id || '',
+                    chance_id: projectData.chance_id || '',
+                    contract_value: projectData.contract_value || 0,
                 })
 
                 if (projectData.milestones) {
@@ -145,6 +161,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                         weight_percent: m.weight_percent, // Legacy
                         weight_ttd: m.weight_ttd,
                         weight_mdc: m.weight_mdc,
+                        payment_percent: m.payment_percent || 0,
                         due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
                         completed_date: m.completed_date ? new Date(m.completed_date).toISOString().split('T')[0] : '',
                         planned_mandays: m.planned_mandays,
@@ -214,13 +231,15 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
 
     const loadOptions = async () => {
         try {
-            const [cust, empResult, ms, del, stat, typesResult] = await Promise.all([
+            const [cust, empResult, ms, del, stat, typesResult, groupsResult, chanceResult] = await Promise.all([
                 getCustomers(),
                 getEmployees(),
                 getMilestoneConfigs(),
                 getDeliverableConfigs(),
                 getProjectStatusConfigs(),
                 getProjectTypes(),
+                getProjectGroups(),
+                getChanceConfigs(),
             ])
             setCustomers(cust)
             // Handle getEmployees returning { success, data } or array (backward compat if needed)
@@ -233,6 +252,16 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
             setMilestoneConfigs(ms)
             setDeliverableConfigs(del)
             setStatusConfigs(stat)
+
+            // Load project groups
+            if (groupsResult.success && groupsResult.data) {
+                setProjectGroups(groupsResult.data)
+            }
+
+            // Load chance configs
+            if (chanceResult.success && chanceResult.data) {
+                setChanceConfigs(chanceResult.data)
+            }
 
             // Load project types
             if (typesResult.success && typesResult.data) {
@@ -269,6 +298,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
             name: '',
             name_th: '',
             customer_id: '',
+            prime_id: '',
+            partner_id: '',
             project_manager_id: '',
             description: '',
             sold_mandays: 0,
@@ -278,6 +309,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
             current_milestone_id: '',
             project_owner_id: '',
             project_type_id: defaultType?.id || '',
+            project_group_id: '',
+            chance_id: '',
+            contract_value: 0,
         })
         // Initialize milestones from configs (sorted by sort_order)
         initializeMilestonesFromConfigs()
@@ -334,6 +368,12 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
 
     const handleRemoveMilestone = (index: number) => {
         setMilestones(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const handleUpdatePaymentPercent = (index: number, percent: number) => {
+        setMilestones(prev => prev.map((m, i) =>
+            i === index ? { ...m, payment_percent: percent } : m
+        ))
     }
 
     const handleUpdateMilestone = (index: number, field: keyof MilestoneRow, value: any) => {
@@ -493,6 +533,18 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             📄 Deliverables
                         </button>
                     )}
+                    {showPaymentTab && (
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('payment')}
+                            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'payment'
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                        >
+                            Payment Condition
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => setActiveTab('attachments')}
@@ -595,20 +647,108 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             />
                         </div>
 
-                        {/* Row 2: Name EN */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                                Project Name <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="Enter project name"
-                                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.name ? 'border-red-500' : 'border-slate-300'
-                                    }`}
-                            />
-                            {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                        {/* Row 2: Project Name, Project Group, Chance */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Project Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    placeholder="Enter project name"
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${errors.name ? 'border-red-500' : 'border-slate-300'
+                                        }`}
+                                />
+                                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Project Group
+                                </label>
+                                <select
+                                    value={formData.project_group_id}
+                                    onChange={(e) => setFormData({ ...formData, project_group_id: e.target.value })}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                                >
+                                    <option value="">-- ไม่ระบุ --</option>
+                                    {(() => {
+                                        const topGroups = projectGroups.filter(g => g.parent_id === null)
+                                        return topGroups.map(group => {
+                                            const subGroups = projectGroups.filter(g => g.parent_id === group.id)
+                                            if (subGroups.length === 0) {
+                                                return (
+                                                    <option key={group.id} value={group.id}>
+                                                        {group.name}
+                                                    </option>
+                                                )
+                                            }
+                                            return (
+                                                <optgroup key={group.id} label={group.name}>
+                                                    {subGroups.map(sub => (
+                                                        <option key={sub.id} value={sub.id}>
+                                                            {sub.name}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            )
+                                        })
+                                    })()}
+                                </select>
+                                {(() => {
+                                    const selected = projectGroups.find(g => g.id === formData.project_group_id)
+                                    const parent = selected ? projectGroups.find(g => g.id === selected.parent_id) : null
+                                    if (selected) {
+                                        return (
+                                            <p className="text-xs text-purple-500 mt-1">
+                                                {parent ? `${parent.name} / ${selected.name}` : selected.name}
+                                            </p>
+                                        )
+                                    }
+                                    return null
+                                })()}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Chance
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={formData.chance_id}
+                                        onChange={(e) => setFormData({ ...formData, chance_id: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                                    >
+                                        <option value="">-- ไม่ระบุ --</option>
+                                        {chanceConfigs.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name} ({c.percentage}%)
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {(() => {
+                                        const selected = chanceConfigs.find(c => c.id === formData.chance_id)
+                                        if (selected) {
+                                            return (
+                                                <span
+                                                    className="absolute right-8 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full"
+                                                    style={{ backgroundColor: selected.color }}
+                                                />
+                                            )
+                                        }
+                                        return null
+                                    })()}
+                                </div>
+                                {(() => {
+                                    const selected = chanceConfigs.find(c => c.id === formData.chance_id)
+                                    if (selected && selected.description) {
+                                        return (
+                                            <p className="text-xs text-slate-500 mt-1">{selected.description}</p>
+                                        )
+                                    }
+                                    return null
+                                })()}
+                            </div>
                         </div>
 
                         {/* Row 3: Name TH - HIDDEN as per request */}
@@ -621,8 +761,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
               </div> 
               */}
 
-                        {/* Row 4: Customer & PM */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Row 4: Customer, Prime, Partner, PM */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <SmartCombobox
                                 label="Customer"
                                 required
@@ -634,6 +774,28 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                                 value={formData.customer_id ? customers.find(c => c.id === formData.customer_id) ? { value: formData.customer_id, label: `[${customers.find(c => c.id === formData.customer_id)!.code}] ${customers.find(c => c.id === formData.customer_id)!.name}` } : null : { value: '', label: 'Select customer' }}
                                 onChange={(option) => setFormData({ ...formData, customer_id: option?.value === '' ? '' : option?.value as string || '' })}
                                 error={errors.customer_id}
+                                maxDisplayItems={10}
+                            />
+                            <SmartCombobox
+                                label="Prime"
+                                placeholder="Select Prime"
+                                options={[
+                                    { value: '', label: '-- ไม่ระบุ --' },
+                                    ...customers.filter(c => c.is_prime).map(c => ({ value: c.id, label: `[${c.code}] ${c.name}` }))
+                                ]}
+                                value={formData.prime_id ? customers.find(c => c.id === formData.prime_id) ? { value: formData.prime_id, label: `[${customers.find(c => c.id === formData.prime_id)!.code}] ${customers.find(c => c.id === formData.prime_id)!.name}` } : null : { value: '', label: '-- ไม่ระบุ --' }}
+                                onChange={(option) => setFormData({ ...formData, prime_id: option?.value === '' ? '' : option?.value as string || '' })}
+                                maxDisplayItems={10}
+                            />
+                            <SmartCombobox
+                                label="Partner"
+                                placeholder="Select Partner"
+                                options={[
+                                    { value: '', label: '-- ไม่ระบุ --' },
+                                    ...customers.filter(c => c.is_partner).map(c => ({ value: c.id, label: `[${c.code}] ${c.name}` }))
+                                ]}
+                                value={formData.partner_id ? customers.find(c => c.id === formData.partner_id) ? { value: formData.partner_id, label: `[${customers.find(c => c.id === formData.partner_id)!.code}] ${customers.find(c => c.id === formData.partner_id)!.name}` } : null : { value: '', label: '-- ไม่ระบุ --' }}
+                                onChange={(option) => setFormData({ ...formData, partner_id: option?.value === '' ? '' : option?.value as string || '' })}
                                 maxDisplayItems={10}
                             />
                             <SmartCombobox
@@ -691,6 +853,25 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                 />
                                 <p className="text-xs text-slate-500 mt-1">หลัง Go-Live</p>
+                            </div>
+                        </div>
+
+                        {/* Row: Contract Value */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    มูลค่าโครงการ (บาท)
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={formData.contract_value}
+                                    onChange={(e) => setFormData({ ...formData, contract_value: parseFloat(e.target.value) || 0 })}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="0.00"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Contract Value (Sync จาก MKT สุทธิ)</p>
                             </div>
                         </div>
 
@@ -778,6 +959,15 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             onMarkDelete={(id, name) => {
                                 setPendingDeletes(prev => new Set([...prev, id]))
                             }}
+                        />
+                    </div>
+
+                    {/* ═══ Tab: Payment Condition ═══ */}
+                    <div className={`${activeTab === 'payment' ? 'block' : 'hidden'} space-y-4`}>
+                        <PaymentConditionTab
+                            milestones={milestones}
+                            contractValue={formData.contract_value}
+                            onUpdatePaymentPercent={handleUpdatePaymentPercent}
                         />
                     </div>
 

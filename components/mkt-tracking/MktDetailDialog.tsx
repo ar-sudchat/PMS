@@ -35,7 +35,13 @@ import {
     XCircle,
     History,
     Paperclip,
+    MessageSquare,
 } from 'lucide-react'
+import { ActionLogTab } from '@/components/sales/ActionLogTab'
+import {
+    ActionLog, ActionTypeConfig,
+    getProjectActionLogs, getActionTypes
+} from '@/lib/actions/sales-action-log-actions'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -53,6 +59,7 @@ interface MktDetailDialogProps {
     project: MktProject | null
     onSuccess: () => void
     onViewHistory?: (project: MktProject) => void
+    defaultTab?: 'details' | 'attachments' | 'actions'
 }
 
 const stageColors: Record<string, string> = {
@@ -71,12 +78,14 @@ const stageActiveColors: Record<string, string> = {
     PRICE_SENT: 'bg-teal-500 text-white',
 }
 
-export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onViewHistory }: MktDetailDialogProps) {
+export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onViewHistory, defaultTab }: MktDetailDialogProps) {
     const [isLoading, setIsLoading] = useState(false)
     const [isStageLoading, setIsStageLoading] = useState(false)
     const [confirmDialog, setConfirmDialog] = useState<'won' | 'cancel' | null>(null)
     const [attachments, setAttachments] = useState<Attachment[]>([])
-    const [activeTab, setActiveTab] = useState<'details' | 'attachments'>('details')
+    const [actionLogs, setActionLogs] = useState<ActionLog[]>([])
+    const [actionTypes, setActionTypes] = useState<ActionTypeConfig[]>([])
+    const [activeTab, setActiveTab] = useState<'details' | 'attachments' | 'actions'>('details')
     const [formData, setFormData] = useState({
         mkt_mandays: '',
         mkt_mandays_sa: '',
@@ -108,6 +117,7 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
 
     useEffect(() => {
         if (project) {
+            setActiveTab(defaultTab || 'details')
             setFormData({
                 mkt_mandays: project.mkt_mandays?.toString() || '',
                 mkt_mandays_sa: project.mkt_mandays_sa?.toString() || '',
@@ -124,10 +134,13 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                 mkt_dev_accepted_date: toDateString(project.mkt_dev_accepted_date),
                 mkt_notes: project.mkt_notes || '',
             })
-            // Load attachments
+            // Load attachments and action logs
             loadAttachments(project.id)
+            loadActionLogs(project.id)
+            loadActionTypes()
         } else {
             setAttachments([])
+            setActionLogs([])
         }
     }, [project])
 
@@ -135,6 +148,23 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
         const result = await getProjectAttachments(projectId)
         if (result.success) {
             setAttachments(result.data)
+        }
+    }
+
+    const loadActionLogs = async (projectId: string) => {
+        const data = await getProjectActionLogs(projectId)
+        setActionLogs(data)
+    }
+
+    const loadActionTypes = async () => {
+        const data = await getActionTypes()
+        setActionTypes(data)
+    }
+
+    const handleActionLogRefresh = async () => {
+        if (project) {
+            const data = await getProjectActionLogs(project.id)
+            setActionLogs(data)
         }
     }
 
@@ -274,30 +304,29 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                         </div>
                     </DialogHeader>
 
-                    <form onSubmit={handleSubmit}>
-                        {/* Stage Selection */}
-                        <div className="mb-4">
-                            <div className="flex flex-wrap gap-2">
-                                {MKT_STAGES.map(stage => (
-                                    <button
-                                        key={stage.code}
-                                        type="button"
-                                        disabled={isStageLoading}
-                                        onClick={() => handleStageChange(stage.code)}
-                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
-                                            project?.mkt_stage === stage.code
-                                                ? stageActiveColors[stage.code]
-                                                : stageColors[stage.code]
-                                        }`}
-                                    >
-                                        {project?.mkt_stage !== stage.code && <ArrowRight className="h-3 w-3" />}
-                                        {stage.label}
-                                    </button>
-                                ))}
-                            </div>
+                    {/* Stage Selection */}
+                    <div className="mb-4">
+                        <div className="flex flex-wrap gap-2">
+                            {MKT_STAGES.map(stage => (
+                                <button
+                                    key={stage.code}
+                                    type="button"
+                                    disabled={isStageLoading}
+                                    onClick={() => handleStageChange(stage.code)}
+                                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+                                        project?.mkt_stage === stage.code
+                                            ? stageActiveColors[stage.code]
+                                            : stageColors[stage.code]
+                                    }`}
+                                >
+                                    {project?.mkt_stage !== stage.code && <ArrowRight className="h-3 w-3" />}
+                                    {stage.label}
+                                </button>
+                            ))}
                         </div>
+                    </div>
 
-                        {/* Custom Tabs - styled like ProjectModal */}
+                    {/* Custom Tabs - styled like ProjectModal */}
                         <div className="flex border-b mb-4">
                             <button
                                 type="button"
@@ -310,6 +339,23 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                             >
                                 <FileText className="h-4 w-4" />
                                 รายละเอียด
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('actions')}
+                                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                                    activeTab === 'actions'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <MessageSquare className="h-4 w-4" />
+                                Action Log
+                                {actionLogs.length > 0 && (
+                                    <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                        {actionLogs.length}
+                                    </span>
+                                )}
                             </button>
                             <button
                                 type="button"
@@ -330,8 +376,21 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                             </button>
                         </div>
 
-                        {/* Tab Content Container - Fixed height to prevent resize on tab switch */}
-                        <div className="min-h-[420px]">
+                    {/* Tab Content Container - Fixed height to prevent resize on tab switch */}
+                    <div className="min-h-[420px]">
+                        {/* Tab: Action Log - outside form to prevent button conflicts */}
+                        <div className={`${activeTab === 'actions' ? 'block' : 'hidden'}`}>
+                            {project && (
+                                <ActionLogTab
+                                    projectId={project.id}
+                                    logs={actionLogs}
+                                    actionTypes={actionTypes}
+                                    onRefresh={handleActionLogRefresh}
+                                />
+                            )}
+                        </div>
+
+                        <form onSubmit={handleSubmit}>
                             {/* Tab: Details */}
                             <div className={`${activeTab === 'details' ? 'block' : 'hidden'} space-y-4`}>
                                 {/* Manday Section */}
@@ -625,7 +684,6 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                                     helperText="รองรับไฟล์ รูปภาพ, PDF, Word, Excel (สูงสุด 10 ไฟล์, ไฟล์ละไม่เกิน 20MB)"
                                 />
                             </div>
-                        </div>
 
                         <Separator className="my-4" />
 
@@ -676,7 +734,8 @@ export function MktDetailDialog({ open, onOpenChange, project, onSuccess, onView
                                 บันทึก
                             </Button>
                         </DialogFooter>
-                    </form>
+                        </form>
+                    </div>
                 </DialogContent>
             </Dialog>
 

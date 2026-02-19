@@ -31,7 +31,7 @@ export default function CustomersPage() {
             setData(customers);
         } catch (error) {
             console.error('Failed to fetch customers:', error);
-            toast.error('Failed to load customers');
+            toast.error('Failed to load accounts');
         } finally {
             setLoading(false);
         }
@@ -62,13 +62,13 @@ export default function CustomersPage() {
         if (!itemToDelete) return;
         try {
             await deleteCustomer(itemToDelete.id);
-            toast.success('Customer deleted successfully');
+            toast.success('ลบ Account สำเร็จ');
             refreshData();
             setIsDeleteModalOpen(false);
             setItemToDelete(null);
         } catch (error) {
             console.error(error);
-            toast.error('Failed to delete customer');
+            toast.error('ลบ Account ไม่สำเร็จ');
         }
     };
 
@@ -85,40 +85,72 @@ export default function CustomersPage() {
             cell: ({ row }) => (
                 <span className="font-mono text-slate-500 font-medium">{row.original.code}</span>
             ),
-            size: 100,
+            size: 80,
         },
         {
             accessorKey: "name",
-            header: "Customer",
+            header: "ชื่อ Account",
             cell: ({ row }) => (
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <div
                         style={{
-                            width: "36px",
-                            height: "36px",
+                            width: "32px",
+                            height: "32px",
                             borderRadius: "8px",
                             background: `#6366f115`,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                             color: '#6366f1',
+                            flexShrink: 0,
                         }}
                     >
-                        <Users size={18} />
+                        <Users size={16} />
                     </div>
-                    <div>
-                        <div style={{ fontWeight: 600, color: "#1e293b", fontSize: '14px' }}>{row.original.name}</div>
+                    <div style={{ fontWeight: 600, color: "#1e293b", fontSize: '13px' }}>
+                        {row.original.name}
                     </div>
                 </div>
             ),
-            size: 500,
+            size: 220,
         },
-        /*
+        {
+            id: "account_type",
+            header: "Account Type",
+            accessorFn: (row) => {
+                const types: string[] = [];
+                if (row.is_customer) types.push('Customer');
+                if (row.is_prime) types.push('Prime');
+                if (row.is_partner) types.push('Partner');
+                if (row.is_vendor) types.push('Vendor');
+                return types.join(' ');
+            },
+            cell: ({ row }) => {
+                const r = row.original;
+                const badges: { label: string; cls: string }[] = [];
+                if (r.is_customer) badges.push({ label: 'Customer', cls: 'bg-slate-100 text-slate-700' });
+                if (r.is_prime) badges.push({ label: 'Prime', cls: 'bg-blue-100 text-blue-700' });
+                if (r.is_partner) badges.push({ label: 'Partner', cls: 'bg-amber-100 text-amber-700' });
+                if (r.is_vendor) badges.push({ label: 'Vendor', cls: 'bg-purple-100 text-purple-700' });
+                return (
+                    <div className="flex flex-wrap gap-1">
+                        {badges.length > 0 ? badges.map(b => (
+                            <span key={b.label} className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${b.cls}`}>
+                                {b.label}
+                            </span>
+                        )) : <span className="text-slate-300 text-xs">-</span>}
+                    </div>
+                );
+            },
+            size: 160,
+        },
         {
             accessorKey: "address",
             header: "ที่อยู่",
             cell: ({ row }) => (
-                <span className="text-slate-600 text-sm">{row.original.address || '-'}</span>
+                <span className="text-slate-600 text-sm truncate block max-w-[200px]" title={row.original.address || ''}>
+                    {row.original.address || '-'}
+                </span>
             ),
             size: 200,
         },
@@ -151,10 +183,9 @@ export default function CustomersPage() {
             ),
             size: 120,
         },
-        */
         {
             accessorKey: "is_active",
-            header: "Status",
+            header: "สถานะ",
             cell: ({ getValue }) => {
                 const active = getValue() as boolean;
                 return (
@@ -164,7 +195,7 @@ export default function CustomersPage() {
                     </span>
                 );
             },
-            size: 90,
+            size: 80,
         },
         {
             id: 'actions',
@@ -175,7 +206,7 @@ export default function CustomersPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleEdit(row.original)}
-                        title="Edit Details"
+                        title="แก้ไข Account"
                         className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
                     >
                         <Edit size={16} />
@@ -184,7 +215,7 @@ export default function CustomersPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteClick(row.original)}
-                        title="Delete Customer"
+                        title="ลบ Account"
                         className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50"
                     >
                         <Trash2 size={16} />
@@ -197,7 +228,7 @@ export default function CustomersPage() {
     ];
 
     if (loading) {
-        return <div className="p-8 text-center text-slate-500">Loading customers...</div>;
+        return <div className="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</div>;
     }
 
     return (
@@ -205,15 +236,15 @@ export default function CustomersPage() {
             {/* Header */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Customers</h1>
-                    <p className="text-slate-500">Manage customer accounts</p>
+                    <h1 className="text-2xl font-bold text-slate-900">Account</h1>
+                    <p className="text-slate-500">จัดการบัญชีลูกค้า</p>
                 </div>
                 <Button
                     onClick={handleCreate}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
                 >
                     <Plus size={20} />
-                    เพิ่มลูกค้า
+                    เพิ่ม Account
                 </Button>
             </div>
 
@@ -224,7 +255,7 @@ export default function CustomersPage() {
                 size="md"
                 enableSorting={true}
                 enableGlobalFilter={true}
-                searchPlaceholder="Search customers..."
+                searchPlaceholder="ค้นหา Account..."
             />
 
             {/* Modal */}
@@ -241,8 +272,8 @@ export default function CustomersPage() {
                 open={isDeleteModalOpen}
                 onClose={() => setIsDeleteModalOpen(false)}
                 onConfirm={handleConfirmDelete}
-                title="ลบลูกค้า"
-                message={`ต้องการลบลูกค้า "${itemToDelete?.name}" หรือไม่?`}
+                title="ลบ Account"
+                message={`ต้องการลบ Account "${itemToDelete?.name}" หรือไม่?`}
                 isLoading={false}
             />
         </div>

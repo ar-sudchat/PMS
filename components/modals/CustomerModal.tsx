@@ -4,8 +4,10 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Customer, CustomerFormData } from '@/types/customer';
 import { createCustomer, updateCustomer } from '@/lib/actions/customer-actions';
-import { Switch } from '@/components/ui/Switch'; // Ensure correct casing for Switch component path
+import { Switch } from '@/components/ui/Switch';
 import { toast } from 'sonner';
+
+const inputClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 interface CustomerModalProps {
     open: boolean;
@@ -19,12 +21,11 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
     const [isLoading, setIsLoading] = useState(false);
     const formRef = useRef<HTMLDivElement>(null);
 
-    // Handle Enter key to move to next field
-    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const handleEnterKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             const inputs = Array.from(formRef.current?.querySelectorAll(
-                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"])'
+                'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]), textarea:not([disabled])'
             ) || []) as HTMLElement[];
             const currentIdx = inputs.indexOf(e.currentTarget);
             if (currentIdx !== -1 && currentIdx < inputs.length - 1) {
@@ -34,8 +35,9 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
     };
 
     const [formData, setFormData] = useState<CustomerFormData>({
-        code: '',
-        name: '',
+        code: '', name: '', short_name: '',
+        is_customer: true, is_prime: false, is_partner: false, is_vendor: false,
+        address: '', tax_id: '', contact_name: '', contact_email: '', contact_phone: '',
         is_active: true
     });
 
@@ -44,10 +46,25 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
             setFormData({
                 code: data.code,
                 name: data.name,
+                short_name: data.short_name || '',
+                is_customer: data.is_customer ?? true,
+                is_prime: data.is_prime ?? false,
+                is_partner: data.is_partner ?? false,
+                is_vendor: data.is_vendor ?? false,
+                address: data.address || '',
+                tax_id: data.tax_id || '',
+                contact_name: data.contact_name || '',
+                contact_email: data.contact_email || '',
+                contact_phone: data.contact_phone || '',
                 is_active: data.is_active
             });
         } else {
-            setFormData({ code: '', name: '', is_active: true });
+            setFormData({
+                code: '', name: '', short_name: '',
+                is_customer: true, is_prime: false, is_partner: false, is_vendor: false,
+                address: '', tax_id: '', contact_name: '', contact_email: '', contact_phone: '',
+                is_active: true
+            });
         }
     }, [mode, data, open]);
 
@@ -63,7 +80,7 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
             }
 
             if (result.success) {
-                toast.success(mode === 'create' ? 'Customer created successfully' : 'Customer updated successfully');
+                toast.success(mode === 'create' ? 'สร้าง Account สำเร็จ' : 'อัพเดท Account สำเร็จ');
                 onSuccess();
                 onClose();
             }
@@ -79,15 +96,15 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
         <Modal
             open={open}
             onClose={onClose}
-            title={mode === 'create' ? 'เพิ่มลูกค้า' : 'แก้ไขลูกค้า'}
-            size="sm"
+            title={mode === 'create' ? 'เพิ่ม Account' : 'แก้ไข Account'}
+            size="md"
         >
             <div ref={formRef} className="space-y-4">
                 {/* Code */}
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">รหัสลูกค้า</label>
+                    <label className="text-sm font-medium">รหัส Account</label>
                     <input
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        className={inputClass}
                         value={formData.code}
                         onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                         onKeyDown={handleEnterKey}
@@ -97,17 +114,123 @@ export function CustomerModal({ open, onClose, mode, data, onSuccess }: Customer
                     />
                 </div>
 
-                {/* Name */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium">ชื่อลูกค้า</label>
-                    <input
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        onKeyDown={handleEnterKey}
-                        placeholder="e.g. บริษัท ABC จำกัด"
-                        required
-                    />
+                {/* Name & Short Name */}
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="col-span-2 space-y-2">
+                        <label className="text-sm font-medium">ชื่อ Account</label>
+                        <input
+                            className={inputClass}
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="e.g. บริษัท ABC จำกัด"
+                            required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">ชื่อย่อ</label>
+                        <input
+                            className={inputClass}
+                            value={formData.short_name}
+                            onChange={(e) => setFormData({ ...formData, short_name: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="e.g. ABC"
+                        />
+                    </div>
+                </div>
+
+                {/* Account Type - Switches */}
+                <div className="p-3 bg-slate-50 rounded-lg space-y-3">
+                    <label className="text-sm font-medium text-slate-700">Account Type</label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Customer</span>
+                            <Switch
+                                checked={formData.is_customer}
+                                onCheckedChange={(checked) => setFormData({ ...formData, is_customer: checked })}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Partner</span>
+                            <Switch
+                                checked={formData.is_partner}
+                                onCheckedChange={(checked) => setFormData({ ...formData, is_partner: checked })}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Prime</span>
+                            <Switch
+                                checked={formData.is_prime}
+                                onCheckedChange={(checked) => setFormData({ ...formData, is_prime: checked })}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Vendor</span>
+                            <Switch
+                                checked={formData.is_vendor}
+                                onCheckedChange={(checked) => setFormData({ ...formData, is_vendor: checked })}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Address & Tax ID */}
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="col-span-2 space-y-2">
+                        <label className="text-sm font-medium">ที่อยู่</label>
+                        <input
+                            className={inputClass}
+                            value={formData.address}
+                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="ที่อยู่บริษัท"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Tax ID</label>
+                        <input
+                            className={inputClass}
+                            value={formData.tax_id}
+                            onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="เลขประจำตัวผู้เสียภาษี"
+                        />
+                    </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">ผู้ติดต่อ</label>
+                        <input
+                            className={inputClass}
+                            value={formData.contact_name}
+                            onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="ชื่อผู้ติดต่อ"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">Email</label>
+                        <input
+                            className={inputClass}
+                            type="email"
+                            value={formData.contact_email}
+                            onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="email@example.com"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">โทรศัพท์</label>
+                        <input
+                            className={inputClass}
+                            value={formData.contact_phone}
+                            onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
+                            onKeyDown={handleEnterKey}
+                            placeholder="0xx-xxx-xxxx"
+                        />
+                    </div>
                 </div>
 
                 {/* Status */}

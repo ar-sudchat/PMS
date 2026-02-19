@@ -518,12 +518,30 @@ export async function getProjectById(id: string) {
           pos_o.code as owner_position_code,
           pos_o.name as owner_position_name,
 
+          -- Prime & Partner
+          cp.code as prime_code,
+          cp.name as prime_name,
+          cpa.code as partner_code,
+          cpa.name as partner_name,
+
           -- Project Type
           pt.code as project_type_code,
           pt.name as project_type_name,
           pt.color as project_type_color,
           pt.has_milestones,
           pt.has_deliverables,
+
+          -- Project Group
+          pg.code as project_group_code,
+          pg.name as project_group_name,
+          pg.color as project_group_color,
+          pgp.name as project_group_parent_name,
+
+          -- Chance
+          ch.code as chance_code,
+          ch.name as chance_name,
+          ch.color as chance_color,
+          ch.percentage as chance_percentage,
 
           -- Status
           ps.code as status_code,
@@ -538,10 +556,15 @@ export async function getProjectById(id: string) {
 
         FROM pms.projects p
         LEFT JOIN pms.customers c ON p.customer_id = c.id
+        LEFT JOIN pms.customers cp ON p.prime_id = cp.id
+        LEFT JOIN pms.customers cpa ON p.partner_id = cpa.id
         LEFT JOIN pms.employees pm ON p.project_manager_id = pm.id
         LEFT JOIN pms.employees po ON p.project_owner_id = po.id
         LEFT JOIN pms.positions pos_o ON po.position_id = pos_o.id
         LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+        LEFT JOIN pms.project_groups pg ON p.project_group_id = pg.id
+        LEFT JOIN pms.project_groups pgp ON pg.parent_id = pgp.id
+        LEFT JOIN pms.chance_configs ch ON p.chance_id = ch.id
         LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
         LEFT JOIN pms.project_milestones cpm ON p.current_milestone_id = cpm.id
         LEFT JOIN pms.milestone_configs mc ON cpm.milestone_config_id = mc.id
@@ -570,6 +593,7 @@ export async function getProjectById(id: string) {
           -- New Weight Columns (TTD/MDC)
           COALESCE(pm.weight_ttd, mc.default_weight_ttd) as weight_ttd,
           COALESCE(pm.weight_mdc, mc.default_weight_mdc) as weight_mdc,
+          ISNULL(pm.payment_percent, 0) as payment_percent,
           mc.default_weight_ttd,
           mc.default_weight_mdc,
 
@@ -773,35 +797,40 @@ export async function createProject(data: ProjectFormData) {
             .input('name', data.name)
             .input('description', data.description || null)
             .input('customer_id', data.customer_id || null)
+            .input('prime_id', data.prime_id || null)
+            .input('partner_id', data.partner_id || null)
             .input('project_manager_id', data.project_manager_id || null)
             .input('project_owner_id', data.project_owner_id || null)
             .input('project_type_id', data.project_type_id || null)
+            .input('project_group_id', data.project_group_id || null)
+            .input('chance_id', data.chance_id || null)
             .input('sold_mandays', data.sold_mandays)
             .input('manday_rate', data.manday_rate)
             .input('warranty_end_date', data.warranty_end_date || null)
             .input('status_id', data.status_id || null)
+            .input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
 
         let projectResult
         if (hasProjectNameTh) {
             projectRequest.input('name_th', data.name_th || null)
             projectResult = await projectRequest.query(`
                 INSERT INTO pms.projects
-                (project_code, project_year, name, name_th, description, customer_id,
-                 project_manager_id, project_owner_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
+                (project_code, project_year, name, name_th, description, customer_id, prime_id, partner_id,
+                 project_manager_id, project_owner_id, project_type_id, project_group_id, chance_id, sold_mandays, manday_rate, contract_value, warranty_end_date, status_id)
                 OUTPUT INSERTED.id
                 VALUES
-                (@project_code, @project_year, @name, @name_th, @description, @customer_id,
-                 @project_manager_id, @project_owner_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
+                (@project_code, @project_year, @name, @name_th, @description, @customer_id, @prime_id, @partner_id,
+                 @project_manager_id, @project_owner_id, @project_type_id, @project_group_id, @chance_id, @sold_mandays, @manday_rate, @contract_value, @warranty_end_date, @status_id)
             `)
         } else {
             projectResult = await projectRequest.query(`
                 INSERT INTO pms.projects
-                (project_code, project_year, name, description, customer_id,
-                 project_manager_id, project_owner_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
+                (project_code, project_year, name, description, customer_id, prime_id, partner_id,
+                 project_manager_id, project_owner_id, project_type_id, project_group_id, chance_id, sold_mandays, manday_rate, contract_value, warranty_end_date, status_id)
                 OUTPUT INSERTED.id
                 VALUES
-                (@project_code, @project_year, @name, @description, @customer_id,
-                 @project_manager_id, @project_owner_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
+                (@project_code, @project_year, @name, @description, @customer_id, @prime_id, @partner_id,
+                 @project_manager_id, @project_owner_id, @project_type_id, @project_group_id, @chance_id, @sold_mandays, @manday_rate, @contract_value, @warranty_end_date, @status_id)
             `)
         }
 
@@ -862,7 +891,8 @@ export async function createProject(data: ProjectFormData) {
                 .input('id', milestoneId)
                 .input('weight_ttd', m.weight_ttd || 0)
                 .input('weight_mdc', m.weight_mdc || 0)
-                .query(`UPDATE pms.project_milestones SET weight_ttd = @weight_ttd, weight_mdc = @weight_mdc WHERE id = @id`)
+                .input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
+                .query(`UPDATE pms.project_milestones SET weight_ttd = @weight_ttd, weight_mdc = @weight_mdc, payment_percent = @payment_percent WHERE id = @id`)
 
             // 3. Insert Deliverables
             for (const deliverableId of m.deliverable_ids) {
@@ -946,15 +976,20 @@ export async function updateProject(id: string, data: ProjectFormData) {
             .input('project_year', sql.Int, data.project_year)
             .input('name', sql.NVarChar, data.name)
             .input('customer_id', sql.UniqueIdentifier, data.customer_id)
+            .input('prime_id', sql.UniqueIdentifier, data.prime_id || null)
+            .input('partner_id', sql.UniqueIdentifier, data.partner_id || null)
             .input('project_manager_id', sql.UniqueIdentifier, data.project_manager_id)
             .input('project_owner_id', sql.UniqueIdentifier, data.project_owner_id || null)
             .input('project_type_id', sql.UniqueIdentifier, data.project_type_id || null)
+            .input('project_group_id', sql.UniqueIdentifier, data.project_group_id || null)
+            .input('chance_id', sql.UniqueIdentifier, data.chance_id || null)
             .input('description', sql.NVarChar, data.description)
             .input('sold_mandays', sql.Decimal(10, 2), data.sold_mandays)
             .input('manday_rate', sql.Decimal(10, 2), data.manday_rate)
             .input('warranty_end_date', sql.Date, data.warranty_end_date || null)
             .input('status_id', sql.UniqueIdentifier, data.status_id || null)
             .input('current_milestone_id', sql.UniqueIdentifier, data.current_milestone_id || null)
+            .input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
 
         if (hasProjectNameTh) {
             updateRequest.input('name_th', sql.NVarChar, data.name_th)
@@ -965,12 +1000,17 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     name = @name,
                     name_th = @name_th,
                     customer_id = @customer_id,
+                    prime_id = @prime_id,
+                    partner_id = @partner_id,
                     project_manager_id = @project_manager_id,
                     project_owner_id = @project_owner_id,
                     project_type_id = @project_type_id,
+                    project_group_id = @project_group_id,
+                    chance_id = @chance_id,
                     description = @description,
                     sold_mandays = @sold_mandays,
                     manday_rate = @manday_rate,
+                    contract_value = @contract_value,
                     warranty_end_date = @warranty_end_date,
                     status_id = @status_id,
                     current_milestone_id = @current_milestone_id,
@@ -984,12 +1024,17 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     project_year = @project_year,
                     name = @name,
                     customer_id = @customer_id,
+                    prime_id = @prime_id,
+                    partner_id = @partner_id,
                     project_manager_id = @project_manager_id,
                     project_owner_id = @project_owner_id,
                     project_type_id = @project_type_id,
+                    project_group_id = @project_group_id,
+                    chance_id = @chance_id,
                     description = @description,
                     sold_mandays = @sold_mandays,
                     manday_rate = @manday_rate,
+                    contract_value = @contract_value,
                     warranty_end_date = @warranty_end_date,
                     status_id = @status_id,
                     current_milestone_id = @current_milestone_id,
@@ -1040,6 +1085,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('progress_percent', m.progress_percent || 0)
                     .input('weight_ttd', m.weight_ttd || 0)
                     .input('weight_mdc', m.weight_mdc || 0)
+                    .input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
                     .input('completed_date', m.completed_date || null)
                     .query(`
                         UPDATE pms.project_milestones
@@ -1050,6 +1096,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                             progress_percent = @progress_percent,
                             weight_ttd = @weight_ttd,
                             weight_mdc = @weight_mdc,
+                            payment_percent = @payment_percent,
                             completed_date = @completed_date,
                             updated_at = GETDATE()
                         WHERE id = @id AND is_locked = 0
@@ -1069,15 +1116,16 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('milestone_config_id', m.milestone_config_id)
                     .input('planned_mandays', m.planned_mandays)
                     .input('weight_percent', m.weight_percent)
+                    .input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
                     .input('due_date', m.due_date || null)
                     .input('sort_order', i + 1)
                     .input('progress_percent', m.progress_percent || 0)
                     .query(`
                         INSERT INTO pms.project_milestones
-                        (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order, progress_percent)
+                        (project_id, milestone_config_id, planned_mandays, weight_percent, payment_percent, due_date, sort_order, progress_percent)
                         OUTPUT INSERTED.id
                         VALUES
-                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order, @progress_percent)
+                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @payment_percent, @due_date, @sort_order, @progress_percent)
                     `)
                 milestoneId = msResult.recordset[0].id;
             }
@@ -1195,11 +1243,13 @@ export async function updateProject(id: string, data: ProjectFormData) {
             .input('customer_id', data.customer_id || null)
             .input('project_manager_id', data.project_manager_id || null)
             .input('project_owner_id', (data as any).project_owner_id || null)
+            .input('chance_id', data.chance_id || null)
             .input('sold_mandays', data.sold_mandays)
             .input('manday_rate', data.manday_rate)
             .input('warranty_end_date', data.warranty_end_date || null)
             .input('status_id', data.status_id || null)
-            .input('current_milestone_id', newCurrentMilestoneId) // Set the calculated ID
+            .input('current_milestone_id', newCurrentMilestoneId)
+            .input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
 
         if (hasProjectNameTh) {
             updateProjectRequest.input('name_th', data.name_th || null)
@@ -1211,8 +1261,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   customer_id = @customer_id,
                   project_manager_id = @project_manager_id,
                   project_owner_id = @project_owner_id,
+                  chance_id = @chance_id,
                   sold_mandays = @sold_mandays,
                   manday_rate = @manday_rate,
+                  contract_value = @contract_value,
                   warranty_end_date = @warranty_end_date,
                   status_id = @status_id,
                   current_milestone_id = @current_milestone_id
@@ -1226,8 +1278,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   customer_id = @customer_id,
                   project_manager_id = @project_manager_id,
                   project_owner_id = @project_owner_id,
+                  chance_id = @chance_id,
                   sold_mandays = @sold_mandays,
                   manday_rate = @manday_rate,
+                  contract_value = @contract_value,
                   warranty_end_date = @warranty_end_date,
                   status_id = @status_id,
                   current_milestone_id = @current_milestone_id
