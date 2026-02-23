@@ -84,7 +84,7 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'project-onhand', label: 'Project Onhand', labelTh: 'โครงการในมือ (Project Onhand)', path: '/project-onhand', icon: TrendingUp },
           { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
-          { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
+
           { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
           { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3 },
           { id: 'project-status-overview', label: 'Project Status Overview', labelTh: 'ภาพรวมสถานะโครงการ', path: '/project-status-overview', icon: ClipboardList },

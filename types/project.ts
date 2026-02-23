@@ -129,6 +129,40 @@ export interface MilestoneRow extends ProjectMilestone {
     submitted_required_docs?: number
     required_docs_pass?: boolean
     is_new?: boolean // Flag for newly created milestones (not yet saved to DB)
+    note_count?: number
+    open_issue_count?: number
+}
+
+export interface MilestoneNote {
+    id: string
+    project_id: string
+    milestone_id?: string | null
+    milestone_name?: string
+    note_type: 'NOTE' | 'ISSUE' | 'RESOLUTION'
+    priority: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL'
+    content: string
+    resolved_at?: string | null
+    resolved_by?: string | null
+    resolved_by_name?: string | null
+    is_active: boolean
+    created_by: string
+    created_by_name?: string
+    created_at: string
+    updated_at: string
+}
+
+export interface MilestoneChangeLog {
+    id: string
+    project_id: string
+    milestone_id: string
+    milestone_name?: string
+    change_type: string
+    old_value?: string | null
+    new_value?: string | null
+    reason: string
+    changed_by: string
+    changed_by_name?: string
+    changed_at: string
 }
 
 export interface ProjectFormData {
@@ -173,6 +207,9 @@ export interface ProjectFormData {
         // Verification
         is_verified?: boolean
         will_verify?: boolean
+
+        // Due date change tracking
+        due_date_change_reason?: string
     }[]
 }
 

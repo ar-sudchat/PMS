@@ -209,7 +209,7 @@ export function SmartCombobox({
                                                     key={option.value}
                                                     type="button"
                                                     className={cn(
-                                                        "w-full text-left px-3 py-2 text-sm cursor-pointer",
+                                                        "w-full text-left px-3 py-2 text-sm cursor-pointer text-gray-900",
                                                         "hover:bg-accent hover:text-accent-foreground",
                                                         "flex items-center gap-2",
                                                         isSelected && "bg-accent/50"

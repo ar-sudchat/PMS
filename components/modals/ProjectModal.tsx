@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, FileText, Check, AlertCircle, Paperclip } from 'lucide-react'
+import { X, Plus, Trash2, FileText, Check, AlertCircle, Paperclip, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { Project, ProjectFormData, MilestoneRow } from '@/types/project'
 import {
@@ -26,6 +26,8 @@ import { MilestonesTab } from './ProjectModal/MilestonesTab'
 import { DeliverablesTab } from './ProjectModal/DeliverablesTab'
 import { PaymentConditionTab } from './PaymentConditionTab'
 import FileUpload from '@/components/ui/FileUpload'
+import { MilestoneNotesPanel } from '@/components/milestones/MilestoneNotesPanel'
+import { MilestoneChangeLogTimeline } from '@/components/milestones/MilestoneChangeLogTimeline'
 
 interface ProjectModalProps {
     open: boolean
@@ -38,7 +40,7 @@ interface ProjectModalProps {
 
 export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultProjectTypeCode }: ProjectModalProps) {
     // Active Tab
-    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables' | 'payment' | 'attachments'>('info')
+    const [activeTab, setActiveTab] = useState<'info' | 'milestones' | 'deliverables' | 'payment' | 'attachments' | 'notes'>('info')
 
     // Attachments State
     const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -68,6 +70,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
 
     // Form State - Milestones
     const [milestones, setMilestones] = useState<MilestoneRow[]>([])
+    const [dueDateChangeReasons, setDueDateChangeReasons] = useState<Record<string, string>>({})
 
     // Options from DB
     const [customers, setCustomers] = useState<any[]>([])
@@ -204,15 +207,16 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
     useEffect(() => {
         if (mode === 'edit' && project && open) {
             // Initial simple populate from props to avoid flickering empty
+            // Use fallback values to prevent controlled->uncontrolled switch
             setFormData(prev => ({
                 ...prev,
-                project_year: project.project_year,
-                project_code: project.project_code,
-                name: project.name,
-                customer_id: project.customer_id,
-                project_manager_id: project.project_manager_id,
-                sold_mandays: project.sold_mandays,
-                manday_rate: project.manday_rate,
+                project_year: project.project_year ?? prev.project_year,
+                project_code: project.project_code ?? prev.project_code,
+                name: project.name ?? prev.name,
+                customer_id: project.customer_id ?? prev.customer_id,
+                project_manager_id: project.project_manager_id ?? prev.project_manager_id,
+                sold_mandays: project.sold_mandays ?? prev.sold_mandays,
+                manday_rate: project.manday_rate ?? prev.manday_rate,
             }))
 
             // Allow fetch to run
@@ -318,6 +322,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         setActiveTab('info')
         setErrors({})
         setAttachments([])
+        setDueDateChangeReasons({})
     }
 
     // Initialize milestones from milestone_configs template
@@ -418,7 +423,13 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
 
         setIsLoading(true)
         try {
-            const payload: ProjectFormData = { ...formData, milestones }
+            const payload: ProjectFormData = {
+                ...formData,
+                milestones: milestones.map(m => ({
+                    ...m,
+                    due_date_change_reason: dueDateChangeReasons[m.milestone_config_id] || undefined
+                }))
+            }
 
             if (mode === 'create') {
                 const result = await createProject(payload)
@@ -543,6 +554,19 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                                 }`}
                         >
                             Payment Condition
+                        </button>
+                    )}
+                    {mode === 'edit' && project?.id && (
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('notes')}
+                            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${activeTab === 'notes'
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-slate-600 hover:text-slate-900'
+                                }`}
+                        >
+                            <MessageSquare className="w-4 h-4" />
+                            Notes
                         </button>
                     )}
                     <button
@@ -934,6 +958,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             milestoneConfigs={milestoneConfigs}
                             currentMilestoneId={formData.current_milestone_id}
                             onCurrentMilestoneChange={(id) => setFormData({ ...formData, current_milestone_id: id })}
+                            projectId={project?.id}
+                            dueDateChangeReasons={dueDateChangeReasons}
+                            onDueDateChangeReasons={setDueDateChangeReasons}
                         />
                     </div>
 
@@ -969,6 +996,18 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             contractValue={formData.contract_value}
                             onUpdatePaymentPercent={handleUpdatePaymentPercent}
                         />
+                    </div>
+
+                    {/* ═══ Tab: Notes ═══ */}
+                    <div className={`${activeTab === 'notes' ? 'block' : 'hidden'}`}>
+                        {project?.id && (
+                            <div className="space-y-4">
+                                <MilestoneNotesPanel projectId={project.id} />
+                                <div className="border-t pt-4">
+                                    <MilestoneChangeLogTimeline projectId={project.id} />
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* ═══ Tab: Attachments ═══ */}

@@ -469,13 +469,20 @@ export async function updateMktDetails(
 
         // Auto-sync contract_value after mkt_expected_value or mkt_discount change
         if (data.mkt_expected_value !== undefined || data.mkt_discount !== undefined) {
-            await pool.request()
-                .input('projectId', projectId)
-                .query(`
-                    UPDATE pms.projects
-                    SET contract_value = ISNULL(mkt_expected_value, 0) - ISNULL(mkt_discount, 0)
-                    WHERE id = @projectId
-                `)
+            // Check if contract_value column exists before syncing
+            const cvCheck = await pool.request().query(`
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'contract_value'
+            `)
+            if (cvCheck.recordset.length > 0) {
+                await pool.request()
+                    .input('projectId', projectId)
+                    .query(`
+                        UPDATE pms.projects
+                        SET contract_value = ISNULL(mkt_expected_value, 0) - ISNULL(mkt_discount, 0)
+                        WHERE id = @projectId
+                    `)
+            }
         }
 
         // Log the update

@@ -1,12 +1,17 @@
 'use client'
 
 import { useState, useMemo, useRef, KeyboardEvent } from 'react'
-import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle } from 'lucide-react'
+import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle, MessageSquare, History } from 'lucide-react'
 import { MilestoneRow } from '@/types/project'
 import { Switch } from '@/components/ui/Switch'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
+import { DueDateChangeReasonDialog } from '@/components/milestones/DueDateChangeReasonDialog'
+import { MilestoneNotesPanel } from '@/components/milestones/MilestoneNotesPanel'
+import { MilestoneChangeLogTimeline } from '@/components/milestones/MilestoneChangeLogTimeline'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 
 // Field order for Enter key navigation
 const FIELD_ORDER = ['weight_ttd', 'weight_mdc', 'planned_mandays', 'due_date', 'completed_date'] as const
@@ -17,11 +22,23 @@ interface MilestonesTabProps {
     milestoneConfigs: any[]
     currentMilestoneId?: string
     onCurrentMilestoneChange?: (id: string) => void
+    projectId?: string
+    dueDateChangeReasons?: Record<string, string>
+    onDueDateChangeReasons?: (reasons: Record<string, string>) => void
 }
 
-export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, currentMilestoneId, onCurrentMilestoneChange }: MilestonesTabProps) {
+export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, currentMilestoneId, onCurrentMilestoneChange, projectId, dueDateChangeReasons, onDueDateChangeReasons }: MilestonesTabProps) {
     // Ref for table to find inputs
     const tableRef = useRef<HTMLTableElement>(null)
+
+    // Due date change dialog state
+    const [dueDateDialog, setDueDateDialog] = useState<{
+        open: boolean; index: number; oldDate: string; newDate: string; milestoneName: string
+    } | null>(null)
+
+    // Notes/History panel state
+    const [notesPanel, setNotesPanel] = useState<{ milestoneId: string; milestoneName: string } | null>(null)
+    const [historyPanel, setHistoryPanel] = useState<{ milestoneId: string; milestoneName: string } | null>(null)
 
     // Handle Enter key to move to next field in row, or next row
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, rowIndex: number, fieldName: string) => {
@@ -82,16 +99,47 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
         // If locked, prevent editing certain fields (handled in UI, but double check here)
         if (updated[index].is_locked) {
             if (field === 'is_approved') {
-                // Locked milestones cannot be un-approved here (require Admin unlock usually, or different flow)
-                // But for this UI, check request "Checkboxเลือก Approve"
                 return
             }
-            // Allow checkbox toggle ONLY if it's about approving (transitioning to locked)
-            // If already locked, do nothing
+        }
+
+        // Intercept due_date changes on existing milestones (not new ones)
+        if (field === 'due_date' && updated[index].id && !updated[index].is_new) {
+            const oldDate = formatDateForInput(updated[index].due_date)
+            const newDate = value || ''
+            if (oldDate && oldDate !== newDate) {
+                // Open reason dialog — don't update yet
+                setDueDateDialog({
+                    open: true,
+                    index,
+                    oldDate,
+                    newDate,
+                    milestoneName: updated[index].milestone_name || 'Milestone'
+                })
+                return
+            }
         }
 
         updated[index] = { ...updated[index], [field]: value }
         setMilestones(updated)
+    }
+
+    const handleDueDateConfirm = (reason: string) => {
+        if (!dueDateDialog) return
+        const { index, newDate } = dueDateDialog
+        const configId = milestones[index]?.milestone_config_id
+        if (configId && onDueDateChangeReasons) {
+            onDueDateChangeReasons({ ...dueDateChangeReasons, [configId]: reason })
+        }
+        const updated = [...milestones]
+        updated[index] = { ...updated[index], due_date: newDate }
+        setMilestones(updated)
+        setDueDateDialog(null)
+    }
+
+    const handleDueDateCancel = () => {
+        // Revert — don't change the date
+        setDueDateDialog(null)
     }
 
     const handleToggleApprove = (index: number, checked: boolean) => {
@@ -307,6 +355,27 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                         <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] uppercase font-bold tracking-wider rounded">
                                                             Current
                                                         </span>
+                                                    )}
+                                                    {/* Notes & History buttons (only for saved milestones) */}
+                                                    {projectId && m.id && (
+                                                        <div className="flex items-center gap-0.5 ml-auto">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNotesPanel({ milestoneId: m.id!, milestoneName: m.milestone_name || '' })}
+                                                                className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-colors"
+                                                                title="Notes & Issues"
+                                                            >
+                                                                <MessageSquare className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setHistoryPanel({ milestoneId: m.id!, milestoneName: m.milestone_name || '' })}
+                                                                className="p-1 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded transition-colors"
+                                                                title="Due Date History"
+                                                            >
+                                                                <History className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </td>
@@ -537,6 +606,44 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                     </button>
                 </div>
             )}
+
+            {/* Due Date Change Reason Dialog */}
+            {dueDateDialog && (
+                <DueDateChangeReasonDialog
+                    open={dueDateDialog.open}
+                    onClose={handleDueDateCancel}
+                    milestoneName={dueDateDialog.milestoneName}
+                    oldDate={dueDateDialog.oldDate}
+                    newDate={dueDateDialog.newDate}
+                    onConfirm={handleDueDateConfirm}
+                />
+            )}
+
+            {/* Notes Side Panel */}
+            <Sheet open={!!notesPanel} onOpenChange={(v) => { if (!v) setNotesPanel(null) }}>
+                <SheetContent side="right" className="w-[480px] sm:max-w-[480px] p-0 overflow-hidden flex flex-col">
+                    <VisuallyHidden><SheetTitle>Milestone Notes</SheetTitle></VisuallyHidden>
+                    {notesPanel && projectId && (
+                        <MilestoneNotesPanel
+                            projectId={projectId}
+                            milestoneId={notesPanel.milestoneId}
+                            milestoneName={notesPanel.milestoneName}
+                        />
+                    )}
+                </SheetContent>
+            </Sheet>
+
+            {/* History Side Panel */}
+            <Sheet open={!!historyPanel} onOpenChange={(v) => { if (!v) setHistoryPanel(null) }}>
+                <SheetContent side="right" className="w-[480px] sm:max-w-[480px] p-0 overflow-hidden flex flex-col">
+                    <VisuallyHidden><SheetTitle>Due Date History</SheetTitle></VisuallyHidden>
+                    {historyPanel && (
+                        <MilestoneChangeLogTimeline
+                            milestoneId={historyPanel.milestoneId}
+                        />
+                    )}
+                </SheetContent>
+            </Sheet>
         </div>
     )
 }

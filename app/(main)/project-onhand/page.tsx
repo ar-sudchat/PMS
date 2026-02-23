@@ -6,6 +6,7 @@ import { getSalesForecastMetrics, getMilestoneTimeline, type SalesMetric, type P
 import { ProjectRoadmapMatrix } from '@/components/project-onhand/ProjectRoadmapMatrix'
 import { AdvancedMultiFilter } from '@/components/project-onhand/AdvancedMultiFilter'
 import { ExecutiveSummaryPanel } from '@/components/project-onhand/ExecutiveSummaryPanel'
+import { ProjectModal } from '@/components/modals/ProjectModal'
 import { Button } from "@/components/ui/button"; import { cn } from "@/lib/utils"
 import { PanelRightClose, PanelRightOpen, Loader2 } from "lucide-react"
 
@@ -16,6 +17,7 @@ export default function SalesForecastPage() {
     const [roadmapData, setRoadmapData] = useState<ProjectRow[]>([])
     const [loading, setLoading] = useState(true)
     const [showSummary, setShowSummary] = useState(false)
+    const [editProjectId, setEditProjectId] = useState<string | null>(null)
 
     // Filter Options
     const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -138,7 +140,7 @@ export default function SalesForecastPage() {
                     <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                         {/* Header removed as requested to maximize space, or kept minimal */}
                         <div className="flex-1 overflow-hidden relative">
-                            <ProjectRoadmapMatrix projects={roadmapData} year={filters.year} selectedTypes={filters.selectedTypes} />
+                            <ProjectRoadmapMatrix projects={roadmapData} year={filters.year} selectedTypes={filters.selectedTypes} onProjectClick={(projectId) => setEditProjectId(projectId)} />
                         </div>
                     </div>
                 </div>
@@ -150,6 +152,19 @@ export default function SalesForecastPage() {
                     </div>
                 )}
             </div>
+
+            {/* Edit Project Modal */}
+            <ProjectModal
+                open={!!editProjectId}
+                onClose={() => setEditProjectId(null)}
+                mode="edit"
+                project={editProjectId ? { id: editProjectId } as any : null}
+                onSuccess={() => {
+                    setEditProjectId(null)
+                    // Reload data
+                    setFilters(prev => ({ ...prev }))
+                }}
+            />
         </div>
     )
 }
