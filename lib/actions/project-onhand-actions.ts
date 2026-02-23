@@ -28,6 +28,8 @@ export interface MilestoneForecast {
     delayDays: number
     pmAvatar?: string
     pmName?: string
+    noteCount?: number
+    openIssueCount?: number
 }
 
 export interface ProjectRow {
@@ -268,10 +270,40 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     riskStatus,
                     delayDays: row.days_delayed > 0 ? row.days_delayed : 0,
                     pmAvatar: '',
-                    pmName: p.pmName
+                    pmName: p.pmName,
+                    noteCount: 0,
+                    openIssueCount: 0
                 })
             }
         })
+
+        // Fetch note counts (defensive: skip if table doesn't exist)
+        try {
+            const noteResult = await pool.request().query(`
+                SELECT milestone_id,
+                    COUNT(*) as note_count,
+                    COUNT(CASE WHEN note_type = 'ISSUE' AND resolved_at IS NULL THEN 1 END) as open_issue_count
+                FROM pms.milestone_notes
+                WHERE is_active = 1 AND milestone_id IS NOT NULL
+                GROUP BY milestone_id
+            `)
+            const noteMap = new Map<string, { noteCount: number; openIssueCount: number }>()
+            noteResult.recordset.forEach((r: any) => {
+                noteMap.set(r.milestone_id, { noteCount: r.note_count, openIssueCount: r.open_issue_count })
+            })
+            // Assign to milestones
+            for (const p of projectMap.values()) {
+                for (const ms of p.milestones) {
+                    const counts = noteMap.get(ms.id)
+                    if (counts) {
+                        ms.noteCount = counts.noteCount
+                        ms.openIssueCount = counts.openIssueCount
+                    }
+                }
+            }
+        } catch {
+            // Table might not exist yet — skip silently
+        }
 
         // Recalculate Health Score based on delayed milestones
         let results = Array.from(projectMap.values())

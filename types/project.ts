@@ -8,6 +8,12 @@ export interface Project {
     customer_id: string
     customer_code?: string
     customer_name?: string
+    prime_id?: string
+    prime_code?: string
+    prime_name?: string
+    partner_id?: string
+    partner_code?: string
+    partner_name?: string
     project_manager_id: string
     project_manager_name?: string
     project_owner_id?: string
@@ -17,9 +23,20 @@ export interface Project {
     project_type_code?: string
     project_type_name?: string
     project_type_color?: string
+    project_group_id?: string
+    project_group_code?: string
+    project_group_name?: string
+    project_group_color?: string
+    project_group_parent_name?: string
+    chance_id?: string
+    chance_code?: string
+    chance_name?: string
+    chance_color?: string
+    chance_percentage?: number
     sold_mandays: number
     manday_rate: number
     total_value: number
+    contract_value?: number
     warranty_end_date?: string
     status_id?: string
     status_code?: string
@@ -52,6 +69,9 @@ export interface ProjectMilestone {
     status?: 'pending' | 'in_progress' | 'completed'
     sort_order?: number
     deliverable_ids: string[]
+
+    // Payment condition
+    payment_percent?: number
 
     // New fields
     weight_ttd?: number
@@ -109,6 +129,40 @@ export interface MilestoneRow extends ProjectMilestone {
     submitted_required_docs?: number
     required_docs_pass?: boolean
     is_new?: boolean // Flag for newly created milestones (not yet saved to DB)
+    note_count?: number
+    open_issue_count?: number
+}
+
+export interface MilestoneNote {
+    id: string
+    project_id: string
+    milestone_id?: string | null
+    milestone_name?: string
+    note_type: 'NOTE' | 'ISSUE' | 'RESOLUTION'
+    priority: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL'
+    content: string
+    resolved_at?: string | null
+    resolved_by?: string | null
+    resolved_by_name?: string | null
+    is_active: boolean
+    created_by: string
+    created_by_name?: string
+    created_at: string
+    updated_at: string
+}
+
+export interface MilestoneChangeLog {
+    id: string
+    project_id: string
+    milestone_id: string
+    milestone_name?: string
+    change_type: string
+    old_value?: string | null
+    new_value?: string | null
+    reason: string
+    changed_by: string
+    changed_by_name?: string
+    changed_at: string
 }
 
 export interface ProjectFormData {
@@ -118,11 +172,16 @@ export interface ProjectFormData {
     name_th?: string
     description?: string
     customer_id: string
+    prime_id?: string
+    partner_id?: string
     project_manager_id: string
     project_owner_id?: string
     project_type_id?: string
+    project_group_id?: string
+    chance_id?: string
     sold_mandays: number
     manday_rate: number
+    contract_value?: number
     warranty_end_date?: string
     status_id?: string
     current_milestone_id?: string
@@ -133,6 +192,9 @@ export interface ProjectFormData {
         due_date?: string
         planned_mandays: number
         deliverable_ids: string[]
+
+        // Payment condition
+        payment_percent?: number
 
         // New fields
         weight_ttd?: number
@@ -145,6 +207,9 @@ export interface ProjectFormData {
         // Verification
         is_verified?: boolean
         will_verify?: boolean
+
+        // Due date change tracking
+        due_date_change_reason?: string
     }[]
 }
 

@@ -6,6 +6,25 @@ import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
 import { ProjectFormData } from '@/types/project'
 
+// Cache for optional column existence checks
+let _optionalCols: { hasContractValue: boolean; hasPaymentPercent: boolean } | null = null
+async function checkOptionalColumns(pool: any) {
+    if (_optionalCols) return _optionalCols
+    const res = await pool.request().query(`
+        SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'pms' AND (
+            (TABLE_NAME = 'projects' AND COLUMN_NAME = 'contract_value')
+            OR (TABLE_NAME = 'project_milestones' AND COLUMN_NAME = 'payment_percent')
+        )
+    `)
+    const cols = new Set(res.recordset.map((r: any) => `${r.TABLE_NAME}.${r.COLUMN_NAME}`))
+    _optionalCols = {
+        hasContractValue: cols.has('projects.contract_value'),
+        hasPaymentPercent: cols.has('project_milestones.payment_percent'),
+    }
+    return _optionalCols
+}
+
 // Generate Project Code
 export async function generateProjectCode(year: number): Promise<string> {
     const pool = await getConnection()
@@ -484,6 +503,7 @@ export async function getProjects(filters?: ProjectFilters) {
 export async function getProjectById(id: string) {
     try {
         const pool = await getConnection()
+        const { hasPaymentPercent } = await checkOptionalColumns(pool)
 
         // Check if name_th columns exist in status and milestone configs
         const columnCheck = await pool.request().query(`
@@ -518,12 +538,30 @@ export async function getProjectById(id: string) {
           pos_o.code as owner_position_code,
           pos_o.name as owner_position_name,
 
+          -- Prime & Partner
+          cp.code as prime_code,
+          cp.name as prime_name,
+          cpa.code as partner_code,
+          cpa.name as partner_name,
+
           -- Project Type
           pt.code as project_type_code,
           pt.name as project_type_name,
           pt.color as project_type_color,
           pt.has_milestones,
           pt.has_deliverables,
+
+          -- Project Group
+          pg.code as project_group_code,
+          pg.name as project_group_name,
+          pg.color as project_group_color,
+          pgp.name as project_group_parent_name,
+
+          -- Chance
+          ch.code as chance_code,
+          ch.name as chance_name,
+          ch.color as chance_color,
+          ch.percentage as chance_percentage,
 
           -- Status
           ps.code as status_code,
@@ -538,10 +576,15 @@ export async function getProjectById(id: string) {
 
         FROM pms.projects p
         LEFT JOIN pms.customers c ON p.customer_id = c.id
+        LEFT JOIN pms.customers cp ON p.prime_id = cp.id
+        LEFT JOIN pms.customers cpa ON p.partner_id = cpa.id
         LEFT JOIN pms.employees pm ON p.project_manager_id = pm.id
         LEFT JOIN pms.employees po ON p.project_owner_id = po.id
         LEFT JOIN pms.positions pos_o ON po.position_id = pos_o.id
         LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+        LEFT JOIN pms.project_groups pg ON p.project_group_id = pg.id
+        LEFT JOIN pms.project_groups pgp ON pg.parent_id = pgp.id
+        LEFT JOIN pms.chance_configs ch ON p.chance_id = ch.id
         LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
         LEFT JOIN pms.project_milestones cpm ON p.current_milestone_id = cpm.id
         LEFT JOIN pms.milestone_configs mc ON cpm.milestone_config_id = mc.id
@@ -570,6 +613,7 @@ export async function getProjectById(id: string) {
           -- New Weight Columns (TTD/MDC)
           COALESCE(pm.weight_ttd, mc.default_weight_ttd) as weight_ttd,
           COALESCE(pm.weight_mdc, mc.default_weight_mdc) as weight_mdc,
+          ${hasPaymentPercent ? 'ISNULL(pm.payment_percent, 0)' : '0'} as payment_percent,
           mc.default_weight_ttd,
           mc.default_weight_mdc,
 
@@ -762,6 +806,7 @@ export async function createProject(data: ProjectFormData) {
     const hasProjectDeliverableNameTh = columnCheck.recordset.some((r: any) => r.TABLE_NAME === 'project_deliverables')
     // Both tables need name_th for the INSERT...SELECT to work
     const hasDeliverableNameTh = hasDeliverableConfigNameTh && hasProjectDeliverableNameTh
+    const { hasContractValue, hasPaymentPercent } = await checkOptionalColumns(pool)
 
     try {
         await transaction.begin()
@@ -773,35 +818,45 @@ export async function createProject(data: ProjectFormData) {
             .input('name', data.name)
             .input('description', data.description || null)
             .input('customer_id', data.customer_id || null)
+            .input('prime_id', data.prime_id || null)
+            .input('partner_id', data.partner_id || null)
             .input('project_manager_id', data.project_manager_id || null)
             .input('project_owner_id', data.project_owner_id || null)
             .input('project_type_id', data.project_type_id || null)
+            .input('project_group_id', data.project_group_id || null)
+            .input('chance_id', data.chance_id || null)
             .input('sold_mandays', data.sold_mandays)
             .input('manday_rate', data.manday_rate)
             .input('warranty_end_date', data.warranty_end_date || null)
             .input('status_id', data.status_id || null)
+        if (hasContractValue) {
+            projectRequest.input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
+        }
+
+        const cvCol = hasContractValue ? ', contract_value' : ''
+        const cvVal = hasContractValue ? ', @contract_value' : ''
 
         let projectResult
         if (hasProjectNameTh) {
             projectRequest.input('name_th', data.name_th || null)
             projectResult = await projectRequest.query(`
                 INSERT INTO pms.projects
-                (project_code, project_year, name, name_th, description, customer_id,
-                 project_manager_id, project_owner_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
+                (project_code, project_year, name, name_th, description, customer_id, prime_id, partner_id,
+                 project_manager_id, project_owner_id, project_type_id, project_group_id, chance_id, sold_mandays, manday_rate${cvCol}, warranty_end_date, status_id)
                 OUTPUT INSERTED.id
                 VALUES
-                (@project_code, @project_year, @name, @name_th, @description, @customer_id,
-                 @project_manager_id, @project_owner_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
+                (@project_code, @project_year, @name, @name_th, @description, @customer_id, @prime_id, @partner_id,
+                 @project_manager_id, @project_owner_id, @project_type_id, @project_group_id, @chance_id, @sold_mandays, @manday_rate${cvVal}, @warranty_end_date, @status_id)
             `)
         } else {
             projectResult = await projectRequest.query(`
                 INSERT INTO pms.projects
-                (project_code, project_year, name, description, customer_id,
-                 project_manager_id, project_owner_id, project_type_id, sold_mandays, manday_rate, warranty_end_date, status_id)
+                (project_code, project_year, name, description, customer_id, prime_id, partner_id,
+                 project_manager_id, project_owner_id, project_type_id, project_group_id, chance_id, sold_mandays, manday_rate${cvCol}, warranty_end_date, status_id)
                 OUTPUT INSERTED.id
                 VALUES
-                (@project_code, @project_year, @name, @description, @customer_id,
-                 @project_manager_id, @project_owner_id, @project_type_id, @sold_mandays, @manday_rate, @warranty_end_date, @status_id)
+                (@project_code, @project_year, @name, @description, @customer_id, @prime_id, @partner_id,
+                 @project_manager_id, @project_owner_id, @project_type_id, @project_group_id, @chance_id, @sold_mandays, @manday_rate${cvVal}, @warranty_end_date, @status_id)
             `)
         }
 
@@ -858,11 +913,14 @@ export async function createProject(data: ProjectFormData) {
             // Wait, I didn't update the INSERT query above. I should update the INSERT query.
             // Let's rewrite the INSERT query block in createProject.
 
-            await transaction.request()
+            const msUpdateReq = transaction.request()
                 .input('id', milestoneId)
                 .input('weight_ttd', m.weight_ttd || 0)
                 .input('weight_mdc', m.weight_mdc || 0)
-                .query(`UPDATE pms.project_milestones SET weight_ttd = @weight_ttd, weight_mdc = @weight_mdc WHERE id = @id`)
+            if (hasPaymentPercent) {
+                msUpdateReq.input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
+            }
+            await msUpdateReq.query(`UPDATE pms.project_milestones SET weight_ttd = @weight_ttd, weight_mdc = @weight_mdc${hasPaymentPercent ? ', payment_percent = @payment_percent' : ''} WHERE id = @id`)
 
             // 3. Insert Deliverables
             for (const deliverableId of m.deliverable_ids) {
@@ -935,6 +993,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
     const hasProjectDeliverableNameTh = columnCheck.recordset.some((r: any) => r.TABLE_NAME === 'project_deliverables')
     // Both tables need name_th for the INSERT...SELECT to work
     const hasDeliverableNameTh = hasDeliverableConfigNameTh && hasProjectDeliverableNameTh
+    const { hasContractValue, hasPaymentPercent } = await checkOptionalColumns(pool)
 
     try {
         await transaction.begin()
@@ -946,15 +1005,23 @@ export async function updateProject(id: string, data: ProjectFormData) {
             .input('project_year', sql.Int, data.project_year)
             .input('name', sql.NVarChar, data.name)
             .input('customer_id', sql.UniqueIdentifier, data.customer_id)
+            .input('prime_id', sql.UniqueIdentifier, data.prime_id || null)
+            .input('partner_id', sql.UniqueIdentifier, data.partner_id || null)
             .input('project_manager_id', sql.UniqueIdentifier, data.project_manager_id)
             .input('project_owner_id', sql.UniqueIdentifier, data.project_owner_id || null)
             .input('project_type_id', sql.UniqueIdentifier, data.project_type_id || null)
+            .input('project_group_id', sql.UniqueIdentifier, data.project_group_id || null)
+            .input('chance_id', sql.UniqueIdentifier, data.chance_id || null)
             .input('description', sql.NVarChar, data.description)
             .input('sold_mandays', sql.Decimal(10, 2), data.sold_mandays)
             .input('manday_rate', sql.Decimal(10, 2), data.manday_rate)
             .input('warranty_end_date', sql.Date, data.warranty_end_date || null)
             .input('status_id', sql.UniqueIdentifier, data.status_id || null)
             .input('current_milestone_id', sql.UniqueIdentifier, data.current_milestone_id || null)
+        if (hasContractValue) {
+            updateRequest.input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
+        }
+        const cvSet = hasContractValue ? 'contract_value = @contract_value,' : ''
 
         if (hasProjectNameTh) {
             updateRequest.input('name_th', sql.NVarChar, data.name_th)
@@ -965,12 +1032,17 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     name = @name,
                     name_th = @name_th,
                     customer_id = @customer_id,
+                    prime_id = @prime_id,
+                    partner_id = @partner_id,
                     project_manager_id = @project_manager_id,
                     project_owner_id = @project_owner_id,
                     project_type_id = @project_type_id,
+                    project_group_id = @project_group_id,
+                    chance_id = @chance_id,
                     description = @description,
                     sold_mandays = @sold_mandays,
                     manday_rate = @manday_rate,
+                    ${cvSet}
                     warranty_end_date = @warranty_end_date,
                     status_id = @status_id,
                     current_milestone_id = @current_milestone_id,
@@ -984,12 +1056,17 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     project_year = @project_year,
                     name = @name,
                     customer_id = @customer_id,
+                    prime_id = @prime_id,
+                    partner_id = @partner_id,
                     project_manager_id = @project_manager_id,
                     project_owner_id = @project_owner_id,
                     project_type_id = @project_type_id,
+                    project_group_id = @project_group_id,
+                    chance_id = @chance_id,
                     description = @description,
                     sold_mandays = @sold_mandays,
                     manday_rate = @manday_rate,
+                    ${cvSet}
                     warranty_end_date = @warranty_end_date,
                     status_id = @status_id,
                     current_milestone_id = @current_milestone_id,
@@ -998,18 +1075,23 @@ export async function updateProject(id: string, data: ProjectFormData) {
             `)
         }
 
-        // 1. Get existing milestones to diff
+        // 1. Get existing milestones to diff (include due_date for change log)
         const existingResult = await transaction.request()
             .input('project_id', id)
             .query(`
-                SELECT id, milestone_config_id 
-                FROM pms.project_milestones 
+                SELECT id, milestone_config_id, due_date
+                FROM pms.project_milestones
                 WHERE project_id = @project_id
             `)
 
-        const existingMap = new Map<string, string>(); // config_id -> milestone_id
+        const existingMap = new Map<string, { id: string; due_date: string | null }>(); // config_id -> { id, due_date }
         existingResult.recordset.forEach((r: any) => {
-            if (r.milestone_config_id) existingMap.set(r.milestone_config_id.toString(), r.id);
+            if (r.milestone_config_id) {
+                existingMap.set(r.milestone_config_id.toString(), {
+                    id: r.id,
+                    due_date: r.due_date ? new Date(r.due_date).toISOString().split('T')[0] : null
+                });
+            }
         });
 
         const touchedMilestoneIds = new Set<string>();
@@ -1027,11 +1109,12 @@ export async function updateProject(id: string, data: ProjectFormData) {
             if (!m.milestone_config_id) continue;
 
             const configId = m.milestone_config_id.toString();
-            let milestoneId = existingMap.get(configId);
+            const existingEntry = existingMap.get(configId);
+            let milestoneId = existingEntry?.id;
 
             if (milestoneId) {
                 // UPDATE existing
-                await transaction.request()
+                const msUpdateReq = transaction.request()
                     .input('id', milestoneId)
                     .input('planned_mandays', m.planned_mandays)
                     .input('weight_percent', m.weight_percent)
@@ -1041,7 +1124,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('weight_ttd', m.weight_ttd || 0)
                     .input('weight_mdc', m.weight_mdc || 0)
                     .input('completed_date', m.completed_date || null)
-                    .query(`
+                if (hasPaymentPercent) {
+                    msUpdateReq.input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
+                }
+                await msUpdateReq.query(`
                         UPDATE pms.project_milestones
                         SET planned_mandays = @planned_mandays,
                             weight_percent = @weight_percent,
@@ -1050,10 +1136,36 @@ export async function updateProject(id: string, data: ProjectFormData) {
                             progress_percent = @progress_percent,
                             weight_ttd = @weight_ttd,
                             weight_mdc = @weight_mdc,
+                            ${hasPaymentPercent ? 'payment_percent = @payment_percent,' : ''}
                             completed_date = @completed_date,
                             updated_at = GETDATE()
                         WHERE id = @id AND is_locked = 0
                     `)
+
+                // Log due date change if different
+                const newDueDate = m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : null
+                const oldDueDate = existingEntry?.due_date || null
+                if (oldDueDate !== newDueDate && (oldDueDate || newDueDate)) {
+                    try {
+                        await transaction.request()
+                            .input('cl_project_id', sql.UniqueIdentifier, id)
+                            .input('cl_milestone_id', sql.UniqueIdentifier, milestoneId)
+                            .input('cl_change_type', sql.NVarChar(30), 'DUE_DATE_CHANGE')
+                            .input('cl_old_value', sql.NVarChar(200), oldDueDate)
+                            .input('cl_new_value', sql.NVarChar(200), newDueDate)
+                            .input('cl_reason', sql.NVarChar(sql.MAX), m.due_date_change_reason || 'Due date updated')
+                            .input('cl_changed_by', sql.UniqueIdentifier, user.id)
+                            .query(`
+                                INSERT INTO pms.milestone_change_logs
+                                    (project_id, milestone_id, change_type, old_value, new_value, reason, changed_by)
+                                VALUES
+                                    (@cl_project_id, @cl_milestone_id, @cl_change_type, @cl_old_value, @cl_new_value, @cl_reason, @cl_changed_by)
+                            `)
+                    } catch (logErr) {
+                        // Don't fail the whole save if change_logs table doesn't exist yet
+                        console.warn('Could not log due date change:', logErr)
+                    }
+                }
 
                 // Refresh Deliverables (Simpler to delete all for this MS and re-insert)
                 // Note: pms.project_milestone_deliverables usually doesn't have restrictive FKs from other tables
@@ -1064,7 +1176,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                 touchedMilestoneIds.add(milestoneId);
             } else {
                 // INSERT new
-                const msResult = await transaction.request()
+                const msInsertReq = transaction.request()
                     .input('project_id', id)
                     .input('milestone_config_id', m.milestone_config_id)
                     .input('planned_mandays', m.planned_mandays)
@@ -1072,12 +1184,17 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('due_date', m.due_date || null)
                     .input('sort_order', i + 1)
                     .input('progress_percent', m.progress_percent || 0)
-                    .query(`
+                if (hasPaymentPercent) {
+                    msInsertReq.input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
+                }
+                const ppCol = hasPaymentPercent ? ', payment_percent' : ''
+                const ppVal = hasPaymentPercent ? ', @payment_percent' : ''
+                const msResult = await msInsertReq.query(`
                         INSERT INTO pms.project_milestones
-                        (project_id, milestone_config_id, planned_mandays, weight_percent, due_date, sort_order, progress_percent)
+                        (project_id, milestone_config_id, planned_mandays, weight_percent${ppCol}, due_date, sort_order, progress_percent)
                         OUTPUT INSERTED.id
                         VALUES
-                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent, @due_date, @sort_order, @progress_percent)
+                        (@project_id, @milestone_config_id, @planned_mandays, @weight_percent${ppVal}, @due_date, @sort_order, @progress_percent)
                     `)
                 milestoneId = msResult.recordset[0].id;
             }
@@ -1099,7 +1216,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
             if (!milestoneId) continue; // Should have been set above
 
             // Only insert defaults if it's a NEW milestone (not found in existingMap)
-            if (!existingMap.get(configId)) {
+            if (!existingEntry) {
                 const deliverableInsertQuery = hasDeliverableNameTh
                     ? `INSERT INTO pms.project_deliverables (
                             id, project_milestone_id, deliverable_config_id, name, name_th, is_required, sort_order, is_active, is_verified, is_locked, created_at, updated_at
@@ -1166,7 +1283,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
 
         // 4. Delete removed milestones
         // Identify IDs in DB that were NOT touched
-        const idsToDelete = Array.from(existingMap.values()).filter(dbId => !touchedMilestoneIds.has(dbId));
+        const idsToDelete = Array.from(existingMap.values()).map(v => v.id).filter(dbId => !touchedMilestoneIds.has(dbId));
 
         if (idsToDelete.length > 0) {
             for (const delId of idsToDelete) {
@@ -1195,11 +1312,15 @@ export async function updateProject(id: string, data: ProjectFormData) {
             .input('customer_id', data.customer_id || null)
             .input('project_manager_id', data.project_manager_id || null)
             .input('project_owner_id', (data as any).project_owner_id || null)
+            .input('chance_id', data.chance_id || null)
             .input('sold_mandays', data.sold_mandays)
             .input('manday_rate', data.manday_rate)
             .input('warranty_end_date', data.warranty_end_date || null)
             .input('status_id', data.status_id || null)
-            .input('current_milestone_id', newCurrentMilestoneId) // Set the calculated ID
+            .input('current_milestone_id', newCurrentMilestoneId)
+        if (hasContractValue) {
+            updateProjectRequest.input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
+        }
 
         if (hasProjectNameTh) {
             updateProjectRequest.input('name_th', data.name_th || null)
@@ -1211,8 +1332,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   customer_id = @customer_id,
                   project_manager_id = @project_manager_id,
                   project_owner_id = @project_owner_id,
+                  chance_id = @chance_id,
                   sold_mandays = @sold_mandays,
                   manday_rate = @manday_rate,
+                  ${hasContractValue ? 'contract_value = @contract_value,' : ''}
                   warranty_end_date = @warranty_end_date,
                   status_id = @status_id,
                   current_milestone_id = @current_milestone_id
@@ -1226,8 +1349,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   customer_id = @customer_id,
                   project_manager_id = @project_manager_id,
                   project_owner_id = @project_owner_id,
+                  chance_id = @chance_id,
                   sold_mandays = @sold_mandays,
                   manday_rate = @manday_rate,
+                  ${hasContractValue ? 'contract_value = @contract_value,' : ''}
                   warranty_end_date = @warranty_end_date,
                   status_id = @status_id,
                   current_milestone_id = @current_milestone_id

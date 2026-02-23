@@ -63,7 +63,7 @@ export function TrackingDashboardClient({
     }
 
     const handleProjectClick = (projectId: string) => {
-        router.push(`/pm-dashboard/${projectId}`)
+        router.push(`/projects/${projectId}`)
     }
 
     const handleClearFilters = () => {

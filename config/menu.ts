@@ -25,7 +25,6 @@ import {
   Milestone,
   Package,
   Zap,
-  Activity,
   FolderOpen,
   Rocket,
   HardDrive,
@@ -41,6 +40,8 @@ import {
   FilePlus,
   Printer,
   Sticker,
+  DollarSign,
+  Receipt,
   type LucideIcon
 } from 'lucide-react'
 
@@ -83,7 +84,7 @@ export const MENU_CONFIG: MenuModule[] = [
         children: [
           { id: 'project-onhand', label: 'Project Onhand', labelTh: 'โครงการในมือ (Project Onhand)', path: '/project-onhand', icon: TrendingUp },
           { id: 'home', label: 'Home', labelTh: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
-          { id: 'pm-dashboard', label: 'PM Dashboard', labelTh: 'แดชบอร์ด PM', path: '/pm-dashboard', icon: PieChart },
+
           { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
           { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3 },
           { id: 'project-status-overview', label: 'Project Status Overview', labelTh: 'ภาพรวมสถานะโครงการ', path: '/project-status-overview', icon: ClipboardList },
@@ -109,24 +110,43 @@ export const MENU_CONFIG: MenuModule[] = [
         ]
       },
       {
-        id: 'mkt-tracking',
-        title: 'MKT Tracking',
-        titleTh: 'ติดตาม MKT',
-        children: [
-          { id: 'mkt-tracking', label: 'MKT Tracking', labelTh: 'ติดตามโครงการ MKT', path: '/mkt-tracking', icon: TrendingUp },
-        ]
-      },
-      {
         id: 'project-settings',
         title: 'Settings',
         titleTh: 'ตั้งค่า',
         children: [
+          { id: 'project-groups-config', label: 'Project Groups', labelTh: 'กลุ่มโครงการ', path: '/projects/settings/project-groups', icon: FolderOpen },
           { id: 'project-types-config', label: 'Project Types', labelTh: 'ประเภทโครงการ', path: '/projects/settings/project-types', icon: Layers },
           { id: 'milestones-config', label: 'Milestones', labelTh: 'Milestones', path: '/projects/settings/milestones', icon: Milestone },
           { id: 'deliverables-config', label: 'Deliverables', labelTh: 'Deliverables', path: '/projects/settings/deliverables', icon: Package },
           { id: 'statuses-config', label: 'Statuses', labelTh: 'สถานะ', path: '/projects/settings/statuses', icon: ListTodo },
-          { id: 'customers-config', label: 'Customers', labelTh: 'ลูกค้า', path: '/projects/settings/customers', icon: Building2 },
           { id: 'task-types-config', label: 'Task Types', labelTh: 'ประเภทงาน', path: '/projects/settings/task-types', icon: CheckSquare },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'sale',
+    title: 'Sale',
+    titleTh: 'การขาย',
+    icon: DollarSign,
+    children: [
+      {
+        id: 'sale-management',
+        title: 'Management',
+        titleTh: 'จัดการ',
+        children: [
+          { id: 'mkt-tracking', label: 'MKT Tracking', labelTh: 'ติดตามโครงการ MKT', path: '/mkt-tracking', icon: TrendingUp },
+          { id: 'sale-todo', label: 'Sales To-do', labelTh: 'รายการติดตาม', path: '/sale/todo', icon: ClipboardCheck },
+          { id: 'sale-forecast', label: 'Sales Forecast', labelTh: 'แผนการเก็บเงิน', path: '/sale/forecast', icon: Receipt },
+        ]
+      },
+      {
+        id: 'sale-settings',
+        title: 'Settings',
+        titleTh: 'ตั้งค่า',
+        children: [
+          { id: 'customers-config', label: 'Account', labelTh: 'Account', path: '/projects/settings/customers', icon: Building2 },
+          { id: 'chances-config', label: 'Chance', labelTh: 'โอกาสปิดดีล', path: '/projects/settings/chances', icon: Target },
         ]
       }
     ]
