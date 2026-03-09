@@ -630,6 +630,7 @@ export async function getProjectById(id: string) {
           pm.kpi_ttd_pass,
           pm.kpi_mdc_pass,
           pm.kpi_docs_pass,
+          ISNULL(pm.kpi_ttd_manual_fail, 0) as kpi_ttd_manual_fail,
 
           -- Verification
           ISNULL(pm.is_verified, 0) as is_verified,
@@ -1124,6 +1125,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('weight_ttd', m.weight_ttd || 0)
                     .input('weight_mdc', m.weight_mdc || 0)
                     .input('completed_date', m.completed_date || null)
+                    .input('kpi_ttd_manual_fail', sql.Bit, m.kpi_ttd_manual_fail ? 1 : 0)
                 if (hasPaymentPercent) {
                     msUpdateReq.input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
                 }
@@ -1138,6 +1140,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                             weight_mdc = @weight_mdc,
                             ${hasPaymentPercent ? 'payment_percent = @payment_percent,' : ''}
                             completed_date = @completed_date,
+                            kpi_ttd_manual_fail = @kpi_ttd_manual_fail,
                             updated_at = GETDATE()
                         WHERE id = @id AND is_locked = 0
                     `)

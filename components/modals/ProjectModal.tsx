@@ -180,6 +180,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                         support_end_date: m.support_end_date,
                         kpi_ttd_pass: m.kpi_ttd_pass,
                         kpi_mdc_pass: m.kpi_mdc_pass,
+                        kpi_ttd_manual_fail: m.kpi_ttd_manual_fail === true || m.kpi_ttd_manual_fail === 1,
                         sort_order: m.sort_order,
                         status: m.status,
                         // Derived UI props

@@ -225,13 +225,14 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
     const projectMilestoneMap = useMemo(() => {
         const map = new Map<string, Map<string, { dueDate: string | null; completedDate: string | null; daysDiff: number | null; achievement: number }>>()
         for (const proj of milestoneData) {
-            const msMap = new Map<string, { dueDate: string | null; completedDate: string | null; daysDiff: number | null; achievement: number }>()
+            const msMap = new Map<string, { dueDate: string | null; completedDate: string | null; daysDiff: number | null; achievement: number; manualFail?: boolean }>()
             for (const ms of proj.milestones) {
                 msMap.set(ms.milestone_name, {
                     dueDate: ms.due_date,
                     completedDate: ms.completed_date,
                     daysDiff: ms.days_diff,
-                    achievement: ms.achievement_percent
+                    achievement: ms.achievement_percent,
+                    manualFail: ms.kpi_ttd_manual_fail
                 })
             }
             map.set(proj.project_id, msMap)
@@ -507,7 +508,15 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
                                                             className="w-full flex flex-col items-center gap-0.5 cursor-pointer hover:bg-slate-100 rounded-lg p-1 transition-colors"
                                                             title="คลิกเพื่อดูรายละเอียด"
                                                         >
-                                                            {hasCompleted ? (
+                                                            {msData.manualFail ? (
+                                                                <>
+                                                                    <div className="text-xs font-bold text-rose-600">Fail</div>
+                                                                    <span className="text-xs font-bold text-rose-600">0%</span>
+                                                                    <div className="w-full max-w-[50px]">
+                                                                        <ProgressBar value={0} height={3} />
+                                                                    </div>
+                                                                </>
+                                                            ) : hasCompleted ? (
                                                                 <>
                                                                     <div className={`text-xs font-medium ${msData.daysDiff !== null && msData.daysDiff <= 0 ? 'text-emerald-600' : msData.daysDiff !== null && msData.daysDiff <= 7 ? 'text-blue-600' : msData.daysDiff !== null && msData.daysDiff <= 14 ? 'text-amber-600' : 'text-rose-600'}`}>
                                                                         {msData.daysDiff !== null ? (msData.daysDiff <= 0 ? `✓` : `+${msData.daysDiff}d`) : '-'}
