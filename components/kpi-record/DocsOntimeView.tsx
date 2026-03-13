@@ -354,16 +354,34 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
 
             {/* Monthly Trend */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                    <BarChart3 size={18} className="text-teal-600" />
-                    Monthly Trend - {yearFilter}
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <BarChart3 size={18} className="text-teal-600" />
+                        Monthly Trend - {yearFilter}
+                    </h3>
+                    {monthFilter !== "all" && (
+                        <button
+                            onClick={() => setMonthFilter("all")}
+                            className="text-xs text-teal-600 hover:text-teal-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-teal-50 transition-colors"
+                        >
+                            <RefreshCw size={14} />
+                            แสดงทั้งหมด
+                        </button>
+                    )}
+                </div>
                 <div className="grid grid-cols-12 gap-2">
                     {MONTHS.map((month) => {
                         const monthData = trend.find((t: any) => t.month === month.value)
+                        const isSelected = monthFilter === String(month.value)
                         if (!monthData || (monthData.on_time + monthData.late) === 0) {
                             return (
-                                <div key={month.value} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                <div
+                                    key={month.value}
+                                    onClick={() => setMonthFilter(isSelected ? "all" : String(month.value))}
+                                    className={`bg-slate-50 border rounded-lg p-2 text-center cursor-pointer transition-all hover:shadow-sm ${
+                                        isSelected ? 'border-teal-400 ring-2 ring-teal-200' : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
                                     <div className="text-xs font-medium text-slate-400 mb-1">{month.label}</div>
                                     <div className="text-sm font-bold text-slate-300">-</div>
                                 </div>
@@ -372,7 +390,14 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
                         return (
                             <div
                                 key={month.value}
-                                className={`rounded-lg p-2 text-center border ${monthData.is_pass ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}
+                                onClick={() => setMonthFilter(isSelected ? "all" : String(month.value))}
+                                className={`rounded-lg p-2 text-center border cursor-pointer transition-all hover:shadow-sm ${
+                                    isSelected
+                                        ? 'ring-2 ring-teal-300 border-teal-400 shadow-md'
+                                        : monthData.is_pass
+                                            ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-300'
+                                            : 'bg-rose-50 border-rose-200 hover:border-rose-300'
+                                } ${monthData.is_pass ? 'bg-emerald-50' : 'bg-rose-50'}`}
                             >
                                 <div className={`text-xs font-medium mb-1 ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
                                     {month.label}

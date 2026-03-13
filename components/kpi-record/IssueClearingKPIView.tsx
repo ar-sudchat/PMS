@@ -309,67 +309,85 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
             </div>
 
             {/* Monthly Trend */}
-            {monthFilter === 0 && (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+                <div className="flex items-center justify-between mb-5">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <div className="p-2 bg-gradient-to-br from-violet-100 to-purple-100 rounded-lg">
                             <BarChart3 size={18} className="text-violet-600" />
                         </div>
                         Monthly Trend - {yearFilter}
                     </h3>
-                    <div className="grid grid-cols-12 gap-2">
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                            const monthData = monthlyTrend.find(m => m.month === month)
-                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+                    {monthFilter !== 0 && (
+                        <button
+                            onClick={() => setMonthFilter(0)}
+                            className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-violet-50 transition-colors"
+                        >
+                            <X size={14} />
+                            แสดงทั้งหมด
+                        </button>
+                    )}
+                </div>
+                <div className="grid grid-cols-12 gap-2">
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                        const monthData = monthlyTrend.find(m => m.month === month)
+                        const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+                        const isSelected = monthFilter === month
 
-                            if (!monthData || monthData.total_completed === 0) {
-                                return (
-                                    <div key={month} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
-                                        <div className="text-xs font-medium text-slate-400 mb-1">{monthNames[month - 1]}</div>
-                                        <div className="text-sm font-bold text-slate-300">-</div>
-                                        <div className="text-xs text-slate-300">No data</div>
-                                    </div>
-                                )
-                            }
-
+                        if (!monthData || monthData.total_completed === 0) {
                             return (
                                 <div
                                     key={month}
-                                    className={`rounded-lg p-2 text-center border ${
-                                        monthData.is_pass
-                                            ? 'bg-emerald-50 border-emerald-200'
-                                            : 'bg-rose-50 border-rose-200'
+                                    onClick={() => setMonthFilter(isSelected ? 0 : month)}
+                                    className={`bg-slate-50 border rounded-lg p-2 text-center cursor-pointer transition-all hover:shadow-sm ${
+                                        isSelected ? 'border-violet-400 ring-2 ring-violet-200' : 'border-slate-200 hover:border-slate-300'
                                     }`}
                                 >
-                                    <div className={`text-xs font-medium mb-1 ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {monthNames[month - 1]}
-                                    </div>
-                                    <div className={`text-sm font-bold ${monthData.is_pass ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                        {monthData.clearing_rate}%
-                                    </div>
-                                    <div className={`text-xs ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {monthData.done_as_planned}/{monthData.total_completed}
-                                    </div>
+                                    <div className="text-xs font-medium text-slate-400 mb-1">{monthNames[month - 1]}</div>
+                                    <div className="text-sm font-bold text-slate-300">-</div>
                                 </div>
                             )
-                        })}
+                        }
+
+                        return (
+                            <div
+                                key={month}
+                                onClick={() => setMonthFilter(isSelected ? 0 : month)}
+                                className={`rounded-lg p-2 text-center border cursor-pointer transition-all hover:shadow-sm ${
+                                    isSelected
+                                        ? 'ring-2 ring-violet-300 border-violet-400 shadow-md'
+                                        : monthData.is_pass
+                                            ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-300'
+                                            : 'bg-rose-50 border-rose-200 hover:border-rose-300'
+                                } ${monthData.is_pass ? 'bg-emerald-50' : 'bg-rose-50'}`}
+                            >
+                                <div className={`text-xs font-medium mb-1 ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {monthNames[month - 1]}
+                                </div>
+                                <div className={`text-sm font-bold ${monthData.is_pass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                    {monthData.clearing_rate}%
+                                </div>
+                                <div className={`text-xs ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {monthData.done_as_planned}/{monthData.total_completed}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+                <div className="flex items-center justify-center gap-6 mt-5 text-xs">
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-emerald-100 border border-emerald-300 rounded" />
+                        <span className="font-medium">Pass (&ge; 85%)</span>
                     </div>
-                    <div className="flex items-center justify-center gap-6 mt-5 text-xs">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-emerald-100 border border-emerald-300 rounded" />
-                            <span className="font-medium">Pass (≥ 85%)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-rose-100 border border-rose-300 rounded" />
-                            <span className="font-medium">Fail (&lt; 85%)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-slate-50 border border-slate-200 rounded" />
-                            <span className="font-medium">No Data</span>
-                        </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-rose-100 border border-rose-300 rounded" />
+                        <span className="font-medium">Fail (&lt; 85%)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-slate-50 border border-slate-200 rounded" />
+                        <span className="font-medium">No Data</span>
                     </div>
                 </div>
-            )}
+            </div>
 
             {/* KPI by Employee Table */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-6">

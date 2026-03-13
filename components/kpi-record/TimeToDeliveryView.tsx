@@ -223,7 +223,7 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
 
     // Create lookup map
     const projectMilestoneMap = useMemo(() => {
-        const map = new Map<string, Map<string, { dueDate: string | null; completedDate: string | null; daysDiff: number | null; achievement: number }>>()
+        const map = new Map<string, Map<string, { dueDate: string | null; completedDate: string | null; daysDiff: number | null; achievement: number; manualFail?: boolean }>>()
         for (const proj of milestoneData) {
             const msMap = new Map<string, { dueDate: string | null; completedDate: string | null; daysDiff: number | null; achievement: number; manualFail?: boolean }>()
             for (const ms of proj.milestones) {
@@ -383,37 +383,57 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
             )}
 
             {/* Monthly Trend */}
-            {monthFilter === "all" && (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <BarChart3 size={18} className="text-blue-500" />
                         แนวโน้มรายเดือน {yearFilter}
                     </h3>
-                    <div className="grid grid-cols-12 gap-2">
-                        {MONTHS.map((month) => {
-                            const monthData = trend.find((t: any) => t.month === month.value)
-                            const avgPercent = monthData?.avg_percent || 0
-                            const projectCount = monthData?.project_count || 0
-                            const hasData = projectCount > 0
-                            const isPass = avgPercent >= 80
-
-                            return (
-                                <div key={month.value} className={`rounded-lg p-2 text-center border ${hasData ? (isPass ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200') : 'bg-slate-50 border-slate-200'}`}>
-                                    <div className={`text-[10px] font-medium ${hasData ? (isPass ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>{month.label}</div>
-                                    <div className={`text-sm font-bold ${hasData ? (isPass ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-300'}`}>
-                                        {hasData ? `${avgPercent.toFixed(0)}%` : "-"}
-                                    </div>
-                                    {hasData && (
-                                        <div className={`text-[9px] ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                            {projectCount} proj
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        })}
-                    </div>
+                    {monthFilter !== "all" && (
+                        <button
+                            onClick={() => setMonthFilter("all")}
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                        >
+                            <RefreshCw size={14} />
+                            แสดงทั้งหมด
+                        </button>
+                    )}
                 </div>
-            )}
+                <div className="grid grid-cols-12 gap-2">
+                    {MONTHS.map((month) => {
+                        const monthData = trend.find((t: any) => t.month === month.value)
+                        const avgPercent = monthData?.avg_percent || 0
+                        const projectCount = monthData?.project_count || 0
+                        const hasData = projectCount > 0
+                        const isPass = avgPercent >= 80
+                        const isSelected = monthFilter === String(month.value)
+
+                        return (
+                            <div
+                                key={month.value}
+                                onClick={() => setMonthFilter(isSelected ? "all" : String(month.value))}
+                                className={`rounded-lg p-2 text-center border cursor-pointer transition-all hover:shadow-sm ${
+                                    isSelected
+                                        ? 'ring-2 ring-blue-300 border-blue-400 shadow-md'
+                                        : hasData
+                                            ? (isPass ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-300' : 'bg-rose-50 border-rose-200 hover:border-rose-300')
+                                            : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                                } ${hasData ? (isPass ? 'bg-emerald-50' : 'bg-rose-50') : 'bg-slate-50'}`}
+                            >
+                                <div className={`text-[10px] font-medium ${hasData ? (isPass ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>{month.label}</div>
+                                <div className={`text-sm font-bold ${hasData ? (isPass ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-300'}`}>
+                                    {hasData ? `${avgPercent.toFixed(0)}%` : "-"}
+                                </div>
+                                {hasData && (
+                                    <div className={`text-[9px] ${isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {projectCount} proj
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
 
             {/* Project Table with Milestone Columns */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">

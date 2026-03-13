@@ -44,6 +44,7 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
     const [projectFilter, setProjectFilter] = useState<string | null>(null)
     const [organizerFilter, setOrganizerFilter] = useState<string | null>(null)
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
+    const [monthFilter, setMonthFilter] = useState<number | null>(null)
     const [onTimeFilter, setOnTimeFilter] = useState<'all' | 'on_time' | 'late' | 'pending'>('all')
     const [meetingTypeFilter, setMeetingTypeFilter] = useState<string>('')
     const [projects, setProjects] = useState<{ id: string, name: string }[]>([])
@@ -443,12 +444,23 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
             {/* Monthly Trend */}
             {!embedded && (
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5">
-                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
-                            <BarChart3 size={18} className="text-blue-600" />
-                        </div>
-                        Monthly Trend - {yearFilter}
-                    </h3>
+                    <div className="flex items-center justify-between mb-5">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                            <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                                <BarChart3 size={18} className="text-blue-600" />
+                            </div>
+                            Monthly Trend - {yearFilter}
+                        </h3>
+                        {monthFilter !== null && (
+                            <button
+                                onClick={() => setMonthFilter(null)}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                            >
+                                <X size={14} />
+                                แสดงทั้งหมด
+                            </button>
+                        )}
+                    </div>
                     <div className="grid grid-cols-12 gap-2">
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
                             const item = monthlyTrend.find(t => t.month === month)
@@ -456,16 +468,21 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                             const isPass = hasData && item.late <= 3
                             const rate = item?.on_time_rate || 0
                             const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+                            const isSelected = monthFilter === month
 
                             return (
                                 <div
                                     key={month}
-                                    className={`rounded-xl p-3 text-center transition-all hover:scale-105 cursor-default ${!hasData
-                                        ? 'bg-slate-100 border border-slate-200'
-                                        : isPass
-                                            ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200'
-                                            : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200'
-                                        }`}
+                                    onClick={() => setMonthFilter(isSelected ? null : month)}
+                                    className={`rounded-xl p-3 text-center transition-all hover:shadow-sm cursor-pointer ${
+                                        isSelected
+                                            ? 'ring-2 ring-blue-300 border-blue-400 shadow-md bg-blue-50 border'
+                                            : !hasData
+                                                ? 'bg-slate-100 border border-slate-200 hover:border-slate-300'
+                                                : isPass
+                                                    ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200 hover:border-emerald-300'
+                                                    : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200 hover:border-rose-300'
+                                    }`}
                                 >
                                     <div className="text-xs text-slate-500 font-medium mb-2">
                                         {monthNames[month - 1]}
@@ -602,7 +619,7 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
             {/* Table */}
             < div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" >
                 <SuperTable
-                    data={data}
+                    data={monthFilter ? data.filter(d => new Date(d.meeting_date).getMonth() + 1 === monthFilter) : data}
                     columns={columns}
                     isLoading={isLoading}
                     enableGlobalFilter={false}

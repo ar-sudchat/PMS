@@ -51,6 +51,7 @@ const MONTHS = [
 export function ContactCustomerView({ initialData, currentYear }: Props) {
     const router = useRouter()
     const [searchTerm, setSearchTerm] = useState('')
+    const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
     const [open, setOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [projectOptions, setProjectOptions] = useState<any[]>([])
@@ -101,9 +102,13 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
         }
     }, [open])
 
-    const filteredData = initialData.filter(d =>
-        d.project_name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const filteredData = initialData.filter(d => {
+        const matchSearch = d.project_name.toLowerCase().includes(searchTerm.toLowerCase())
+        const matchMonth = selectedMonth
+            ? new Date(d.sales_handover_date).getMonth() + 1 === selectedMonth
+            : true
+        return matchSearch && matchMonth
+    })
 
     // Calculate KPI stats
     const totalRecords = filteredData.length
@@ -197,6 +202,7 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
 
     const clearFilters = () => {
         setSearchTerm('')
+        setSelectedMonth(null)
     }
 
     return (
@@ -253,16 +259,34 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
 
             {/* Monthly Trend */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                    <BarChart3 size={18} className="text-blue-600" />
-                    Monthly Trend - {currentYear}
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <BarChart3 size={18} className="text-blue-600" />
+                        Monthly Trend - {currentYear}
+                    </h3>
+                    {selectedMonth && (
+                        <button
+                            onClick={() => setSelectedMonth(null)}
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                        >
+                            <X size={14} />
+                            แสดงทั้งหมด
+                        </button>
+                    )}
+                </div>
                 <div className="grid grid-cols-12 gap-2">
                     {MONTHS.map((month) => {
                         const monthData = trendData.find(t => t.month === month.value)
+                        const isSelected = selectedMonth === month.value
                         if (!monthData || monthData.total === 0) {
                             return (
-                                <div key={month.value} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                <div
+                                    key={month.value}
+                                    onClick={() => setSelectedMonth(isSelected ? null : month.value)}
+                                    className={`bg-slate-50 border rounded-lg p-2 text-center cursor-pointer transition-all hover:shadow-sm ${
+                                        isSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-slate-200 hover:border-slate-300'
+                                    }`}
+                                >
                                     <div className="text-xs font-medium text-slate-400 mb-1">{month.label}</div>
                                     <div className="text-sm font-bold text-slate-300">-</div>
                                 </div>
@@ -271,7 +295,14 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                         return (
                             <div
                                 key={month.value}
-                                className={`rounded-lg p-2 text-center border ${monthData.is_pass ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}
+                                onClick={() => setSelectedMonth(isSelected ? null : month.value)}
+                                className={`rounded-lg p-2 text-center border cursor-pointer transition-all hover:shadow-sm ${
+                                    isSelected
+                                        ? 'ring-2 ring-blue-300 border-blue-400 shadow-md'
+                                        : monthData.is_pass
+                                            ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-300'
+                                            : 'bg-rose-50 border-rose-200 hover:border-rose-300'
+                                } ${monthData.is_pass ? 'bg-emerald-50' : 'bg-rose-50'}`}
                             >
                                 <div className={`text-xs font-medium mb-1 ${monthData.is_pass ? 'text-emerald-600' : 'text-rose-600'}`}>
                                     {month.label}
@@ -313,7 +344,7 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                     </button>
 
                     {/* Clear Filters */}
-                    {searchTerm && (
+                    {(searchTerm || selectedMonth) && (
                         <button
                             onClick={clearFilters}
                             className="flex items-center gap-1 px-3 py-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"

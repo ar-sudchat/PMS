@@ -19,7 +19,7 @@ export default async function MandayAssessmentPage({
 
     return (
         <div className="p-6">
-            <MandayAssessmentView initialData={data} currentYear={currentYear} />
+            <MandayAssessmentView initialData={data} currentYear={currentYear} employeeId={user.id} />
         </div>
     )
 }
