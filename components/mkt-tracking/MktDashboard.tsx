@@ -463,7 +463,7 @@ function StatusDonut({ pipeline, onDrilldown }: { pipeline: MktDashboardPipeline
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
-                                        data={chartData}
+                                        data={chartData as unknown as Record<string, unknown>[]}
                                         dataKey="count"
                                         nameKey="label"
                                         cx="50%"
@@ -477,7 +477,7 @@ function StatusDonut({ pipeline, onDrilldown }: { pipeline: MktDashboardPipeline
                                         ))}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: number, name: string) => [`${value} โครงการ`, name]}
+                                        formatter={(value?: number, name?: string) => [`${value} โครงการ`, name || '']}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>

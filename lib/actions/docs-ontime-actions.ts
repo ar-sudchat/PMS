@@ -283,6 +283,7 @@ export async function getDocsOntimeMonthlyTrend(year: number, ownerId?: string) 
 
 export interface MilestoneDocsDetail {
     milestone_name: string
+    due_date: string | null
     total_docs: number
     on_time_docs: number
     late_docs: number
@@ -330,6 +331,7 @@ export async function getDocsOntimeByProjectMilestone(params: {
                     p.name AS project_name,
                     e.first_name + ' ' + e.last_name AS owner_name,
                     mc.name AS milestone_name,
+                    MIN(pm.due_date) AS due_date,
                     COUNT(*) AS total_docs,
                     SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) AS on_time_docs,
                     SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date > pm.due_date THEN 1 ELSE 0 END) AS late_docs,
@@ -385,6 +387,7 @@ export async function getDocsOntimeByProjectMilestone(params: {
 
             proj.milestones.push({
                 milestone_name: row.milestone_name,
+                due_date: row.due_date ? new Date(row.due_date).toISOString().split('T')[0] : null,
                 total_docs: row.total_docs || 0,
                 on_time_docs: row.on_time_docs || 0,
                 late_docs: row.late_docs || 0,

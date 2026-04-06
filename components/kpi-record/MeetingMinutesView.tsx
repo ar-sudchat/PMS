@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, AlertCircle, FileText, Users, BarChart3 } from "lucide-react"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, RefreshCw, AlertCircle, FileText, Users, XCircle } from "lucide-react"
 import { getMeetingMinutesRecords, deleteMeetingMinutesRecord, getMeetingMinutesKPI, getMeetingMinutesKPIByOrganizer, MeetingMinutesRecord, OrganizerKPI, approveAllPendingMeetingMinutes, getMeetingMinutesMonthlyTrend } from "@/lib/actions/meeting-minutes-actions"
 import { getActiveEmployees } from "@/lib/actions/employee-actions"
 import { MEETING_TYPES } from "@/lib/constants/kpi-record"
@@ -19,6 +19,21 @@ interface MeetingMinutesViewProps {
     currentUserId: string
     embedded?: boolean
 }
+
+const MONTHS = [
+    { value: 1, label: 'ม.ค.' },
+    { value: 2, label: 'ก.พ.' },
+    { value: 3, label: 'มี.ค.' },
+    { value: 4, label: 'เม.ย.' },
+    { value: 5, label: 'พ.ค.' },
+    { value: 6, label: 'มิ.ย.' },
+    { value: 7, label: 'ก.ค.' },
+    { value: 8, label: 'ส.ค.' },
+    { value: 9, label: 'ก.ย.' },
+    { value: 10, label: 'ต.ค.' },
+    { value: 11, label: 'พ.ย.' },
+    { value: 12, label: 'ธ.ค.' },
+]
 
 export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingMinutesViewProps) {
     const [data, setData] = useState<MeetingMinutesRecord[]>([])
@@ -44,7 +59,7 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
     const [projectFilter, setProjectFilter] = useState<string | null>(null)
     const [organizerFilter, setOrganizerFilter] = useState<string | null>(null)
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
-    const [monthFilter, setMonthFilter] = useState<number | null>(null)
+    const [monthFilter, setMonthFilter] = useState<string>("all")
     const [onTimeFilter, setOnTimeFilter] = useState<'all' | 'on_time' | 'late' | 'pending'>('all')
     const [meetingTypeFilter, setMeetingTypeFilter] = useState<string>('')
     const [projects, setProjects] = useState<{ id: string, name: string }[]>([])
@@ -173,15 +188,6 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
 
     // Count pending records
     const pendingCount = data.filter(d => (d as any).approval_status === 'PENDING').length
-
-    const clearFilters = () => {
-        setSearchQuery('')
-        setProjectFilter(null)
-        setOrganizerFilter(null)
-        setYearFilter(new Date().getFullYear())
-        setOnTimeFilter('all')
-        setMeetingTypeFilter('')
-    }
 
     const getMeetingTypeColor = (type: string) => {
         const colors: Record<string, string> = {
@@ -356,7 +362,6 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
             size: 100,
             cell: ({ row }) => {
                 const record = row.original as any
-                const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
                         <button
@@ -381,211 +386,166 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
 
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
+    // Determine overall KPI pass/fail
+    const isOverallPass = summary.late_count <= 3
+
+    // Filter data by selected month
+    const filteredData = monthFilter !== "all"
+        ? data.filter(d => new Date(d.meeting_date).getMonth() + 1 === parseInt(monthFilter))
+        : data
+
     return (
-        <div className={embedded ? "p-4" : "p-6 w-full"}>
-            {/* Page Header */}
-            < div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`
-            }>
-                {!embedded && (
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Meeting Minutes Records</h1>
-                        <p className="text-slate-500 text-sm mt-1">Track MoM submission - Target: ≤ 24 hours, Late ≤ 3/year</p>
-                    </div>
-                )}
-                {embedded && <div className="text-sm text-slate-500">Target: ≤ 24 hours, Late ≤ 3/year</div>}
-                <div className="flex items-center gap-2">
-                    {pendingCount > 0 && (
-                        <button
-                            onClick={handleApproveAllPending}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20 font-medium text-sm"
-                        >
-                            <CheckCircle2 size={16} />
-                            Approve All ({pendingCount})
-                        </button>
-                    )}
-                    <button
-                        onClick={handleCreate}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
-                    >
-                        <Plus size={16} />
-                        New Meeting
-                    </button>
-                </div>
-            </div >
-
-            {/* KPI Summary Cards */}
-            < div className="grid grid-cols-5 gap-4 mb-6" >
-                <div className="bg-white rounded-xl border p-4">
-                    <div className="text-2xl font-bold text-slate-800">{summary.total}</div>
-                    <div className="text-sm text-slate-500">Total Meetings</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className="text-2xl font-bold text-green-600">{summary.on_time}</div>
-                    <div className="text-sm text-slate-500">On Time</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className={`text-2xl font-bold ${summary.late_count <= 3 ? 'text-amber-600' : 'text-red-600'}`}>
-                        {summary.late_count}
-                    </div>
-                    <div className="text-sm text-slate-500">Late (Target: ≤3)</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className="text-2xl font-bold text-slate-500">{summary.pending}</div>
-                    <div className="text-sm text-slate-500">Pending</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className={`text-2xl font-bold ${summary.on_time_rate >= 95 ? 'text-green-600' : summary.on_time_rate >= 80 ? 'text-amber-600' : 'text-red-600'}`}>
-                        {summary.on_time_rate}%
-                    </div>
-                    <div className="text-sm text-slate-500">On Time Rate</div>
-                </div>
-            </div >
-
-            {/* Monthly Trend */}
+        <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-4 w-full bg-slate-50 min-h-screen"}>
+            {/* ===== Compact Header Bar ===== */}
             {!embedded && (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
-                    <div className="flex items-center justify-between mb-5">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
-                                <BarChart3 size={18} className="text-blue-600" />
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                    {/* Top Row: Icon + Title + Score + Summary + Filters */}
+                    <div className="flex flex-wrap items-center gap-4 px-5 py-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-indigo-100 rounded-lg">
+                                <FileText size={18} className="text-indigo-600" />
                             </div>
-                            Monthly Trend - {yearFilter}
-                        </h3>
-                        {monthFilter !== null && (
-                            <button
-                                onClick={() => setMonthFilter(null)}
-                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
-                            >
-                                <X size={14} />
-                                แสดงทั้งหมด
-                            </button>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-12 gap-2">
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                            const item = monthlyTrend.find(t => t.month === month)
-                            const hasData = item && item.total > 0
-                            const isPass = hasData && item.late <= 3
-                            const rate = item?.on_time_rate || 0
-                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
-                            const isSelected = monthFilter === month
+                            <h1 className="text-lg font-bold text-slate-800">Meeting Minutes</h1>
+                        </div>
 
-                            return (
-                                <div
-                                    key={month}
-                                    onClick={() => setMonthFilter(isSelected ? null : month)}
-                                    className={`rounded-xl p-3 text-center transition-all hover:shadow-sm cursor-pointer ${
-                                        isSelected
-                                            ? 'ring-2 ring-blue-300 border-blue-400 shadow-md bg-blue-50 border'
-                                            : !hasData
-                                                ? 'bg-slate-100 border border-slate-200 hover:border-slate-300'
-                                                : isPass
-                                                    ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200 hover:border-emerald-300'
-                                                    : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200 hover:border-rose-300'
-                                    }`}
-                                >
-                                    <div className="text-xs text-slate-500 font-medium mb-2">
-                                        {monthNames[month - 1]}
-                                    </div>
-                                    <div className={`text-lg font-bold ${!hasData ? 'text-slate-400' : isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {hasData ? `${rate}%` : '-'}
-                                    </div>
-                                    {hasData && (
-                                        <div className="mt-2 space-y-0.5">
-                                            <div className="text-[10px] text-slate-500">
-                                                On-time: <span className="font-semibold text-emerald-600">{item.on_time}</span>
-                                            </div>
-                                            <div className="text-[10px] text-slate-500">
-                                                Late: <span className={`font-semibold ${item.late > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{item.late}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {!hasData && (
-                                        <div className="text-[10px] text-slate-400 mt-2">No Data</div>
-                                    )}
-                                </div>
-                            )
-                        })}
+                        <div className="h-6 w-px bg-slate-200" />
+
+                        {/* Score Badge + Summary Text */}
+                        <div className="flex items-center gap-3">
+                            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${isOverallPass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                {isOverallPass ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                {summary.on_time_rate}%
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <span>{summary.total} ประชุม</span>
+                                <span className="text-emerald-600 font-medium">{summary.on_time} ตรงเวลา</span>
+                                <span className="text-rose-600 font-medium">{summary.late_count} สาย</span>
+                                <span className="text-slate-400">|</span>
+                                <span>Pending: <span className="font-medium text-slate-600">{summary.pending}</span></span>
+                            </div>
+                        </div>
+
+                        {/* Filters - right side */}
+                        <div className="ml-auto flex items-center gap-2">
+                            <select
+                                value={yearFilter}
+                                onChange={(e) => setYearFilter(parseInt(e.target.value))}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                {years.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                            <select
+                                value={monthFilter}
+                                onChange={(e) => setMonthFilter(e.target.value)}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                <option value="all">ทั้งปี</option>
+                                {MONTHS.map(m => (
+                                    <option key={m.value} value={m.value.toString()}>{m.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={() => fetchData()}
+                                disabled={isLoading}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            >
+                                <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center justify-center gap-6 mt-4 text-xs">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-300 rounded" />
-                            <span className="font-medium">Pass (Late &le; 3)</span>
+
+                    {/* Bottom Row: Monthly Trend Inline + Legend */}
+                    <div className="flex items-center gap-3 px-5 py-2.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            {MONTHS.map((month) => {
+                                const item = monthlyTrend.find(t => t.month === month.value)
+                                const isSelected = monthFilter === String(month.value)
+                                const hasData = item && item.total > 0
+                                const isPass = hasData && item.late <= 3
+                                const rate = item?.on_time_rate || 0
+
+                                return (
+                                    <button
+                                        key={month.value}
+                                        onClick={() => setMonthFilter(isSelected ? "all" : String(month.value))}
+                                        className={`flex-1 rounded-md px-1 py-1 text-center transition-all min-w-0 ${
+                                            isSelected
+                                                ? 'ring-2 ring-indigo-300 border-indigo-400 shadow-sm bg-indigo-50'
+                                                : hasData
+                                                    ? (isPass ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-rose-50 hover:bg-rose-100')
+                                                    : 'bg-slate-50 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <div className={`text-[9px] font-medium ${hasData ? (isPass ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>{month.label}</div>
+                                        <div className={`text-xs font-bold leading-tight ${hasData ? (isPass ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-300'}`}>
+                                            {hasData ? `${rate}%` : "-"}
+                                        </div>
+                                    </button>
+                                )
+                            })}
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-b from-rose-50 to-red-100 border border-rose-300 rounded" />
-                            <span className="font-medium">Fail (Late &gt; 3)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-slate-100 border border-slate-300 rounded" />
-                            <span className="font-medium">No Data</span>
+
+                        <div className="h-8 w-px bg-slate-200 shrink-0" />
+
+                        <div className="flex items-center gap-3 text-[10px] shrink-0">
+                            <span className="text-emerald-600 font-medium">Late &le;3: Pass</span>
+                            <span className="text-rose-600 font-medium">Late &gt;3: Fail</span>
+                            <span className="text-slate-500">(Target: &le;24h)</span>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Filters */}
-            < div className="bg-white border border-slate-200 rounded-xl p-4 mb-4" >
-                <div className="flex items-center gap-4 flex-wrap">
+            {/* ===== Filter Bar ===== */}
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     {/* Search */}
-                    <div className="relative flex-1 min-w-[200px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <div className="relative flex-1 min-w-[180px]">
                         <input
                             type="text"
-                            placeholder="Search project, title..."
+                            placeholder="ค้นหา project, title..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+                            className="w-full pl-3 pr-4 py-1.5 border border-slate-200 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm"
                         />
                     </div>
-
-                    {/* Year Filter */}
-                    <select
-                        value={yearFilter}
-                        onChange={(e) => setYearFilter(parseInt(e.target.value))}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
-                    >
-                        {years.map(y => (
-                            <option key={y} value={y}>{y}</option>
-                        ))}
-                    </select>
 
                     {/* On Time Filter */}
                     <select
                         value={onTimeFilter}
                         onChange={(e) => setOnTimeFilter(e.target.value as any)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
+                        className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white text-sm"
                     >
-                        <option value="all">All Status</option>
-                        <option value="on_time">On Time Only</option>
-                        <option value="late">Late Only</option>
-                        <option value="pending">Pending Only</option>
+                        <option value="all">สถานะทั้งหมด</option>
+                        <option value="on_time">ตรงเวลา</option>
+                        <option value="late">สาย</option>
+                        <option value="pending">รอดำเนินการ</option>
                     </select>
 
                     {/* Meeting Type Filter */}
                     <select
                         value={meetingTypeFilter}
                         onChange={(e) => setMeetingTypeFilter(e.target.value)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
+                        className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white text-sm"
                     >
-                        <option value="">All Types</option>
+                        <option value="">ประเภททั้งหมด</option>
                         {MEETING_TYPES.map(type => (
                             <option key={type} value={type}>{type}</option>
                         ))}
                     </select>
 
                     {/* Project Filter */}
-                    <div className="min-w-[200px]">
+                    <div className="min-w-[180px]">
                         <SmartCombobox
                             options={projects.map(p => ({ value: p.id, label: p.name }))}
                             value={projectFilter ? { value: projectFilter, label: projects.find(p => p.id === projectFilter)?.name || '' } : null}
                             onChange={(opt) => setProjectFilter(opt?.value?.toString() || null)}
-                            placeholder="All Projects"
+                            placeholder="โครงการทั้งหมด"
                         />
                     </div>
 
                     {/* Organizer Filter */}
-                    <div className="min-w-[180px]">
+                    <div className="min-w-[160px]">
                         <SmartCombobox
                             options={employees.map(e => ({ value: e.id, label: e.name }))}
                             value={organizerFilter ? { value: organizerFilter, label: employees.find(e => e.id === organizerFilter)?.name || '' } : null}
@@ -594,107 +554,102 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                         />
                     </div>
 
-                    {/* Refresh */}
-                    <button
-                        onClick={() => fetchData()}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Refresh"
-                    >
-                        <RefreshCw size={18} />
-                    </button>
-
-                    {/* Clear Filters */}
-                    {(searchQuery || projectFilter || organizerFilter || onTimeFilter !== 'all' || meetingTypeFilter) && (
+                    {/* Action Buttons */}
+                    <div className="ml-auto flex items-center gap-2">
+                        {pendingCount > 0 && (
+                            <button
+                                onClick={handleApproveAllPending}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm font-medium text-sm"
+                            >
+                                <CheckCircle2 size={14} />
+                                Approve All ({pendingCount})
+                            </button>
+                        )}
                         <button
-                            onClick={clearFilters}
-                            className="flex items-center gap-1 px-3 py-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            onClick={handleCreate}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium text-sm"
                         >
-                            <X size={16} />
-                            Clear
+                            <Plus size={14} />
+                            เพิ่มประชุม
                         </button>
-                    )}
+                    </div>
                 </div>
-            </div >
+            </div>
 
-            {/* Table */}
-            < div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" >
+            {/* ===== Data Table ===== */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <SuperTable
-                    data={monthFilter ? data.filter(d => new Date(d.meeting_date).getMonth() + 1 === monthFilter) : data}
+                    data={filteredData}
                     columns={columns}
                     isLoading={isLoading}
                     enableGlobalFilter={false}
                 />
 
                 {/* Pagination */}
-                {
-                    pagination.totalPages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-                            <div className="text-sm text-slate-500">
-                                Showing {(pagination.page - 1) * pagination.pageSize + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                                    disabled={pagination.page === 1}
-                                    className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Previous
-                                </button>
-                                <span className="text-sm text-slate-600">
-                                    Page {pagination.page} of {pagination.totalPages}
-                                </span>
-                                <button
-                                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                                    disabled={pagination.page >= pagination.totalPages}
-                                    className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Next
-                                </button>
-                            </div>
+                {pagination.totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                        <div className="text-sm text-slate-500">
+                            แสดง {(pagination.page - 1) * pagination.pageSize + 1} ถึง {Math.min(pagination.page * pagination.pageSize, pagination.total)} จาก {pagination.total}
                         </div>
-                    )
-                }
-            </div >
-
-            {/* KPI Summary by Organizer */}
-            {
-                organizerKPIs.length > 0 && (
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 mt-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-slate-800">KPI Summary by Organizer ({yearFilter})</h3>
-                            <span className="text-sm text-slate-500">Target: ส่งช้าไม่เกิน 3 ครั้ง/ปี</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {organizerKPIs.map((kpi) => (
-                                <div
-                                    key={kpi.organizer_id}
-                                    className={`flex items-center justify-between p-3 rounded-lg border ${kpi.is_pass ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}
-                                >
-                                    <div className="flex-1">
-                                        <div className="font-medium text-slate-800">{kpi.organizer_name}</div>
-                                        <div className="text-xs text-slate-500">
-                                            {kpi.total_meetings} meetings | <span className="text-green-600">{kpi.on_time_count} On-time</span> | <span className="text-red-600">{kpi.late_count} Late</span>
-                                        </div>
-                                    </div>
-                                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${kpi.is_pass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                        {kpi.is_pass ? (
-                                            <>
-                                                <CheckCircle2 size={14} />
-                                                Pass
-                                            </>
-                                        ) : (
-                                            <>
-                                                <AlertCircle size={14} />
-                                                Fail
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                disabled={pagination.page === 1}
+                                className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                ก่อนหน้า
+                            </button>
+                            <span className="text-sm text-slate-600">
+                                หน้า {pagination.page} / {pagination.totalPages}
+                            </span>
+                            <button
+                                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                disabled={pagination.page >= pagination.totalPages}
+                                className="px-3 py-1 text-sm border rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                ถัดไป
+                            </button>
                         </div>
                     </div>
-                )
-            }
+                )}
+            </div>
+
+            {/* ===== KPI by Organizer ===== */}
+            {organizerKPIs.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-5 py-3 border-b border-slate-100">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                            <Users size={16} className="text-indigo-600" />
+                            KPI ตามผู้จัดประชุม ({yearFilter})
+                            <span className="font-normal text-slate-500 ml-1">Target: Late &le; 3 ครั้ง/ปี</span>
+                        </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+                        {organizerKPIs.map((kpi) => (
+                            <div
+                                key={kpi.organizer_id}
+                                className={`flex items-center justify-between p-3 rounded-lg border ${kpi.is_pass ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'}`}
+                            >
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-slate-800 text-sm truncate">{kpi.organizer_name}</div>
+                                    <div className="text-xs text-slate-500">
+                                        {kpi.total_meetings} ประชุม | <span className="text-emerald-600">{kpi.on_time_count} ตรงเวลา</span> | <span className="text-rose-600">{kpi.late_count} สาย</span>
+                                    </div>
+                                </div>
+                                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${kpi.is_pass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {kpi.is_pass ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                                    {kpi.is_pass ? 'Pass' : 'Fail'}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Legend */}
+            <div className="text-center text-[11px] text-slate-400">
+                MoM ต้องส่งภายใน 24 ชม. หลังประชุม | Late ไม่เกิน 3 ครั้ง/ปี ถือว่า Pass | On Time Rate = (จำนวนตรงเวลา / ทั้งหมด) x 100
+            </div>
 
             {/* Modal */}
             <MeetingMinutesModal
@@ -703,6 +658,6 @@ export function MeetingMinutesView({ currentUserId, embedded = false }: MeetingM
                 record={selectedRecord}
                 currentUserId={currentUserId}
             />
-        </div >
+        </div>
     )
 }

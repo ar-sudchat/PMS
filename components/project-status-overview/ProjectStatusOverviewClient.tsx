@@ -689,7 +689,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                                                                     ))}
                                                                 </Pie>
                                                                 <Tooltip
-                                                                    formatter={(value: number, name: string) => [`${value} โปรเจกต์`, name]}
+                                                                    formatter={(value?: number, name?: string) => [`${value} โปรเจกต์`, name || '']}
                                                                     contentStyle={{ borderRadius: 10, fontSize: 12, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '8px 14px' }}
                                                                 />
                                                             </PieChart>
@@ -773,7 +773,7 @@ export function ProjectStatusOverviewClient({ initialData, filterOptions, curren
                                                                     ))}
                                                                 </Pie>
                                                                 <Tooltip
-                                                                    formatter={(value: number, name: string) => [`${value} MD`, name]}
+                                                                    formatter={(value?: number, name?: string) => [`${value} MD`, name || '']}
                                                                     contentStyle={{ borderRadius: 10, fontSize: 12, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '8px 14px' }}
                                                                 />
                                                             </PieChart>

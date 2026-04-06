@@ -364,6 +364,7 @@ export interface MilestoneDetail {
     actual_mandays: number | null
     weight_mdc: number | null
     achievement_percent: number
+    due_date: string | null
 }
 
 export interface ProjectMilestoneData {
@@ -398,6 +399,7 @@ export async function getMandayControlMilestones(params: {
                     p.project_code,
                     p.name AS project_name,
                     mc.name AS milestone_name,
+                    pm.due_date,
                     pm.planned_mandays,
                     ISNULL(ts_md.actual_mandays, 0) AS actual_mandays,
                     COALESCE(pm.weight_mdc, mc.default_weight_mdc,
@@ -410,7 +412,7 @@ export async function getMandayControlMilestones(params: {
                             ELSE 0
                         END) AS weight_mdc,
                     CASE
-                        WHEN ts_md.actual_mandays IS NULL THEN 0
+                        WHEN ts_md.actual_mandays IS NULL OR ts_md.actual_mandays = 0 THEN 0
                         WHEN pm.planned_mandays IS NULL OR pm.planned_mandays = 0 THEN 0
                         WHEN ts_md.actual_mandays <= pm.planned_mandays THEN 100
                         WHEN ts_md.actual_mandays <= pm.planned_mandays * 1.1 THEN 90
@@ -466,7 +468,8 @@ export async function getMandayControlMilestones(params: {
                 planned_mandays: row.planned_mandays,
                 actual_mandays: row.actual_mandays,
                 weight_mdc: row.weight_mdc,
-                achievement_percent: row.achievement_percent
+                achievement_percent: row.achievement_percent,
+                due_date: row.due_date ? new Date(row.due_date).toISOString().split('T')[0] : null
             })
         }
 
