@@ -83,6 +83,7 @@ export interface ProjectMilestone {
     kpi_mdc_pass?: boolean
     kpi_docs_pass?: boolean
     kpi_ttd_manual_fail?: boolean
+    kpi_docs_manual_fail?: boolean
 
     // Verification (new)
     is_verified?: boolean
@@ -186,6 +187,9 @@ export interface ProjectFormData {
     warranty_end_date?: string
     status_id?: string
     current_milestone_id?: string
+    kpi_exclude_ttd?: boolean
+    kpi_exclude_mdc?: boolean
+    kpi_exclude_docs?: boolean
     milestones: {
         milestone_config_id: string
         weight_percent: number
@@ -211,6 +215,7 @@ export interface ProjectFormData {
 
         // KPI manual flags
         kpi_ttd_manual_fail?: boolean
+        kpi_docs_manual_fail?: boolean
 
         // Due date change tracking
         due_date_change_reason?: string

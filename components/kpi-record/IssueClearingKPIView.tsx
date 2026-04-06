@@ -308,54 +308,6 @@ export default function IssueClearingKPIView({ currentUserId = '', currentUserNa
                 </div>
             </div>
 
-            {/* Tasks Not as Planned */}
-            {tasksNotPlanned.length > 0 && (
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                    <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <AlertTriangle size={18} className="text-amber-600" />
-                            Tasks Not as Planned
-                            <span className="text-sm font-normal text-amber-600 ml-2">({tasksNotPlanned.length} รายการ)</span>
-                        </h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr>
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700 w-24">Date</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Task</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700 w-28">Project</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700 w-32">Employee</th>
-                                    <th className="text-left px-4 py-3 font-semibold text-slate-700 w-36">Reason</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {tasksNotPlanned.map((task) => (
-                                    <tr key={task.id} className="border-b border-slate-100 hover:bg-amber-50/30 transition-colors">
-                                        <td className="px-4 py-2.5 text-xs text-slate-500">
-                                            {task.completed_date ? format(new Date(task.completed_date), 'dd/MM/yyyy', { locale: th }) : '-'}
-                                        </td>
-                                        <td className="px-4 py-2.5">
-                                            <span className="font-medium text-slate-800">{task.task_code}</span>
-                                            <span className="text-slate-500 ml-2 truncate">{task.title}</span>
-                                        </td>
-                                        <td className="px-4 py-2.5">
-                                            <span className="text-xs text-blue-600 font-medium bg-blue-50 px-1.5 py-0.5 rounded">{task.project_code}</span>
-                                        </td>
-                                        <td className="px-4 py-2.5 text-slate-700">{task.assignee_name}</td>
-                                        <td className="px-4 py-2.5">
-                                            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
-                                                {getReasonLabel(task.not_as_planned_reason)}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
             {/* Employee Tasks Modal */}
             <Dialog open={showTasksModal} onOpenChange={setShowTasksModal}>
                 <DialogContent className="max-w-2xl">

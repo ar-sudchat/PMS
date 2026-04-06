@@ -378,7 +378,12 @@ export async function getProjects(filters?: ProjectFilters) {
         -- Progress (JOIN instead of subquery)
         ISNULL(ms_sum.actual_mandays, 0) as actual_mandays,
 
-        p.created_at
+        p.created_at,
+
+        -- KPI Exclude Flags
+        ISNULL(p.kpi_exclude_ttd, 0) as kpi_exclude_ttd,
+        ISNULL(p.kpi_exclude_mdc, 0) as kpi_exclude_mdc,
+        ISNULL(p.kpi_exclude_docs, 0) as kpi_exclude_docs
 
       FROM pms.projects p
       LEFT JOIN pms.customers c ON p.customer_id = c.id
@@ -631,6 +636,7 @@ export async function getProjectById(id: string) {
           pm.kpi_mdc_pass,
           pm.kpi_docs_pass,
           ISNULL(pm.kpi_ttd_manual_fail, 0) as kpi_ttd_manual_fail,
+          ISNULL(pm.kpi_docs_manual_fail, 0) as kpi_docs_manual_fail,
 
           -- Verification
           ISNULL(pm.is_verified, 0) as is_verified,
@@ -1126,6 +1132,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                     .input('weight_mdc', m.weight_mdc || 0)
                     .input('completed_date', m.completed_date || null)
                     .input('kpi_ttd_manual_fail', sql.Bit, m.kpi_ttd_manual_fail ? 1 : 0)
+                    .input('kpi_docs_manual_fail', sql.Bit, m.kpi_docs_manual_fail ? 1 : 0)
                 if (hasPaymentPercent) {
                     msUpdateReq.input('payment_percent', sql.Decimal(5, 2), m.payment_percent || 0)
                 }
@@ -1141,6 +1148,7 @@ export async function updateProject(id: string, data: ProjectFormData) {
                             ${hasPaymentPercent ? 'payment_percent = @payment_percent,' : ''}
                             completed_date = @completed_date,
                             kpi_ttd_manual_fail = @kpi_ttd_manual_fail,
+                            kpi_docs_manual_fail = @kpi_docs_manual_fail,
                             updated_at = GETDATE()
                         WHERE id = @id AND is_locked = 0
                     `)
@@ -1324,6 +1332,9 @@ export async function updateProject(id: string, data: ProjectFormData) {
         if (hasContractValue) {
             updateProjectRequest.input('contract_value', sql.Decimal(18, 2), data.contract_value || null)
         }
+        updateProjectRequest.input('kpi_exclude_ttd', sql.Bit, (data as any).kpi_exclude_ttd ? 1 : 0)
+        updateProjectRequest.input('kpi_exclude_mdc', sql.Bit, (data as any).kpi_exclude_mdc ? 1 : 0)
+        updateProjectRequest.input('kpi_exclude_docs', sql.Bit, (data as any).kpi_exclude_docs ? 1 : 0)
 
         if (hasProjectNameTh) {
             updateProjectRequest.input('name_th', data.name_th || null)
@@ -1341,7 +1352,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   ${hasContractValue ? 'contract_value = @contract_value,' : ''}
                   warranty_end_date = @warranty_end_date,
                   status_id = @status_id,
-                  current_milestone_id = @current_milestone_id
+                  current_milestone_id = @current_milestone_id,
+                  kpi_exclude_ttd = @kpi_exclude_ttd,
+                  kpi_exclude_mdc = @kpi_exclude_mdc,
+                  kpi_exclude_docs = @kpi_exclude_docs
                 WHERE id = @id
             `)
         } else {
@@ -1358,7 +1372,10 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   ${hasContractValue ? 'contract_value = @contract_value,' : ''}
                   warranty_end_date = @warranty_end_date,
                   status_id = @status_id,
-                  current_milestone_id = @current_milestone_id
+                  current_milestone_id = @current_milestone_id,
+                  kpi_exclude_ttd = @kpi_exclude_ttd,
+                  kpi_exclude_mdc = @kpi_exclude_mdc,
+                  kpi_exclude_docs = @kpi_exclude_docs
                 WHERE id = @id
             `)
         }

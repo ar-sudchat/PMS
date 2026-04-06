@@ -363,7 +363,9 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
                                                             )}
                                                         </td>
                                                         <td className="text-center px-4 py-2.5">
-                                                            {msSubmitted > 0 ? (
+                                                            {ms.kpi_docs_manual_fail ? (
+                                                                <span className="text-sm font-bold text-rose-600">Fail</span>
+                                                            ) : msSubmitted > 0 ? (
                                                                 <span className={`text-sm font-bold ${ms.on_time_rate >= 95 ? 'text-emerald-600' : ms.on_time_rate >= 80 ? 'text-amber-600' : 'text-rose-600'}`}>
                                                                     {ms.on_time_rate}%
                                                                 </span>
@@ -372,9 +374,11 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
                                                             )}
                                                         </td>
                                                         <td className="text-center px-4 py-2.5">
-                                                            {msSubmitted > 0 && (
+                                                            {ms.kpi_docs_manual_fail ? (
+                                                                <span className="inline-block w-2 h-2 rounded-full bg-rose-500" />
+                                                            ) : msSubmitted > 0 ? (
                                                                 <span className={`inline-block w-2 h-2 rounded-full ${ms.on_time_rate >= 95 ? 'bg-emerald-500' : ms.on_time_rate >= 80 ? 'bg-amber-500' : 'bg-rose-500'}`} />
-                                                            )}
+                                                            ) : null}
                                                         </td>
                                                     </tr>
                                                 )

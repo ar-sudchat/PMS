@@ -191,6 +191,7 @@ export async function getTimeToDeliveryMilestones(params: {
                 AND pm.due_date IS NOT NULL
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
+                AND ISNULL(p.kpi_exclude_ttd, 0) = 0
                 ORDER BY p.project_code,
                     CASE mc.name
                         WHEN 'Mapping Data' THEN 1
@@ -438,6 +439,7 @@ export async function getMandayControlMilestones(params: {
                 AND p.is_active = 1
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
+                AND ISNULL(p.kpi_exclude_mdc, 0) = 0
                 ORDER BY p.project_code,
                     CASE mc.name
                         WHEN 'Mapping Data' THEN 1

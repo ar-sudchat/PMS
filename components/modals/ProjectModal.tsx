@@ -66,6 +66,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         project_group_id: '',
         chance_id: '',
         contract_value: 0,
+        kpi_exclude_ttd: false,
+        kpi_exclude_mdc: false,
+        kpi_exclude_docs: false,
     })
 
     // Form State - Milestones
@@ -143,8 +146,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     partner_id: projectData.partner_id || '',
                     project_manager_id: projectData.project_manager_id,
                     description: projectData.description || '',
-                    sold_mandays: projectData.sold_mandays,
-                    manday_rate: projectData.manday_rate,
+                    sold_mandays: projectData.sold_mandays ?? 0,
+                    manday_rate: projectData.manday_rate ?? 15000,
                     warranty_end_date: projectData.warranty_end_date ? new Date(projectData.warranty_end_date).toISOString().split('T')[0] : '',
                     status_id: projectData.status_id || '',
                     current_milestone_id: projectData.current_milestone_id || '',
@@ -153,6 +156,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     project_group_id: projectData.project_group_id || '',
                     chance_id: projectData.chance_id || '',
                     contract_value: projectData.contract_value || 0,
+                    kpi_exclude_ttd: projectData.kpi_exclude_ttd === true || projectData.kpi_exclude_ttd === 1,
+                    kpi_exclude_mdc: projectData.kpi_exclude_mdc === true || projectData.kpi_exclude_mdc === 1,
+                    kpi_exclude_docs: projectData.kpi_exclude_docs === true || projectData.kpi_exclude_docs === 1,
                 })
 
                 if (projectData.milestones) {
@@ -181,6 +187,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                         kpi_ttd_pass: m.kpi_ttd_pass,
                         kpi_mdc_pass: m.kpi_mdc_pass,
                         kpi_ttd_manual_fail: m.kpi_ttd_manual_fail === true || m.kpi_ttd_manual_fail === 1,
+                        kpi_docs_manual_fail: m.kpi_docs_manual_fail === true || m.kpi_docs_manual_fail === 1,
                         sort_order: m.sort_order,
                         status: m.status,
                         // Derived UI props
@@ -317,6 +324,9 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
             project_group_id: '',
             chance_id: '',
             contract_value: 0,
+            kpi_exclude_ttd: false,
+            kpi_exclude_mdc: false,
+            kpi_exclude_docs: false,
         })
         // Initialize milestones from configs (sorted by sort_order)
         initializeMilestonesFromConfigs()
@@ -1001,6 +1011,42 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
 
                     {/* ═══ Tab: Notes ═══ */}
                     <div className={`${activeTab === 'notes' ? 'block' : 'hidden'}`}>
+                        {/* KPI Exclude Checkboxes */}
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                            <label className="block text-sm font-medium text-amber-800 mb-2">
+                                ไม่คิด KPI (ยกเว้นโครงการนี้จากการคำนวณ KPI)
+                            </label>
+                            <div className="flex items-center gap-6">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.kpi_exclude_ttd}
+                                        onChange={(e) => setFormData({ ...formData, kpi_exclude_ttd: e.target.checked })}
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <span className="text-sm text-slate-700">Time to Delivery (TTD)</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.kpi_exclude_mdc}
+                                        onChange={(e) => setFormData({ ...formData, kpi_exclude_mdc: e.target.checked })}
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <span className="text-sm text-slate-700">Man-day Control (MDC)</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.kpi_exclude_docs}
+                                        onChange={(e) => setFormData({ ...formData, kpi_exclude_docs: e.target.checked })}
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <span className="text-sm text-slate-700">Docs On-time</span>
+                                </label>
+                            </div>
+                        </div>
+
                         {project?.id && (
                             <div className="space-y-4">
                                 <MilestoneNotesPanel projectId={project.id} />

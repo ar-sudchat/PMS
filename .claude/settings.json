@@ -14,7 +14,8 @@
       "Bash(xargs kill:*)",
       "Bash(wc -l /Users/artit/PMS/components/kpi-record/*.tsx)",
       "Bash(sort -k2)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
     ]
   }
 }
