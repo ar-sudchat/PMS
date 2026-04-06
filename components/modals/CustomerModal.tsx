@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Customer, CustomerFormData } from '@/types/customer';
 import { createCustomer, updateCustomer } from '@/lib/actions/customer-actions';
-import { Switch } from '@/components/ui/Switch';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 const inputClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
