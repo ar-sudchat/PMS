@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Loader2, Users, Milestone, BarChart3, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Loader2, Users, Milestone, BarChart3, TrendingUp, TrendingDown, Minus, CalendarDays } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 import {
     PieChart,
@@ -153,7 +153,7 @@ export function ProjectMandayDetailDialog({
 
                         {/* Tabs */}
                         <Tabs defaultValue="employee" className="mt-3 flex-1 flex flex-col">
-                            <TabsList className="grid w-full grid-cols-3">
+                            <TabsList className="grid w-full grid-cols-4">
                                 <TabsTrigger value="employee" className="flex items-center gap-2">
                                     <Users className="h-4 w-4" />
                                     By Employee
@@ -165,6 +165,10 @@ export function ProjectMandayDetailDialog({
                                 <TabsTrigger value="matrix" className="flex items-center gap-2">
                                     <BarChart3 className="h-4 w-4" />
                                     Matrix
+                                </TabsTrigger>
+                                <TabsTrigger value="daily" className="flex items-center gap-2">
+                                    <CalendarDays className="h-4 w-4" />
+                                    Daily Log
                                 </TabsTrigger>
                             </TabsList>
 
@@ -420,6 +424,84 @@ export function ProjectMandayDetailDialog({
                                         </tfoot>
                                     </table>
                                 </div>
+                            </TabsContent>
+
+                            {/* Daily Log Tab */}
+                            <TabsContent value="daily" className="mt-4">
+                                {data.dailyLog && data.dailyLog.length > 0 ? (
+                                    (() => {
+                                        // Group by date
+                                        const grouped = data.dailyLog.reduce<Record<string, typeof data.dailyLog>>((acc, entry) => {
+                                            const date = entry.entry_date
+                                            if (!acc[date]) acc[date] = []
+                                            acc[date].push(entry)
+                                            return acc
+                                        }, {})
+
+                                        return (
+                                            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                                                {Object.entries(grouped).map(([date, entries]) => {
+                                                    const dayTotal = entries.reduce((s, e) => s + (e.hours || 0), 0)
+                                                    const dayMandays = entries.reduce((s, e) => s + (e.mandays || 0), 0)
+                                                    const d = new Date(date)
+                                                    const dayName = d.toLocaleDateString('th-TH', { weekday: 'short' })
+                                                    const dateDisplay = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+
+                                                    return (
+                                                        <div key={date} className="border rounded-lg overflow-hidden">
+                                                            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b">
+                                                                <div className="flex items-center gap-2">
+                                                                    <CalendarDays className="h-4 w-4 text-blue-500" />
+                                                                    <span className="font-semibold text-slate-800">{dayName} {dateDisplay}</span>
+                                                                    <Badge variant="secondary" className="text-xs">{entries.length} รายการ</Badge>
+                                                                </div>
+                                                                <div className="flex items-center gap-3 text-sm">
+                                                                    <span className="text-slate-500">{formatNumber(dayTotal)} ชม.</span>
+                                                                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">{formatNumber(dayMandays)} MD</Badge>
+                                                                </div>
+                                                            </div>
+                                                            <table className="min-w-full text-sm">
+                                                                <thead>
+                                                                    <tr className="bg-gray-50 text-xs text-gray-500">
+                                                                        <th className="text-left px-4 py-1.5 font-medium">พนักงาน</th>
+                                                                        <th className="text-left px-3 py-1.5 font-medium">Milestone</th>
+                                                                        <th className="text-left px-3 py-1.5 font-medium">Task</th>
+                                                                        <th className="text-right px-3 py-1.5 font-medium w-16">ชม.</th>
+                                                                        <th className="text-right px-4 py-1.5 font-medium w-16">MD</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {entries.map((entry, idx) => (
+                                                                        <tr key={idx} className="border-t border-gray-100 hover:bg-gray-50">
+                                                                            <td className="px-4 py-2">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="font-medium text-slate-800">{entry.employee_name}</span>
+                                                                                    {entry.position_code && (
+                                                                                        <Badge variant="outline" className="text-[10px] px-1 py-0">{entry.position_code}</Badge>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="px-3 py-2 text-slate-600">{entry.milestone_name || '-'}</td>
+                                                                            <td className="px-3 py-2 text-slate-600">
+                                                                                <div className="truncate max-w-[200px]" title={entry.task_name || ''}>
+                                                                                    {entry.task_name || '-'}
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="text-right px-3 py-2 font-medium text-purple-600">{formatNumber(entry.hours)}</td>
+                                                                            <td className="text-right px-4 py-2 font-medium text-blue-600">{formatNumber(entry.mandays)}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )
+                                    })()
+                                ) : (
+                                    <p className="text-center text-gray-500 py-8">ไม่พบข้อมูลการลงเวลา</p>
+                                )}
                             </TabsContent>
                         </Tabs>
                     </div>

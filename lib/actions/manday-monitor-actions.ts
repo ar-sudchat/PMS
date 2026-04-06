@@ -882,6 +882,18 @@ export interface EmployeeMilestoneMatrix {
     mandays: number
 }
 
+export interface DailyTimesheetEntry {
+    entry_date: string
+    employee_id: string
+    employee_name: string
+    position_code: string | null
+    milestone_name: string | null
+    task_name: string | null
+    hours: number
+    mandays: number
+    description: string | null
+}
+
 export interface ProjectMandayDetail {
     project_id: string
     project_code: string
@@ -895,6 +907,7 @@ export interface ProjectMandayDetail {
     milestones: MandayByMilestone[]
     employees: MandayByEmployeeInProject[]
     matrix: EmployeeMilestoneMatrix[]
+    dailyLog: DailyTimesheetEntry[]
 }
 
 // Colors for milestones
@@ -1092,6 +1105,40 @@ export async function getProjectMandayDetail(
             ORDER BY employee_name, milestone_name
         `)
 
+        // Get daily timesheet log
+        const dailyRequest = pool.request()
+        dailyRequest.input('projectId', sql.UniqueIdentifier, projectId)
+        Object.entries(params).forEach(([key, value]) => {
+            dailyRequest.input(key, value)
+        })
+
+        const dailyResult = await dailyRequest.query(`
+            SELECT
+                CONVERT(VARCHAR(10), te.entry_date, 120) AS entry_date,
+                e.id AS employee_id,
+                COALESCE(
+                    CONCAT(e.first_name_th, ' ', e.last_name_th),
+                    CONCAT(e.first_name, ' ', e.last_name)
+                ) AS employee_name,
+                pos.code AS position_code,
+                ISNULL(msc.name, NULL) AS milestone_name,
+                t.title AS task_name,
+                te.hours,
+                CAST(ROUND(te.hours / 7.0, 4) AS DECIMAL(10,4)) AS mandays,
+                te.description
+            FROM pms.timesheet_entries te
+            INNER JOIN pms.tasks t ON te.task_id = t.id
+            INNER JOIN pms.stories s ON t.story_id = s.id
+            INNER JOIN pms.employees e ON te.employee_id = e.id
+            LEFT JOIN pms.positions pos ON e.position_id = pos.id
+            LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
+            LEFT JOIN pms.milestone_configs msc ON pm.milestone_config_id = msc.id
+            WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
+            AND s.project_id = @projectId
+            AND ${whereClause}
+            ORDER BY te.entry_date DESC, employee_name, t.title
+        `)
+
         // Calculate totals
         const totalMandays = milestoneResult.recordset.reduce((sum: number, m: any) => sum + (m.mandays || 0), 0)
         const totalPlannedMandays = milestoneResult.recordset.reduce((sum: number, m: any) => sum + (m.planned_mandays || 0), 0)
@@ -1118,7 +1165,8 @@ export async function getProjectMandayDetail(
                     : 0,
                 milestones,
                 employees: employeeResult.recordset,
-                matrix: matrixResult.recordset
+                matrix: matrixResult.recordset,
+                dailyLog: dailyResult.recordset
             }
         }
     } catch (error: any) {

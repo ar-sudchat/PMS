@@ -52,11 +52,29 @@ export interface MandayAssessmentRecord {
 // ============================================
 // Helper Filters
 // ============================================
-function getDaysDiff(start: string | Date, end: string | Date): number {
+// Count business days (exclude Sat/Sun) from day AFTER start to end (inclusive)
+// e.g. meeting 5/3 (Thu), submit 11/3 (Wed) => count from 6/3 (Fri): Fri, Mon, Tue, Wed = 4 days
+function getBusinessDaysDiff(start: string | Date, end: string | Date): number {
     const d1 = new Date(start)
     const d2 = new Date(end)
-    const diffTime = Math.abs(d2.getTime() - d1.getTime())
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    // Normalize to date only (no time)
+    d1.setHours(0, 0, 0, 0)
+    d2.setHours(0, 0, 0, 0)
+
+    if (d2 <= d1) return 0
+
+    let count = 0
+    const current = new Date(d1)
+    current.setDate(current.getDate() + 1) // Start from next day
+
+    while (current <= d2) {
+        const day = current.getDay()
+        if (day !== 0 && day !== 6) { // Not Sunday (0) or Saturday (6)
+            count++
+        }
+        current.setDate(current.getDate() + 1)
+    }
+    return count
 }
 
 // ============================================
@@ -118,7 +136,7 @@ export async function getCustomerContactRecords(year?: number, employeeId?: stri
         const result = await req.query(query)
 
         return result.recordset.map((r: any) => {
-            const daysTaken = getDaysDiff(r.sales_handover_date, r.customer_contact_date)
+            const daysTaken = getBusinessDaysDiff(r.sales_handover_date, r.customer_contact_date)
             let attachments: Attachment[] = []
             try {
                 if (r.attachments) attachments = JSON.parse(r.attachments)
@@ -243,26 +261,30 @@ export async function getMandayAssessmentRecords(year?: number, employeeId?: str
     try {
         const pool = await getConnection()
         let query = `
-            SELECT * FROM pms.manday_assessment_records 
+            SELECT mar.*,
+                p.project_code,
+                p.id AS project_id
+            FROM pms.manday_assessment_records mar
+            LEFT JOIN pms.projects p ON p.name = mar.project_name AND p.is_active = 1
             WHERE 1=1
         `
         const req = pool.request()
 
         if (year) {
-            query += ` AND YEAR(final_meeting_date) = @year`
+            query += ` AND YEAR(mar.final_meeting_date) = @year`
             req.input('year', sql.Int, year)
         }
         if (employeeId) {
-            query += ` AND created_by = @employeeId`
+            query += ` AND mar.created_by = @employeeId`
             req.input('employeeId', sql.UniqueIdentifier, employeeId)
         }
 
-        query += ` ORDER BY created_at DESC`
+        query += ` ORDER BY mar.created_at DESC`
 
         const result = await req.query(query)
 
         return result.recordset.map((r: any) => {
-            const daysTaken = getDaysDiff(r.final_meeting_date, r.manday_submit_date)
+            const daysTaken = getBusinessDaysDiff(r.final_meeting_date, r.manday_submit_date)
             let attachments: Attachment[] = []
             try {
                 if (r.attachments) attachments = JSON.parse(r.attachments)
@@ -399,24 +421,37 @@ export async function getCustomerContactMonthlyTrend(year: number): Promise<{ su
     try {
         const pool = await getConnection()
 
+        // Fetch raw records and compute business days in JS for accuracy
         const result = await pool.request()
             .input('year', sql.Int, year)
             .query(`
                 SELECT
                     MONTH(sales_handover_date) AS month,
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN DATEDIFF(DAY, sales_handover_date, customer_contact_date) <= 2 THEN 1 ELSE 0 END) AS pass,
-                    SUM(CASE WHEN DATEDIFF(DAY, sales_handover_date, customer_contact_date) > 2 THEN 1 ELSE 0 END) AS fail
+                    sales_handover_date,
+                    customer_contact_date
                 FROM pms.customer_contact_records
                 WHERE YEAR(sales_handover_date) = @year
-                GROUP BY MONTH(sales_handover_date)
-                ORDER BY MONTH(sales_handover_date)
             `)
+
+        // Group by month and compute pass/fail using business days
+        const monthMap = new Map<number, { total: number; pass: number; fail: number }>()
+        for (const row of result.recordset) {
+            const m = row.month as number
+            if (!monthMap.has(m)) monthMap.set(m, { total: 0, pass: 0, fail: 0 })
+            const entry = monthMap.get(m)!
+            entry.total++
+            const bizDays = getBusinessDaysDiff(row.sales_handover_date, row.customer_contact_date)
+            if (bizDays <= 2) {
+                entry.pass++
+            } else {
+                entry.fail++
+            }
+        }
 
         // Build monthly data for all 12 months
         const monthlyData: MonthlyTrendItem[] = []
         for (let m = 1; m <= 12; m++) {
-            const found = result.recordset.find((r: any) => r.month === m)
+            const found = monthMap.get(m)
             if (found) {
                 const passRate = found.total > 0 ? Math.round((found.pass / found.total) * 100) : 100
                 monthlyData.push({
@@ -448,28 +483,48 @@ export async function getCustomerContactMonthlyTrend(year: number): Promise<{ su
     }
 }
 
-export async function getMandayAssessmentMonthlyTrend(year: number): Promise<{ success: boolean; data: MonthlyTrendItem[] }> {
+export async function getMandayAssessmentMonthlyTrend(year: number, employeeId?: string): Promise<{ success: boolean; data: MonthlyTrendItem[] }> {
     try {
         const pool = await getConnection()
 
-        const result = await pool.request()
+        // Fetch raw records and compute business days in JS for accuracy
+        const req = pool.request()
             .input('year', sql.Int, year)
-            .query(`
+
+        let whereClause = 'WHERE YEAR(final_meeting_date) = @year'
+        if (employeeId) {
+            whereClause += ' AND created_by = @employeeId'
+            req.input('employeeId', sql.UniqueIdentifier, employeeId)
+        }
+
+        const result = await req.query(`
                 SELECT
                     MONTH(final_meeting_date) AS month,
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN DATEDIFF(DAY, final_meeting_date, manday_submit_date) <= 3 THEN 1 ELSE 0 END) AS pass,
-                    SUM(CASE WHEN DATEDIFF(DAY, final_meeting_date, manday_submit_date) > 3 THEN 1 ELSE 0 END) AS fail
+                    final_meeting_date,
+                    manday_submit_date
                 FROM pms.manday_assessment_records
-                WHERE YEAR(final_meeting_date) = @year
-                GROUP BY MONTH(final_meeting_date)
-                ORDER BY MONTH(final_meeting_date)
+                ${whereClause}
             `)
+
+        // Group by month and compute pass/fail using business days
+        const monthMap = new Map<number, { total: number; pass: number; fail: number }>()
+        for (const row of result.recordset) {
+            const m = row.month as number
+            if (!monthMap.has(m)) monthMap.set(m, { total: 0, pass: 0, fail: 0 })
+            const entry = monthMap.get(m)!
+            entry.total++
+            const bizDays = getBusinessDaysDiff(row.final_meeting_date, row.manday_submit_date)
+            if (bizDays <= 3) {
+                entry.pass++
+            } else {
+                entry.fail++
+            }
+        }
 
         // Build monthly data for all 12 months
         const monthlyData: MonthlyTrendItem[] = []
         for (let m = 1; m <= 12; m++) {
-            const found = result.recordset.find((r: any) => r.month === m)
+            const found = monthMap.get(m)
             if (found) {
                 const passRate = found.total > 0 ? Math.round((found.pass / found.total) * 100) : 100
                 monthlyData.push({

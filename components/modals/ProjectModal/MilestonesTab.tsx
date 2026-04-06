@@ -302,6 +302,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                 <th className="px-3 py-3 w-28 text-center">Completed</th>
                                 <th className="px-3 py-3 w-28 text-center">Support End</th>
                                 <th className="px-2 py-3 w-16 text-center text-xs">Docs</th>
+                                <th className="px-2 py-3 w-14 text-center text-xs" title="Mark as TTD KPI Failed (manual)">TTD Fail</th>
                                 <th className="px-2 py-3 w-12 text-center text-xs">KPI</th>
                                 <th className="px-2 py-3 w-20 text-center">Status</th>
                                 <th className="px-2 py-3 w-16 text-center text-xs">Verified</th>
@@ -311,7 +312,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                         <tbody className="divide-y divide-slate-100">
                             {milestones.length === 0 ? (
                                 <tr>
-                                    <td colSpan={14} className="px-4 py-8 text-center text-slate-400">
+                                    <td colSpan={15} className="px-4 py-8 text-center text-slate-400">
                                         No milestones added.
                                     </td>
                                 </tr>
@@ -474,6 +475,24 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                 )}>
                                                     {m.submitted_required_docs || 0}/{m.required_docs || 0}
                                                 </span>
+                                            </td>
+
+                                            {/* TTD Manual Fail */}
+                                            <td className="px-2 py-2 text-center">
+                                                {m.is_verified ? (
+                                                    <span className={`text-xs font-medium ${m.kpi_ttd_manual_fail ? 'text-rose-600' : 'text-slate-300'}`}>
+                                                        {m.kpi_ttd_manual_fail ? 'Fail' : '-'}
+                                                    </span>
+                                                ) : (
+                                                    <input
+                                                        type="checkbox"
+                                                        className="rounded border-rose-300 text-rose-500 focus:ring-rose-500 cursor-pointer"
+                                                        checked={m.kpi_ttd_manual_fail || false}
+                                                        onChange={(e) => handleUpdateMilestone(i, 'kpi_ttd_manual_fail', e.target.checked)}
+                                                        disabled={isLocked}
+                                                        title="ติ๊กเพื่อระบุว่า Milestone นี้ตก KPI Time to Delivery"
+                                                    />
+                                                )}
                                             </td>
 
                                             {/* KPI Badges */}

@@ -122,6 +122,7 @@ export interface TTDMilestoneDetail {
     weight_ttd: number | null
     achievement_percent: number
     days_diff: number | null
+    kpi_ttd_manual_fail?: boolean
 }
 
 export interface ProjectTTDMilestoneData {
@@ -158,6 +159,7 @@ export async function getTimeToDeliveryMilestones(params: {
                     mc.name AS milestone_name,
                     pm.due_date,
                     pm.completed_date,
+                    ISNULL(pm.kpi_ttd_manual_fail, 0) AS kpi_ttd_manual_fail,
                     COALESCE(pm.weight_ttd, mc.default_weight_ttd,
                         CASE mc.name
                             WHEN 'Mapping Data' THEN 30
@@ -168,6 +170,7 @@ export async function getTimeToDeliveryMilestones(params: {
                             ELSE 0
                         END) AS weight_ttd,
                     CASE
+                        WHEN ISNULL(pm.kpi_ttd_manual_fail, 0) = 1 THEN 0
                         WHEN pm.completed_date IS NULL THEN 0
                         WHEN pm.completed_date <= pm.due_date THEN 100
                         WHEN DATEDIFF(DAY, pm.due_date, pm.completed_date) <= 7 THEN 80
@@ -219,7 +222,8 @@ export async function getTimeToDeliveryMilestones(params: {
                 completed_date: row.completed_date,
                 weight_ttd: row.weight_ttd,
                 achievement_percent: row.achievement_percent,
-                days_diff: row.days_diff
+                days_diff: row.days_diff,
+                kpi_ttd_manual_fail: row.kpi_ttd_manual_fail === true || row.kpi_ttd_manual_fail === 1
             })
         }
 
@@ -378,11 +382,11 @@ export async function getMandayControlMilestones(params: {
         const pool = await getConnection()
         const { year, period, periodValue } = params
 
-        let whereClause = 'WHERE YEAR(ISNULL(pm.completed_date, pm.due_date)) = @year'
+        let whereClause = 'WHERE pm.due_date IS NOT NULL AND YEAR(pm.due_date) = @year'
         if (period === 'month' && periodValue) {
-            whereClause += ' AND MONTH(ISNULL(pm.completed_date, pm.due_date)) = @periodValue'
+            whereClause += ' AND MONTH(pm.due_date) = @periodValue'
         } else if (period === 'quarter' && periodValue) {
-            whereClause += ' AND DATEPART(QUARTER, ISNULL(pm.completed_date, pm.due_date)) = @periodValue'
+            whereClause += ' AND DATEPART(QUARTER, pm.due_date) = @periodValue'
         }
 
         const result = await pool.request()
@@ -600,7 +604,7 @@ export async function getDefectRatioTrend(year: number) {
 // Get projects that fail KPI targets
 // ============================================
 
-export async function getProjectsFailingKPI(kpiType: 'time-to-delivery' | 'manday-control' | 'defect-ratio', year: number) {
+export async function getProjectsFailingKPI(kpiType: 'time-to-delivery' | 'manday-control' | 'defect-ratio', year: number, month?: number) {
     try {
         const pool = await getConnection()
 
@@ -629,14 +633,15 @@ export async function getProjectsFailingKPI(kpiType: 'time-to-delivery' | 'manda
                            defect_mandays, total_mandays
                     FROM pms.vw_kpi_defect_ratio
                     WHERE year = @year AND is_pass = 0
+                    ${month ? 'AND month = @month' : ''}
                     ORDER BY defect_ratio_percent DESC
                 `
                 break
         }
 
-        const result = await pool.request()
-            .input('year', sql.Int, year)
-            .query(query)
+        const request = pool.request().input('year', sql.Int, year)
+        if (month) request.input('month', sql.Int, month)
+        const result = await request.query(query)
 
         return { success: true, data: result.recordset }
     } catch (error) {

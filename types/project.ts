@@ -82,6 +82,7 @@ export interface ProjectMilestone {
     kpi_ttd_pass?: boolean
     kpi_mdc_pass?: boolean
     kpi_docs_pass?: boolean
+    kpi_ttd_manual_fail?: boolean
 
     // Verification (new)
     is_verified?: boolean
@@ -207,6 +208,9 @@ export interface ProjectFormData {
         // Verification
         is_verified?: boolean
         will_verify?: boolean
+
+        // KPI manual flags
+        kpi_ttd_manual_fail?: boolean
 
         // Due date change tracking
         due_date_change_reason?: string

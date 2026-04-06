@@ -34,6 +34,9 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
     const [quarterFilter, setQuarterFilter] = useState<number>(0)
 
+    // Selected month from trend cards
+    const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1)
     const pageSize = 10
@@ -41,14 +44,25 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
     const fetchData = useCallback(async () => {
         setIsLoading(true)
         try {
+            // Determine period based on selectedMonth or quarterFilter
+            let period: 'month' | 'quarter' | 'year' = 'year'
+            let periodValue: number | undefined = undefined
+            if (selectedMonth) {
+                period = 'month'
+                periodValue = selectedMonth
+            } else if (quarterFilter !== 0) {
+                period = 'quarter'
+                periodValue = quarterFilter
+            }
+
             const [kpiResult, trendResult, failingResult] = await Promise.all([
                 getDefectRatioKPI({
                     year: yearFilter,
-                    period: quarterFilter === 0 ? 'year' : 'quarter',
-                    periodValue: quarterFilter || undefined
+                    period,
+                    periodValue
                 }),
                 getDefectRatioTrend(yearFilter),
-                getProjectsFailingKPI('defect-ratio', yearFilter)
+                getProjectsFailingKPI('defect-ratio', yearFilter, selectedMonth || undefined)
             ])
 
             if (kpiResult.success) {
@@ -66,16 +80,22 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
         } finally {
             setIsLoading(false)
         }
-    }, [yearFilter, quarterFilter])
+    }, [yearFilter, quarterFilter, selectedMonth])
 
     useEffect(() => {
         fetchData()
     }, [fetchData])
 
-    // Reset page when filters change
+    // Reset selectedMonth and page when filters change
     useEffect(() => {
+        setSelectedMonth(null)
         setCurrentPage(1)
     }, [yearFilter, quarterFilter])
+
+    // Reset page when selectedMonth changes
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [selectedMonth])
 
     // Pagination logic
     const totalPages = Math.ceil(data.length / pageSize)
@@ -256,9 +276,11 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                             const monthData = trend.find(t => t.month === month)
                             const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
+                            const isSelected = selectedMonth === month
+
                             if (!monthData || monthData.project_count === 0) {
                                 return (
-                                    <div key={month} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+                                    <div key={month} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center opacity-60">
                                         <div className="text-xs font-medium text-slate-400 mb-1">{monthNames[month - 1]}</div>
                                         <div className="text-sm font-bold text-slate-300">-</div>
                                         <div className="text-xs text-slate-300">No data</div>
@@ -273,7 +295,12 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                             return (
                                 <div
                                     key={month}
-                                    className={`rounded-lg p-2 text-center border ${
+                                    onClick={() => setSelectedMonth(isSelected ? null : month)}
+                                    className={`rounded-lg p-2 text-center border cursor-pointer transition-all ${
+                                        isSelected
+                                            ? 'ring-2 ring-rose-500 shadow-lg scale-105'
+                                            : 'hover:shadow-md hover:scale-102'
+                                    } ${
                                         isPass
                                             ? 'bg-emerald-50 border-emerald-200'
                                             : 'bg-rose-50 border-rose-200'
@@ -292,6 +319,14 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                             )
                         })}
                     </div>
+                    {selectedMonth && (
+                        <div className="flex items-center justify-center mt-4">
+                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-rose-100 text-rose-700 rounded-full text-sm font-medium">
+                                <span>กำลังแสดงข้อมูลเดือน: {['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'][selectedMonth]}</span>
+                                <button onClick={() => setSelectedMonth(null)} className="ml-1 p-0.5 hover:bg-rose-200 rounded-full transition-colors">✕</button>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center justify-center gap-6 mt-5 text-xs">
                         <div className="flex items-center gap-2">
                             <div className="w-4 h-4 bg-emerald-100 border border-emerald-300 rounded" />
