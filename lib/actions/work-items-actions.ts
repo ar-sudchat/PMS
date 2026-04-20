@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import sql from 'mssql'
+import { generateTaskCode } from '@/lib/utils/task-code-generator'
 
 // Types
 export interface WorkItemFilters {
@@ -561,28 +562,8 @@ export async function createTask(data: any) {
     try {
         const pool = await getConnection()
 
-        // Generate Task Code (T-XXXX)
-        // Need story's project id to know general sequence? Or per project? 
-        // Usually T-XXXX is unique per project or per story. Assuming per project for simplicity or per story T-001.
-        // Let's use simple number generation based on tasks in story for now like S-001-T-001?
-        // Or just T-{RW} global. The prompt shows T-001, so maybe unique within project.
-
-        // Re-read prompt: "T-001".
-        // Let's find project_id from story_id
-        const projectRes = await pool.request().input('story_id', data.story_id).query(`SELECT project_id FROM pms.stories WHERE id = @story_id`)
-        const projectId = projectRes.recordset[0].project_id
-
-        const codeResult = await pool.request()
-            .input('projectId', projectId)
-            .query(`
-                SELECT COUNT(*) as count 
-                FROM pms.tasks t
-                JOIN pms.stories s ON t.story_id = s.id
-                WHERE s.project_id = @projectId
-            `)
-        const nextNum = codeResult.recordset[0].count + 1
-        const taskCode = `T-${nextNum.toString().padStart(3, '0')}`
-
+        // Generate globally unique task code (format: YMMNNNN, e.g. 6040001)
+        const taskCode = await generateTaskCode(pool)
         const newId = require('crypto').randomUUID()
 
         const result = await pool.request()
@@ -671,26 +652,9 @@ export async function bulkCreateTasks(storyId: string, tasks: any[]) {
         const transaction = new sql.Transaction(pool)
         await transaction.begin()
 
-        // Get Project ID for codes
-        const projectRes = await transaction.request()
-            .input('story_id', storyId)
-            .query(`SELECT project_id FROM pms.stories WHERE id = @story_id`)
-        const projectId = projectRes.recordset[0].project_id
-
-        // Get Code sequence start
-        const codeResult = await transaction.request()
-            .input('projectId', projectId)
-            .query(`
-                SELECT COUNT(*) as count 
-                FROM pms.tasks t
-                JOIN pms.stories s ON t.story_id = s.id
-                WHERE s.project_id = @projectId
-            `)
-        let nextNum = codeResult.recordset[0].count + 1
-
         for (const task of tasks) {
-            const taskCode = `T-${nextNum.toString().padStart(3, '0')}`
-            nextNum++;
+            // Generate globally unique task code for each task (format: YMMNNNN)
+            const taskCode = await generateTaskCode(transaction.request())
 
             await transaction.request()
                 .input('story_id', storyId)
@@ -700,9 +664,9 @@ export async function bulkCreateTasks(storyId: string, tasks: any[]) {
                 .input('priority', task.priority || 'Medium')
                 .input('estimated_hours', task.estimated_hours || 8)
                 .query(`
-                    INSERT INTO pms.tasks 
+                    INSERT INTO pms.tasks
                     (story_id, task_code, title, task_type, priority, estimated_hours, status)
-                    VALUES 
+                    VALUES
                     (@story_id, @task_code, @title, @task_type, @priority, @estimated_hours, 'todo')
                 `)
         }

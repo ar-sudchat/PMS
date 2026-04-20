@@ -190,6 +190,8 @@ export interface ProjectFormData {
     kpi_exclude_ttd?: boolean
     kpi_exclude_mdc?: boolean
     kpi_exclude_docs?: boolean
+    kpi_exclude_rework?: boolean
+    kpi_exclude_defect?: boolean
     milestones: {
         milestone_config_id: string
         weight_percent: number

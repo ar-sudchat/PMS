@@ -5,6 +5,7 @@ import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { getWorkloadConfig } from './config-actions'
+import { generateTaskCode } from '@/lib/utils/task-code-generator'
 
 // ============================================
 // TYPES
@@ -1270,15 +1271,8 @@ export async function createQuickReserveTask(data: {
             storyId = newStoryId
         }
 
-        // Generate task code
-        const taskCodeResult = await pool.request()
-            .input('storyId', sql.UniqueIdentifier, storyId)
-            .query(`
-                SELECT CONCAT('T-', RIGHT('000' + CAST(ISNULL(MAX(TRY_CAST(REPLACE(task_code, 'T-', '') AS INT)), 0) + 1 AS VARCHAR), 3)) AS new_code
-                FROM pms.tasks WHERE story_id = @storyId
-            `)
-
-        const taskCode = taskCodeResult.recordset[0].new_code
+        // Generate globally unique task code (format: YMMNNNN, e.g. 6040001)
+        const taskCode = await generateTaskCode(pool)
         const newTaskId = require('crypto').randomUUID()
 
         // Check if is_count_for_kpi and assignment_status columns exist

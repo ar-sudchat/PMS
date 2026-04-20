@@ -69,6 +69,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         kpi_exclude_ttd: false,
         kpi_exclude_mdc: false,
         kpi_exclude_docs: false,
+        kpi_exclude_rework: false,
+        kpi_exclude_defect: false,
     })
 
     // Form State - Milestones
@@ -159,6 +161,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     kpi_exclude_ttd: projectData.kpi_exclude_ttd === true || projectData.kpi_exclude_ttd === 1,
                     kpi_exclude_mdc: projectData.kpi_exclude_mdc === true || projectData.kpi_exclude_mdc === 1,
                     kpi_exclude_docs: projectData.kpi_exclude_docs === true || projectData.kpi_exclude_docs === 1,
+                    kpi_exclude_rework: projectData.kpi_exclude_rework === true || projectData.kpi_exclude_rework === 1,
+                    kpi_exclude_defect: projectData.kpi_exclude_defect === true || projectData.kpi_exclude_defect === 1,
                 })
 
                 if (projectData.milestones) {
@@ -327,6 +331,8 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
             kpi_exclude_ttd: false,
             kpi_exclude_mdc: false,
             kpi_exclude_docs: false,
+            kpi_exclude_rework: false,
+            kpi_exclude_defect: false,
         })
         // Initialize milestones from configs (sorted by sort_order)
         initializeMilestonesFromConfigs()
@@ -1016,33 +1022,36 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             <label className="block text-sm font-medium text-amber-800 mb-2">
                                 ไม่คิด KPI (ยกเว้นโครงการนี้จากการคำนวณ KPI)
                             </label>
-                            <div className="flex items-center gap-6">
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.kpi_exclude_ttd}
+                                    <input type="checkbox" checked={formData.kpi_exclude_ttd}
                                         onChange={(e) => setFormData({ ...formData, kpi_exclude_ttd: e.target.checked })}
-                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
-                                    />
-                                    <span className="text-sm text-slate-700">Time to Delivery (TTD)</span>
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                                    <span className="text-sm text-slate-700">TTD</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.kpi_exclude_mdc}
+                                    <input type="checkbox" checked={formData.kpi_exclude_mdc}
                                         onChange={(e) => setFormData({ ...formData, kpi_exclude_mdc: e.target.checked })}
-                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
-                                    />
-                                    <span className="text-sm text-slate-700">Man-day Control (MDC)</span>
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                                    <span className="text-sm text-slate-700">MDC</span>
                                 </label>
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.kpi_exclude_docs}
+                                    <input type="checkbox" checked={formData.kpi_exclude_docs}
                                         onChange={(e) => setFormData({ ...formData, kpi_exclude_docs: e.target.checked })}
-                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
-                                    />
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
                                     <span className="text-sm text-slate-700">Docs On-time</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!formData.kpi_exclude_rework}
+                                        onChange={(e) => setFormData({ ...formData, kpi_exclude_rework: e.target.checked })}
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                                    <span className="text-sm text-slate-700">Post Go-live Rework</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!formData.kpi_exclude_defect}
+                                        onChange={(e) => setFormData({ ...formData, kpi_exclude_defect: e.target.checked })}
+                                        className="rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                                    <span className="text-sm text-slate-700">Defect Ratio</span>
                                 </label>
                             </div>
                         </div>

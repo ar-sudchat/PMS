@@ -137,9 +137,23 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
         return map
     }, [data])
 
-    const overallKPI = summary?.averagePercent || 0
-    const passCount = summary?.passCount || 0
-    const totalProjects = summary?.totalProjects || 0
+    // Compute summary excluding kpi_excluded projects
+    const displaySummary = useMemo(() => {
+        const includedData = data.filter(d => {
+            const proj = milestoneData.find(p => p.project_id === d.project_id)
+            return !proj?.kpi_excluded
+        })
+        const total = includedData.length
+        const pass = includedData.filter(d => d.is_pass === 1).length
+        const fail = total - pass
+        const avg = total > 0 ? includedData.reduce((sum, d) => sum + (d.time_to_delivery_percent || 0), 0) / total : 0
+        const isPass = avg >= 80
+        return { totalProjects: total, passCount: pass, failCount: fail, averagePercent: avg, isPass }
+    }, [data, milestoneData])
+
+    const overallKPI = displaySummary.averagePercent || 0
+    const passCount = displaySummary.passCount || 0
+    const totalProjects = displaySummary.totalProjects || 0
 
     return (
         <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-4 w-full bg-slate-50 min-h-screen"}>
@@ -159,14 +173,14 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
 
                         {summary && (
                             <div className="flex items-center gap-3">
-                                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${summary.isPass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                    {summary.isPass ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                                    {overallKPI}%
+                                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${displaySummary.isPass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {displaySummary.isPass ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                    {overallKPI.toFixed(1)}%
                                 </div>
                                 <div className="flex items-center gap-2 text-xs text-slate-500">
                                     <span>{totalProjects} โปรเจค</span>
                                     <span className="text-emerald-600 font-medium">{passCount} ผ่าน</span>
-                                    <span className="text-rose-600 font-medium">{summary.failCount} ไม่ผ่าน</span>
+                                    <span className="text-rose-600 font-medium">{displaySummary.failCount} ไม่ผ่าน</span>
                                 </div>
                             </div>
                         )}
@@ -301,7 +315,7 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
                                         <React.Fragment key={proj.project_id}>
                                             {/* Project Header Row */}
                                             <tr
-                                                className={`border-b border-slate-200 cursor-pointer transition-colors ${isPass === false ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'}`}
+                                                className={`border-b border-slate-200 cursor-pointer transition-colors ${isPass === false ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'}${proj.kpi_excluded ? ' opacity-50' : ''}`}
                                                 onClick={() => toggleProject(proj.project_id)}
                                             >
                                                 <td className="px-4 py-3 text-center">
@@ -322,6 +336,7 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
                                                         </button>
                                                         <span className="text-slate-600 truncate max-w-[300px]">{proj.project_name}</span>
                                                         <span className="text-xs text-slate-400 ml-auto shrink-0">({proj.milestones.length} milestones)</span>
+                                                        {proj.kpi_excluded && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">ยกเว้น</span>}
                                                     </div>
                                                 </td>
                                                 <td className="text-center px-4 py-3 text-slate-400 text-xs">-</td>
@@ -394,7 +409,7 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
                             <tfoot className="bg-slate-100 border-t-2 border-slate-200">
                                 <tr>
                                     <td className="px-4 py-3"></td>
-                                    <td className="px-3 py-3 font-bold text-slate-700">รวมทั้งหมด ({data.length} โปรเจค)</td>
+                                    <td className="px-3 py-3 font-bold text-slate-700">รวมทั้งหมด ({totalProjects} โปรเจค)</td>
                                     <td className="px-4 py-3"></td>
                                     <td className="px-4 py-3"></td>
                                     <td className="px-4 py-3"></td>
@@ -405,8 +420,8 @@ export default function TimeToDeliveryView({ embedded = false }: TimeToDeliveryV
                                         </span>
                                     </td>
                                     <td className="text-center px-4 py-3">
-                                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${summary.isPass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                            {summary.isPass ? "Pass" : "Fail"}
+                                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${displaySummary.isPass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                            {displaySummary.isPass ? "Pass" : "Fail"}
                                         </span>
                                     </td>
                                 </tr>

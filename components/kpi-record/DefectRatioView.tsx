@@ -244,7 +244,7 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                                 data.map((row, idx) => {
                                     const isPass = row.is_pass === 1
                                     return (
-                                        <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${!isPass ? 'bg-rose-50/30' : ''}`}>
+                                        <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${!isPass ? 'bg-rose-50/30' : ''} ${row.kpi_excluded ? 'opacity-50' : ''}`}>
                                             <td className="px-4 py-2.5">
                                                 <div className="flex items-center gap-2">
                                                     <button
@@ -255,6 +255,9 @@ export default function DefectRatioView({ embedded = false }: DefectRatioViewPro
                                                         {row.project_code}
                                                         <ExternalLink size={12} className="opacity-50" />
                                                     </button>
+                                                    {row.kpi_excluded && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium ml-1">ยกเว้น</span>
+                                                    )}
                                                     <span className="text-slate-600 truncate max-w-[300px]">{row.project_name}</span>
                                                 </div>
                                             </td>

@@ -236,6 +236,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'time-to-delivery', label: 'Time to Delivery', labelTh: 'ส่งมอบตรงเวลา', path: '/kpi-record/time-to-delivery', icon: Timer },
           { id: 'manday-control', label: 'Man-day Control', labelTh: 'ควบคุม Man-day', path: '/kpi-record/manday-control', icon: Calculator },
           { id: 'defect-ratio', label: 'Defect Ratio', labelTh: 'อัตรา Defect', path: '/kpi-record/defect-ratio', icon: Bug },
+          { id: 'individual-analysis', label: 'Individual Analysis', labelTh: 'วิเคราะห์ KPI รายบุคคล', path: '/kpi-record/individual-analysis', icon: UserCheck },
         ]
       },
       {

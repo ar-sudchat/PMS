@@ -129,6 +129,7 @@ export interface ProjectTTDMilestoneData {
     project_id: string
     project_code: string
     project_name: string
+    kpi_excluded?: boolean
     milestones: TTDMilestoneDetail[]
 }
 
@@ -156,6 +157,7 @@ export async function getTimeToDeliveryMilestones(params: {
                     p.id AS project_id,
                     p.project_code,
                     p.name AS project_name,
+                    ISNULL(p.kpi_exclude_ttd, 0) AS kpi_exclude_ttd,
                     mc.name AS milestone_name,
                     pm.due_date,
                     pm.completed_date,
@@ -191,7 +193,6 @@ export async function getTimeToDeliveryMilestones(params: {
                 AND pm.due_date IS NOT NULL
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
-                AND ISNULL(p.kpi_exclude_ttd, 0) = 0
                 ORDER BY p.project_code,
                     CASE mc.name
                         WHEN 'Mapping Data' THEN 1
@@ -213,6 +214,7 @@ export async function getTimeToDeliveryMilestones(params: {
                     project_id: row.project_id,
                     project_code: row.project_code,
                     project_name: row.project_name,
+                    kpi_excluded: row.kpi_exclude_ttd === 1 || row.kpi_exclude_ttd === true,
                     milestones: []
                 })
             }
@@ -372,6 +374,7 @@ export interface ProjectMilestoneData {
     project_id: string
     project_code: string
     project_name: string
+    kpi_excluded?: boolean
     milestones: MilestoneDetail[]
 }
 
@@ -399,6 +402,7 @@ export async function getMandayControlMilestones(params: {
                     p.id AS project_id,
                     p.project_code,
                     p.name AS project_name,
+                    ISNULL(p.kpi_exclude_mdc, 0) AS kpi_exclude_mdc,
                     mc.name AS milestone_name,
                     pm.due_date,
                     pm.planned_mandays,
@@ -439,7 +443,6 @@ export async function getMandayControlMilestones(params: {
                 AND p.is_active = 1
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
-                AND ISNULL(p.kpi_exclude_mdc, 0) = 0
                 ORDER BY p.project_code,
                     CASE mc.name
                         WHEN 'Mapping Data' THEN 1
@@ -461,6 +464,7 @@ export async function getMandayControlMilestones(params: {
                     project_id: row.project_id,
                     project_code: row.project_code,
                     project_name: row.project_name,
+                    kpi_excluded: row.kpi_exclude_mdc === 1 || row.kpi_exclude_mdc === true,
                     milestones: []
                 })
             }
@@ -498,6 +502,7 @@ export interface DefectRatioProject {
     defect_ratio_percent: number
     target_percent: number
     is_pass: number
+    kpi_excluded?: boolean
 }
 
 export interface DefectRatioSummary {
@@ -520,11 +525,11 @@ export async function getDefectRatioKPI(params: {
         const pool = await getConnection()
         const { year, period, periodValue } = params
 
-        let whereClause = 'WHERE year = @year'
+        let whereClause = 'WHERE v.year = @year'
         if (period === 'month' && periodValue) {
-            whereClause += ' AND month = @periodValue'
+            whereClause += ' AND v.month = @periodValue'
         } else if (period === 'quarter' && periodValue) {
-            whereClause += ' AND quarter = @periodValue'
+            whereClause += ' AND v.quarter = @periodValue'
         }
 
         const result = await pool.request()
@@ -532,35 +537,41 @@ export async function getDefectRatioKPI(params: {
             .input('periodValue', sql.Int, periodValue)
             .query(`
                 SELECT
-                    year,
-                    month,
-                    quarter,
-                    project_id,
-                    project_code,
-                    project_name,
-                    defect_mandays,
-                    total_mandays,
-                    defect_ratio_percent,
-                    target_percent,
-                    is_pass
-                FROM pms.vw_kpi_defect_ratio
+                    v.year,
+                    v.month,
+                    v.quarter,
+                    v.project_id,
+                    v.project_code,
+                    v.project_name,
+                    v.defect_mandays,
+                    v.total_mandays,
+                    v.defect_ratio_percent,
+                    v.target_percent,
+                    v.is_pass,
+                    ISNULL(p.kpi_exclude_defect, 0) AS kpi_excluded
+                FROM pms.vw_kpi_defect_ratio v
+                INNER JOIN pms.projects p ON v.project_id = p.id
                 ${whereClause}
-                ORDER BY defect_ratio_percent ASC
+                ORDER BY v.defect_ratio_percent ASC
             `)
 
-        const data = result.recordset as DefectRatioProject[]
+        const data: DefectRatioProject[] = result.recordset.map((r: any) => ({
+            ...r,
+            kpi_excluded: r.kpi_excluded === 1
+        }))
 
-        // Calculate summary
-        const passCount = data.filter(p => p.is_pass === 1).length
-        const failCount = data.filter(p => p.is_pass === 0).length
-        const totalDefectMandays = data.reduce((sum, p) => sum + (p.defect_mandays || 0), 0)
-        const totalMandays = data.reduce((sum, p) => sum + (p.total_mandays || 0), 0)
+        // Calculate summary (exclude flagged projects)
+        const activeData = data.filter(p => !p.kpi_excluded)
+        const passCount = activeData.filter(p => p.is_pass === 1).length
+        const failCount = activeData.filter(p => p.is_pass === 0).length
+        const totalDefectMandays = activeData.reduce((sum, p) => sum + (p.defect_mandays || 0), 0)
+        const totalMandays = activeData.reduce((sum, p) => sum + (p.total_mandays || 0), 0)
         const averagePercent = totalMandays > 0
             ? Math.round(totalDefectMandays * 100 / totalMandays * 100) / 100
             : 0
 
         const summary: DefectRatioSummary = {
-            totalProjects: data.length,
+            totalProjects: activeData.length,
             passCount,
             failCount,
             totalDefectMandays: Math.round(totalDefectMandays * 100) / 100,

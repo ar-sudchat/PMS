@@ -109,10 +109,13 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
         let onTimeDocs = 0
         let lateDocs = 0
         let passCount = 0
+        let includedCount = 0
         for (const proj of data) {
+            if (proj.kpi_excluded) continue
             totalDocs += proj.total_docs
             onTimeDocs += proj.on_time_docs
             lateDocs += proj.late_docs
+            includedCount++
             if (proj.is_pass) passCount++
         }
         const submitted = onTimeDocs + lateDocs
@@ -123,7 +126,7 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
             onTimeDocs,
             lateDocs,
             passCount,
-            failCount: data.length - passCount,
+            failCount: includedCount - passCount,
             rate,
             isPass: rate >= 95
         }
@@ -288,7 +291,7 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
                                         <React.Fragment key={proj.project_id}>
                                             {/* Project Header Row */}
                                             <tr
-                                                className={`border-b border-slate-200 cursor-pointer transition-colors ${!proj.is_pass ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'}`}
+                                                className={`border-b border-slate-200 cursor-pointer transition-colors ${!proj.is_pass ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'}${proj.kpi_excluded ? ' opacity-50' : ''}`}
                                                 onClick={() => toggleProject(proj.project_id)}
                                             >
                                                 <td className="px-4 py-3 text-center">
@@ -309,6 +312,7 @@ export default function DocsOntimeView({ embedded = false }: DocsOntimeViewProps
                                                         </button>
                                                         <span className="text-slate-600 truncate max-w-[300px]">{proj.project_name}</span>
                                                         <span className="text-xs text-slate-400 ml-auto shrink-0">({proj.milestones.length} milestones)</span>
+                                                        {proj.kpi_excluded && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">ยกเว้น</span>}
                                                     </div>
                                                 </td>
                                                 <td className="text-center px-4 py-3 text-slate-400 text-xs">-</td>

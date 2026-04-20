@@ -116,14 +116,15 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
     // Recalculate summary for filtered data
     const displaySummary = useMemo(() => {
         if (monthFilter === "all" || !summary) return summary
-        const totalManday = displayProjects.reduce((sum, p) => sum + (p.sold_mandays || 0), 0)
-        const reworkManday = displayProjects.reduce((sum, p) => sum + (p.rework_manday || 0), 0)
+        const includedProjects = displayProjects.filter(p => !p.kpi_excluded)
+        const totalManday = includedProjects.reduce((sum, p) => sum + (p.sold_mandays || 0), 0)
+        const reworkManday = includedProjects.reduce((sum, p) => sum + (p.rework_manday || 0), 0)
         const overallRatio = totalManday > 0 ? Math.round((reworkManday / totalManday) * 100 * 100) / 100 : 0
-        const passCount = displayProjects.filter(p => p.is_pass).length
-        const failCount = displayProjects.filter(p => !p.is_pass).length
+        const passCount = includedProjects.filter(p => p.is_pass).length
+        const failCount = includedProjects.filter(p => !p.is_pass).length
         return {
             ...summary,
-            total_projects: displayProjects.length,
+            total_projects: includedProjects.length,
             total_manday: Math.round(totalManday * 10) / 10,
             rework_manday: Math.round(reworkManday * 10) / 10,
             overall_ratio: overallRatio,
@@ -163,6 +164,7 @@ export default function PostGoliveReworkView({ embedded = false }: PostGoliveRew
                 >
                     {row.original.project_code}
                     <ExternalLink size={12} className="opacity-50" />
+                    {row.original.kpi_excluded && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium ml-1">ยกเว้น</span>}
                 </button>
             ),
         },

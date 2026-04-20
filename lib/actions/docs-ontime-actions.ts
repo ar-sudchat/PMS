@@ -298,6 +298,7 @@ export interface ProjectDocsData {
     project_code: string
     project_name: string
     owner_name: string | null
+    kpi_excluded?: boolean
     milestones: MilestoneDocsDetail[]
     total_docs: number
     on_time_docs: number
@@ -338,7 +339,8 @@ export async function getDocsOntimeByProjectMilestone(params: {
                     SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date > pm.due_date THEN 1 ELSE 0 END) AS late_docs,
                     SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date >= CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS pending_docs,
                     SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date < CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS overdue_docs,
-                    MAX(CAST(ISNULL(pm.kpi_docs_manual_fail, 0) AS INT)) AS kpi_docs_manual_fail
+                    MAX(CAST(ISNULL(pm.kpi_docs_manual_fail, 0) AS INT)) AS kpi_docs_manual_fail,
+                    MAX(CAST(ISNULL(p.kpi_exclude_docs, 0) AS INT)) AS kpi_exclude_docs
                 FROM pms.project_deliverables pd
                 INNER JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
@@ -351,7 +353,6 @@ export async function getDocsOntimeByProjectMilestone(params: {
                 AND p.is_active = 1
                 AND (psc.code IS NULL OR psc.code <> 'CANCELLED')
                 AND (pt.code IS NULL OR pt.code <> 'MKT')
-                AND ISNULL(p.kpi_exclude_docs, 0) = 0
                 GROUP BY p.id, p.project_code, p.name, e.first_name, e.last_name, mc.name
                 ORDER BY p.project_code,
                     CASE mc.name
@@ -375,6 +376,7 @@ export async function getDocsOntimeByProjectMilestone(params: {
                     project_code: row.project_code,
                     project_name: row.project_name,
                     owner_name: row.owner_name,
+                    kpi_excluded: row.kpi_exclude_docs === 1,
                     milestones: [],
                     total_docs: 0,
                     on_time_docs: 0,

@@ -320,7 +320,7 @@ export default function MandayControlView({ embedded = false }: MandayControlVie
                                         <React.Fragment key={proj.project_id}>
                                             {/* Project Header Row */}
                                             <tr
-                                                className={`border-b border-slate-200 cursor-pointer transition-colors ${isPass === false ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'}`}
+                                                className={`border-b border-slate-200 cursor-pointer transition-colors ${isPass === false ? 'bg-rose-50/40 hover:bg-rose-50/70' : 'bg-slate-50/50 hover:bg-slate-100/70'}${proj.kpi_excluded ? ' opacity-50' : ''}`}
                                                 onClick={() => toggleProject(proj.project_id)}
                                             >
                                                 <td className="px-4 py-3 text-center">
@@ -341,6 +341,7 @@ export default function MandayControlView({ embedded = false }: MandayControlVie
                                                         </button>
                                                         <span className="text-slate-600 truncate max-w-[300px]">{proj.project_name}</span>
                                                         <span className="text-xs text-slate-400 ml-auto shrink-0">({proj.milestones.length} milestones)</span>
+                                                        {proj.kpi_excluded && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">ยกเว้น</span>}
                                                     </div>
                                                 </td>
                                                 <td className="text-center px-4 py-3 text-slate-400 text-xs">-</td>

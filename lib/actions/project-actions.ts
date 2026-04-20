@@ -383,7 +383,9 @@ export async function getProjects(filters?: ProjectFilters) {
         -- KPI Exclude Flags
         ISNULL(p.kpi_exclude_ttd, 0) as kpi_exclude_ttd,
         ISNULL(p.kpi_exclude_mdc, 0) as kpi_exclude_mdc,
-        ISNULL(p.kpi_exclude_docs, 0) as kpi_exclude_docs
+        ISNULL(p.kpi_exclude_docs, 0) as kpi_exclude_docs,
+        ISNULL(p.kpi_exclude_rework, 0) as kpi_exclude_rework,
+        ISNULL(p.kpi_exclude_defect, 0) as kpi_exclude_defect
 
       FROM pms.projects p
       LEFT JOIN pms.customers c ON p.customer_id = c.id
@@ -1335,6 +1337,8 @@ export async function updateProject(id: string, data: ProjectFormData) {
         updateProjectRequest.input('kpi_exclude_ttd', sql.Bit, (data as any).kpi_exclude_ttd ? 1 : 0)
         updateProjectRequest.input('kpi_exclude_mdc', sql.Bit, (data as any).kpi_exclude_mdc ? 1 : 0)
         updateProjectRequest.input('kpi_exclude_docs', sql.Bit, (data as any).kpi_exclude_docs ? 1 : 0)
+        updateProjectRequest.input('kpi_exclude_rework', sql.Bit, (data as any).kpi_exclude_rework ? 1 : 0)
+        updateProjectRequest.input('kpi_exclude_defect', sql.Bit, (data as any).kpi_exclude_defect ? 1 : 0)
 
         if (hasProjectNameTh) {
             updateProjectRequest.input('name_th', data.name_th || null)
@@ -1355,7 +1359,9 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   current_milestone_id = @current_milestone_id,
                   kpi_exclude_ttd = @kpi_exclude_ttd,
                   kpi_exclude_mdc = @kpi_exclude_mdc,
-                  kpi_exclude_docs = @kpi_exclude_docs
+                  kpi_exclude_docs = @kpi_exclude_docs,
+                  kpi_exclude_rework = @kpi_exclude_rework,
+                  kpi_exclude_defect = @kpi_exclude_defect
                 WHERE id = @id
             `)
         } else {
@@ -1375,7 +1381,9 @@ export async function updateProject(id: string, data: ProjectFormData) {
                   current_milestone_id = @current_milestone_id,
                   kpi_exclude_ttd = @kpi_exclude_ttd,
                   kpi_exclude_mdc = @kpi_exclude_mdc,
-                  kpi_exclude_docs = @kpi_exclude_docs
+                  kpi_exclude_docs = @kpi_exclude_docs,
+                  kpi_exclude_rework = @kpi_exclude_rework,
+                  kpi_exclude_defect = @kpi_exclude_defect
                 WHERE id = @id
             `)
         }

@@ -15,7 +15,12 @@
       "Bash(wc -l /Users/artit/PMS/components/kpi-record/*.tsx)",
       "Bash(sort -k2)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(lsof -ti:3000,3001,5173)",
+      "Bash(ls -t /Users/artit/PMS/scripts/*defect* /Users/artit/PMS/scripts/*post*golive* /Users/artit/PMS/scripts/*rework*)",
+      "Bash(wc -l /Users/artit/PMS/lib/actions/kpi-*.ts)",
+      "Bash(grep -l \"vw_kpi_\" /Users/artit/PMS/scripts/*.sql)",
+      "Bash(grep -h \"CREATE VIEW pms.vw_kpi_\" /Users/artit/PMS/scripts/*.sql)"
     ]
   }
 }
