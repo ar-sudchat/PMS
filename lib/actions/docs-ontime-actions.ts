@@ -283,12 +283,14 @@ export async function getDocsOntimeMonthlyTrend(year: number, ownerId?: string) 
 
 export interface MilestoneDocsDetail {
     milestone_name: string
+    due_date: string | null
     total_docs: number
     on_time_docs: number
     late_docs: number
     pending_docs: number
     overdue_docs: number
     on_time_rate: number
+    kpi_docs_manual_fail?: boolean
 }
 
 export interface ProjectDocsData {
@@ -296,6 +298,7 @@ export interface ProjectDocsData {
     project_code: string
     project_name: string
     owner_name: string | null
+    kpi_excluded?: boolean
     milestones: MilestoneDocsDetail[]
     total_docs: number
     on_time_docs: number
@@ -330,11 +333,14 @@ export async function getDocsOntimeByProjectMilestone(params: {
                     p.name AS project_name,
                     e.first_name + ' ' + e.last_name AS owner_name,
                     mc.name AS milestone_name,
+                    MIN(pm.due_date) AS due_date,
                     COUNT(*) AS total_docs,
                     SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date <= pm.due_date THEN 1 ELSE 0 END) AS on_time_docs,
                     SUM(CASE WHEN pd.submitted_date IS NOT NULL AND pd.submitted_date > pm.due_date THEN 1 ELSE 0 END) AS late_docs,
                     SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date >= CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS pending_docs,
-                    SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date < CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS overdue_docs
+                    SUM(CASE WHEN pd.submitted_date IS NULL AND pm.due_date < CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS overdue_docs,
+                    MAX(CAST(ISNULL(pm.kpi_docs_manual_fail, 0) AS INT)) AS kpi_docs_manual_fail,
+                    MAX(CAST(ISNULL(p.kpi_exclude_docs, 0) AS INT)) AS kpi_exclude_docs
                 FROM pms.project_deliverables pd
                 INNER JOIN pms.project_milestones pm ON pd.project_milestone_id = pm.id
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
@@ -370,6 +376,7 @@ export async function getDocsOntimeByProjectMilestone(params: {
                     project_code: row.project_code,
                     project_name: row.project_name,
                     owner_name: row.owner_name,
+                    kpi_excluded: row.kpi_exclude_docs === 1,
                     milestones: [],
                     total_docs: 0,
                     on_time_docs: 0,
@@ -383,14 +390,18 @@ export async function getDocsOntimeByProjectMilestone(params: {
             const submitted = (row.on_time_docs || 0) + (row.late_docs || 0)
             const rate = submitted > 0 ? Math.round(((row.on_time_docs || 0) / submitted) * 100) : 100
 
+            const isManualFail = row.kpi_docs_manual_fail === 1
+
             proj.milestones.push({
                 milestone_name: row.milestone_name,
+                due_date: row.due_date ? new Date(row.due_date).toISOString().split('T')[0] : null,
                 total_docs: row.total_docs || 0,
                 on_time_docs: row.on_time_docs || 0,
                 late_docs: row.late_docs || 0,
                 pending_docs: row.pending_docs || 0,
                 overdue_docs: row.overdue_docs || 0,
-                on_time_rate: rate
+                on_time_rate: isManualFail ? 0 : rate,
+                kpi_docs_manual_fail: isManualFail
             })
 
             proj.total_docs += (row.total_docs || 0)
@@ -400,9 +411,16 @@ export async function getDocsOntimeByProjectMilestone(params: {
 
         // Calculate project-level on-time rate
         for (const proj of projectMap.values()) {
-            const submitted = proj.on_time_docs + proj.late_docs
-            proj.on_time_rate = submitted > 0 ? Math.round((proj.on_time_docs / submitted) * 100) : 100
-            proj.is_pass = proj.on_time_rate >= 95
+            const hasManualFail = proj.milestones.some(m => m.kpi_docs_manual_fail)
+            if (hasManualFail) {
+                // If any milestone has manual fail, project fails
+                proj.on_time_rate = 0
+                proj.is_pass = false
+            } else {
+                const submitted = proj.on_time_docs + proj.late_docs
+                proj.on_time_rate = submitted > 0 ? Math.round((proj.on_time_docs / submitted) * 100) : 100
+                proj.is_pass = proj.on_time_rate >= 95
+            }
         }
 
         return { success: true, data: Array.from(projectMap.values()) }

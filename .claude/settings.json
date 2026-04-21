@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(find /Users/artit/PMS/scripts -name \"*.sql\" -exec grep -l \"checklist\\\\|attachment\" {} \\\\;)",
+      "Bash(find /Users/artit/PMS/scripts -name \"*.sql\" -exec grep -l \"vw_my_tasks\" {} \\\\;)",
+      "Bash(grep -i \"CREATE TABLE.*comment\\\\|CREATE TABLE.*dependency\\\\|CREATE TABLE.*subtask\" /Users/artit/PMS/scripts/*.sql)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e ':*)",
+      "Bash(curl -s http://localhost:3002/team-dashboard)",
+      "Bash(curl -s -I http://localhost:3002/team-dashboard)",
+      "Bash(find /Users/artit/PMS -name \"*.sql\" -type f -exec grep -l \"CREATE TABLE.*project_milestones\" {} \\\\;)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill:*)",
+      "Bash(wc -l /Users/artit/PMS/components/kpi-record/*.tsx)",
+      "Bash(sort -k2)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(lsof -ti:3000,3001,5173)",
+      "Bash(ls -t /Users/artit/PMS/scripts/*defect* /Users/artit/PMS/scripts/*post*golive* /Users/artit/PMS/scripts/*rework*)",
+      "Bash(wc -l /Users/artit/PMS/lib/actions/kpi-*.ts)",
+      "Bash(grep -l \"vw_kpi_\" /Users/artit/PMS/scripts/*.sql)",
+      "Bash(grep -h \"CREATE VIEW pms.vw_kpi_\" /Users/artit/PMS/scripts/*.sql)"
+    ]
+  }
+}

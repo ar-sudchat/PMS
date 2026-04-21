@@ -13,7 +13,7 @@ import { getPresaleKPIStats, getCustomerContactRecords, getMandayAssessmentRecor
 const ALL_DEPARTMENT_KPIS = [
   { kpi_name: 'Time to Delivery', category: 'Performance', target: '>= 80%', target_value: 80, affected_positions: 'PM,PG,SA', higherIsBetter: true },
   { kpi_name: 'Man-day Control', category: 'Performance', target: '>= 85%', target_value: 85, affected_positions: 'PM,PG,SA', higherIsBetter: true },
-  { kpi_name: 'Defect Ratio', category: 'Quality', target: '<= 15%', target_value: 15, affected_positions: 'PG,SA', higherIsBetter: false },
+  { kpi_name: 'Defect Ratio', category: 'Quality', target: '<= 15%', target_value: 15, affected_positions: 'PG', higherIsBetter: false },
   { kpi_name: 'Post Go-live Rework', category: 'Quality', target: '<= 8%', target_value: 8, affected_positions: 'PG,SA', higherIsBetter: false },
   { kpi_name: 'Deploy Success Rate', category: 'Quality', target: '>= 95%', target_value: 95, affected_positions: 'PG,SA', higherIsBetter: true },
   { kpi_name: 'Pre-deploy Backup', category: 'Availability', target: '100%', target_value: 100, affected_positions: 'PG', higherIsBetter: true }
@@ -346,7 +346,7 @@ export async function getPersonalKPITrend(employeeId: string, year: number) {
 
 // All 5 Personal KPIs with their definitions
 const ALL_PERSONAL_KPIS = [
-  { kpi_name: 'Issue Clearing', target: '>= 85%', target_value: 85, affected_positions: 'PG,SA', higherIsBetter: true },
+  { kpi_name: 'Issue Clearing', target: '>= 85%', target_value: 85, affected_positions: 'PG', higherIsBetter: true },
   { kpi_name: 'On-time Meeting Minutes', target: '<= 3 ครั้ง', target_value: 3, affected_positions: 'PM,SA', higherIsBetter: false },
   { kpi_name: 'Required Docs On-time', target: '>= 95%', target_value: 95, affected_positions: 'SA', higherIsBetter: true },
   { kpi_name: 'Contact Customer', target: '>= 85%', target_value: 85, affected_positions: 'PM', higherIsBetter: true },
@@ -364,8 +364,10 @@ export async function getKPIsByPosition(position: string): Promise<string[]> {
     'PM': ['Time to Delivery', 'Man-day Control'],
     // PG: Time to Delivery(10) + Man-day Control(10) + Defect Ratio(10) + Post Go-live Rework(5) + Deploy Success Rate(5) + Pre-deploy Backup(5) = 45
     'PG': ['Time to Delivery', 'Man-day Control', 'Defect Ratio', 'Post Go-live Rework', 'Deploy Success Rate', 'Pre-deploy Backup'],
-    // SA: Time to Delivery(15) + Man-day Control(15) + Defect Ratio(5) + Post Go-live Rework(5) + Deploy Success Rate(5) = 45
-    'SA': ['Time to Delivery', 'Man-day Control', 'Defect Ratio', 'Post Go-live Rework', 'Deploy Success Rate']
+    // SA: Time to Delivery(10) + Man-day Control(10) + Post Go-live Rework(10) + Deploy Success Rate(5) = 35
+    'SA': ['Time to Delivery', 'Man-day Control', 'Post Go-live Rework', 'Deploy Success Rate'],
+    // BA: Same as SA
+    'BA': ['Time to Delivery', 'Man-day Control', 'Post Go-live Rework', 'Deploy Success Rate']
   }
 
   // Personal KPIs ตาม Spec
@@ -374,8 +376,10 @@ export async function getKPIsByPosition(position: string): Promise<string[]> {
     'PM': ['On-time Meeting Minutes', 'Contact Customer', 'Manday Assessment'],
     // PG: Issue Clearing(15)
     'PG': ['Issue Clearing'],
-    // SA: On-time Meeting Minutes(5) + Required Docs On-time(5) + Issue Clearing(5) + Manday Assessment
-    'SA': ['On-time Meeting Minutes', 'Required Docs On-time', 'Issue Clearing', 'Manday Assessment']
+    // SA: On-time Meeting Minutes(5) + Required Docs On-time(5) + Manday Assessment
+    'SA': ['On-time Meeting Minutes', 'Required Docs On-time', 'Manday Assessment'],
+    // BA: Same as SA
+    'BA': ['On-time Meeting Minutes', 'Required Docs On-time', 'Manday Assessment']
   }
 
   return [
@@ -471,7 +475,7 @@ export async function getMyKPIDashboardData(
     k.affected_positions?.includes(position)
   )
 
-  // Filter personal KPIs by position (PM ไม่มี Issue Clearing, SA มี On-time Meeting Minutes ฯลฯ)
+  // Filter personal KPIs by position (Issue Clearing เฉพาะ PG, SA มี On-time Meeting Minutes ฯลฯ)
   const myPersonalKPIs = personalKPIs.filter((k: any) =>
     k.affected_positions?.includes(position)
   )

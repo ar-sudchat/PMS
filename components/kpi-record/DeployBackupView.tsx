@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, Clock, X, Search, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle, AlertTriangle, BarChart3 } from "lucide-react"
+import { Plus, Edit, Trash2, CheckCircle2, Clock, RefreshCw, Database, Code, Server, Settings, FileText, FolderOpen, Archive, XCircle } from "lucide-react"
 import { getDeployBackupRecords, deleteDeployBackupRecord, getBackupKPI, DeployBackupRecord, BackupKPIResult, approveAllPendingDeployBackups, getDeployBackupMonthlyTrend } from "@/lib/actions/deploy-backup-actions"
 import { getActiveBackupSources } from "@/lib/actions/backup-source-actions"
 import { DeployBackupModal } from "@/components/kpi-record/DeployBackupModal"
@@ -12,6 +12,21 @@ import { format } from "date-fns"
 import { th } from "date-fns/locale"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
 import { ApprovalStatusBadge } from "@/components/approval/ApprovalStatusBadge"
+
+const MONTHS = [
+    { value: 1, label: 'ม.ค.' },
+    { value: 2, label: 'ก.พ.' },
+    { value: 3, label: 'มี.ค.' },
+    { value: 4, label: 'เม.ย.' },
+    { value: 5, label: 'พ.ค.' },
+    { value: 6, label: 'มิ.ย.' },
+    { value: 7, label: 'ก.ค.' },
+    { value: 8, label: 'ส.ค.' },
+    { value: 9, label: 'ก.ย.' },
+    { value: 10, label: 'ต.ค.' },
+    { value: 11, label: 'พ.ย.' },
+    { value: 12, label: 'ธ.ค.' },
+]
 
 interface DeployBackupViewProps {
     currentUserId: string
@@ -39,7 +54,7 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
     const [searchQuery, setSearchQuery] = useState('')
     const [backupSourceFilter, setBackupSourceFilter] = useState<string | null>(null)
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
-    const [monthFilter, setMonthFilter] = useState<number | null>(null)
+    const [monthFilter, setMonthFilter] = useState<string>("all")
     const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'pending'>('all')
     const [resultFilter, setResultFilter] = useState<'all' | 'passed' | 'failed'>('all')
     const [backupSources, setBackupSources] = useState<{ id: string, name: string, code: string, type: string }[]>([])
@@ -155,14 +170,6 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
     // Count pending records (not yet verified)
     const pendingCount = data.filter(d => !d.is_verified).length
 
-    const clearFilters = () => {
-        setSearchQuery('')
-        setBackupSourceFilter(null)
-        setYearFilter(new Date().getFullYear())
-        setVerifiedFilter('all')
-        setResultFilter('all')
-    }
-
     const getSourceTypeIcon = (type: string) => {
         switch (type) {
             case 'Database': return <Database size={14} className="text-blue-600" />
@@ -172,18 +179,6 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
             case 'Config': return <FileText size={14} className="text-amber-600" />
             case 'Files': return <FolderOpen size={14} className="text-slate-600" />
             default: return <Archive size={14} className="text-slate-400" />
-        }
-    }
-
-    const getSourceTypeColor = (type: string) => {
-        switch (type) {
-            case 'Database': return 'bg-blue-100 text-blue-700'
-            case 'Source Code': return 'bg-green-100 text-green-700'
-            case 'Server': return 'bg-purple-100 text-purple-700'
-            case 'Application': return 'bg-orange-100 text-orange-700'
-            case 'Config': return 'bg-amber-100 text-amber-700'
-            case 'Files': return 'bg-slate-100 text-slate-700'
-            default: return 'bg-slate-100 text-slate-700'
         }
     }
 
@@ -298,7 +293,6 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
             size: 100,
             cell: ({ row }) => {
                 const record = row.original as any
-                const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
                         <button
@@ -323,264 +317,190 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
 
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
+    // Filter data by month if selected
+    const filteredData = monthFilter !== "all"
+        ? data.filter(d => new Date(d.backup_date).getMonth() + 1 === parseInt(monthFilter))
+        : data
+
     return (
-        <div className={embedded ? "p-4" : "p-6 w-full"}>
-            {/* Page Header */}
-            <div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`}>
-                {!embedded && (
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Deploy Backup Records</h1>
-                        <p className="text-slate-500 text-sm mt-1">Track backups before deployment - Maintain 5 versions</p>
-                    </div>
-                )}
-                {embedded && <div className="text-sm text-slate-500">Target: 100% Pass - Maintain 5 versions</div>}
-                <div className="flex items-center gap-2">
-                    {pendingCount > 0 && (
-                        <button
-                            onClick={handleApproveAllPending}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20 font-medium text-sm"
-                        >
-                            <CheckCircle2 size={16} />
-                            Approve All ({pendingCount})
-                        </button>
-                    )}
-                    <button
-                        onClick={handleCreate}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
-                    >
-                        <Plus size={16} />
-                        New Backup
-                    </button>
-                </div>
-            </div>
-
-            {/* KPI Summary */}
-            {kpiData && (
-                <div className={`rounded-xl border p-4 mb-6 ${kpiData.is_kpi_passed ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-semibold text-slate-800">KPI Summary {yearFilter}</h3>
-                        <span className="text-sm text-slate-500">Target: 100% Pass</span>
-                    </div>
-
-                    <div className="flex items-center gap-6 mb-3">
-                        <div>
-                            <span className="text-slate-500 text-sm">Total:</span>
-                            <span className="font-bold ml-2 text-slate-800">{kpiData.total} backups</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <CheckCircle2 size={16} className="text-green-600" />
-                            <span className="text-sm text-green-600">Pass:</span>
-                            <span className="font-bold text-green-600">{kpiData.passed}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <XCircle size={16} className="text-red-600" />
-                            <span className="text-sm text-red-600">Fail:</span>
-                            <span className="font-bold text-red-600">{kpiData.failed}</span>
-                        </div>
-                        <div>
-                            <span className="text-slate-500 text-sm">Rate:</span>
-                            <span className="font-bold ml-2">{kpiData.pass_rate}%</span>
-                        </div>
-                        <div className={`font-bold px-3 py-1 rounded-full text-sm ${kpiData.is_kpi_passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {kpiData.is_kpi_passed ? '✅ KPI Passed' : '❌ KPI Failed'}
-                        </div>
-                    </div>
-
-                    {/* Failed Records */}
-                    {kpiData.failed_records.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-red-200">
-                            <div className="flex items-center gap-1 text-sm text-red-600 font-medium mb-2">
-                                <AlertTriangle size={14} />
-                                <span>Failed Records:</span>
+        <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-4 w-full bg-slate-50 min-h-screen"}>
+            {/* Compact Header Bar */}
+            {!embedded && (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                    {/* Top Row: Icon + Title + Score + Summary + Filters + Actions */}
+                    <div className="flex flex-wrap items-center gap-4 px-5 py-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-blue-100 rounded-lg">
+                                <Database size={18} className="text-blue-600" />
                             </div>
-                            <ul className="text-sm text-slate-600 space-y-1">
-                                {kpiData.failed_records.slice(0, 5).map((r, i) => (
-                                    <li key={i} className="flex items-start gap-2">
-                                        <span className="text-slate-400">•</span>
-                                        <span>
-                                            <span className="font-medium">{format(new Date(r.date), 'd MMM yyyy', { locale: th })}</span>
-                                            <span className="text-slate-400 mx-1">-</span>
-                                            <span>{r.source_name}:</span>
-                                            <span className="text-red-600 ml-1">{r.reason}</span>
-                                        </span>
-                                    </li>
-                                ))}
-                                {kpiData.failed_records.length > 5 && (
-                                    <li className="text-slate-500 italic">...and {kpiData.failed_records.length - 5} more</li>
-                                )}
-                            </ul>
+                            <h1 className="text-lg font-bold text-slate-800">Deploy Backup</h1>
                         </div>
-                    )}
+
+                        <div className="h-6 w-px bg-slate-200" />
+
+                        {kpiData && (
+                            <div className="flex items-center gap-3">
+                                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${kpiData.is_kpi_passed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {kpiData.is_kpi_passed ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                    {kpiData.pass_rate}%
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <span>{kpiData.total} backups</span>
+                                    <span className="text-emerald-600 font-medium">{kpiData.passed} pass</span>
+                                    <span className="text-rose-600 font-medium">{kpiData.failed} fail</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="ml-auto flex items-center gap-2">
+                            {/* Backup Source Filter */}
+                            <div className="min-w-[200px]">
+                                <SmartCombobox
+                                    options={backupSources.map(s => ({ value: s.id, label: `${s.code}: ${s.name}` }))}
+                                    value={backupSourceFilter ? { value: backupSourceFilter, label: backupSources.find(s => s.id === backupSourceFilter)?.code + ': ' + backupSources.find(s => s.id === backupSourceFilter)?.name || '' } : null}
+                                    onChange={(opt) => setBackupSourceFilter(opt?.value?.toString() || null)}
+                                    placeholder="All Sources"
+                                />
+                            </div>
+
+                            <select
+                                value={yearFilter}
+                                onChange={(e) => setYearFilter(parseInt(e.target.value))}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                {years.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+
+                            <select
+                                value={monthFilter}
+                                onChange={(e) => setMonthFilter(e.target.value)}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                <option value="all">ทั้งปี</option>
+                                {MONTHS.map(m => (
+                                    <option key={m.value} value={m.value.toString()}>{m.label}</option>
+                                ))}
+                            </select>
+
+                            <select
+                                value={resultFilter}
+                                onChange={(e) => setResultFilter(e.target.value as any)}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                <option value="all">ทั้งหมด</option>
+                                <option value="passed">Pass</option>
+                                <option value="failed">Fail</option>
+                            </select>
+
+                            <select
+                                value={verifiedFilter}
+                                onChange={(e) => setVerifiedFilter(e.target.value as any)}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                <option value="all">Verified ทั้งหมด</option>
+                                <option value="verified">Verified</option>
+                                <option value="pending">Pending</option>
+                            </select>
+
+                            <button
+                                onClick={() => fetchData()}
+                                disabled={isLoading}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                                <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                            </button>
+
+                            {pendingCount > 0 && (
+                                <button
+                                    onClick={handleApproveAllPending}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
+                                >
+                                    <CheckCircle2 size={14} />
+                                    Approve ({pendingCount})
+                                </button>
+                            )}
+
+                            <button
+                                onClick={handleCreate}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                            >
+                                <Plus size={14} />
+                                New
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Bottom Row: Monthly Trend Inline + Legend */}
+                    <div className="flex items-center gap-3 px-5 py-2.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            {MONTHS.map((month) => {
+                                const item = monthlyTrend.find(t => t.month === month.value)
+                                const hasData = item && item.total > 0
+                                const isPass = hasData && item.is_pass
+                                const rate = item?.pass_rate || 0
+                                const isSelected = monthFilter === String(month.value)
+
+                                return (
+                                    <button
+                                        key={month.value}
+                                        onClick={() => setMonthFilter(isSelected ? "all" : String(month.value))}
+                                        className={`flex-1 rounded-md px-1 py-1 text-center transition-all min-w-0 ${
+                                            isSelected
+                                                ? 'ring-2 ring-blue-300 border-blue-400 shadow-sm bg-blue-50'
+                                                : hasData
+                                                    ? (isPass ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-rose-50 hover:bg-rose-100')
+                                                    : 'bg-slate-50 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <div className={`text-[9px] font-medium ${hasData ? (isPass ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>{month.label}</div>
+                                        <div className={`text-xs font-bold leading-tight ${hasData ? (isPass ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-300'}`}>
+                                            {hasData ? `${rate}%` : "-"}
+                                        </div>
+                                    </button>
+                                )
+                            })}
+                        </div>
+
+                        <div className="h-8 w-px bg-slate-200 shrink-0" />
+
+                        <div className="flex items-center gap-3 text-[10px] shrink-0">
+                            <span className="text-emerald-600 font-medium">100%: Pass</span>
+                            <span className="text-rose-600 font-medium">&lt;100%: Fail</span>
+                            <span className="text-slate-500">(Target: 100% Pass)</span>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Monthly Trend */}
-            {!embedded && (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
-                    <div className="flex items-center justify-between mb-5">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
-                                <BarChart3 size={18} className="text-blue-600" />
-                            </div>
-                            Monthly Trend - {yearFilter}
-                        </h3>
-                        {monthFilter !== null && (
+            {/* Embedded mode: minimal header */}
+            {embedded && (
+                <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-500">Target: 100% Pass - Maintain 5 versions</div>
+                    <div className="flex items-center gap-2">
+                        {pendingCount > 0 && (
                             <button
-                                onClick={() => setMonthFilter(null)}
-                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                                onClick={handleApproveAllPending}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
                             >
-                                <X size={14} />
-                                แสดงทั้งหมด
+                                <CheckCircle2 size={14} />
+                                Approve ({pendingCount})
                             </button>
                         )}
-                    </div>
-                    <div className="grid grid-cols-12 gap-2">
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                            const item = monthlyTrend.find(t => t.month === month)
-                            const hasData = item && item.total > 0
-                            const isPass = hasData && item.is_pass
-                            const rate = item?.pass_rate || 0
-                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
-                            const isSelected = monthFilter === month
-
-                            return (
-                                <div
-                                    key={month}
-                                    onClick={() => setMonthFilter(isSelected ? null : month)}
-                                    className={`rounded-xl p-3 text-center transition-all hover:shadow-sm cursor-pointer ${
-                                        isSelected
-                                            ? 'ring-2 ring-blue-300 border-blue-400 shadow-md bg-blue-50 border'
-                                            : !hasData
-                                                ? 'bg-slate-100 border border-slate-200 hover:border-slate-300'
-                                                : isPass
-                                                    ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200 hover:border-emerald-300'
-                                                    : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200 hover:border-rose-300'
-                                    }`}
-                                >
-                                    <div className="text-xs text-slate-500 font-medium mb-2">
-                                        {monthNames[month - 1]}
-                                    </div>
-                                    <div className={`text-lg font-bold ${!hasData ? 'text-slate-400' : isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {hasData ? `${rate}%` : '-'}
-                                    </div>
-                                    {hasData && (
-                                        <div className="mt-2 space-y-0.5">
-                                            <div className="text-[10px] text-slate-500">
-                                                Pass: <span className="font-semibold text-emerald-600">{item.passed}</span>
-                                            </div>
-                                            <div className="text-[10px] text-slate-500">
-                                                Fail: <span className={`font-semibold ${item.failed > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{item.failed}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {!hasData && (
-                                        <div className="text-[10px] text-slate-400 mt-2">No Data</div>
-                                    )}
-                                </div>
-                            )
-                        })}
-                    </div>
-                    <div className="flex items-center justify-center gap-6 mt-4 text-xs">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-300 rounded" />
-                            <span className="font-medium">Pass (0 Fail)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-b from-rose-50 to-red-100 border border-rose-300 rounded" />
-                            <span className="font-medium">Fail (&gt; 0 Fail)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-slate-100 border border-slate-300 rounded" />
-                            <span className="font-medium">No Data</span>
-                        </div>
+                        <button
+                            onClick={handleCreate}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                        >
+                            <Plus size={14} />
+                            New
+                        </button>
                     </div>
                 </div>
             )}
-
-            {/* Filters */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-4 flex-wrap">
-                    {/* Search */}
-                    <div className="relative flex-1 min-w-[200px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search source, location..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                        />
-                    </div>
-
-                    {/* Year Filter */}
-                    <select
-                        value={yearFilter}
-                        onChange={(e) => setYearFilter(parseInt(e.target.value))}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
-                    >
-                        {years.map(y => (
-                            <option key={y} value={y}>{y}</option>
-                        ))}
-                    </select>
-
-                    {/* Result Filter */}
-                    <select
-                        value={resultFilter}
-                        onChange={(e) => setResultFilter(e.target.value as any)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
-                    >
-                        <option value="all">All Results</option>
-                        <option value="passed">Pass Only</option>
-                        <option value="failed">Fail Only</option>
-                    </select>
-
-                    {/* Verified Filter */}
-                    <select
-                        value={verifiedFilter}
-                        onChange={(e) => setVerifiedFilter(e.target.value as any)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
-                    >
-                        <option value="all">All Verified</option>
-                        <option value="verified">Verified</option>
-                        <option value="pending">Pending</option>
-                    </select>
-
-                    {/* Backup Source Filter */}
-                    <div className="min-w-[220px]">
-                        <SmartCombobox
-                            options={backupSources.map(s => ({ value: s.id, label: `${s.code}: ${s.name}` }))}
-                            value={backupSourceFilter ? { value: backupSourceFilter, label: backupSources.find(s => s.id === backupSourceFilter)?.code + ': ' + backupSources.find(s => s.id === backupSourceFilter)?.name || '' } : null}
-                            onChange={(opt) => setBackupSourceFilter(opt?.value?.toString() || null)}
-                            placeholder="All Sources"
-                        />
-                    </div>
-
-                    {/* Refresh */}
-                    <button
-                        onClick={() => fetchData()}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Refresh"
-                    >
-                        <RefreshCw size={18} />
-                    </button>
-
-                    {/* Clear Filters */}
-                    {(searchQuery || backupSourceFilter || verifiedFilter !== 'all' || resultFilter !== 'all') && (
-                        <button
-                            onClick={clearFilters}
-                            className="flex items-center gap-1 px-3 py-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                            <X size={16} />
-                            Clear
-                        </button>
-                    )}
-                </div>
-            </div>
 
             {/* Table */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <SuperTable
-                    data={monthFilter ? data.filter(d => new Date(d.backup_date).getMonth() + 1 === monthFilter) : data}
+                    data={filteredData}
                     columns={columns}
                     isLoading={isLoading}
                     enableGlobalFilter={false}
@@ -613,6 +533,11 @@ export function DeployBackupView({ currentUserId, embedded = false }: DeployBack
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Bottom Legend */}
+            <div className="text-center text-xs text-slate-400">
+                Target: Backup ทุกครั้งก่อน Deploy ต้อง Pass 100% และเก็บอย่างน้อย 5 versions
             </div>
 
             {/* Modal */}

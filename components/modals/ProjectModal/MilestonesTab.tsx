@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, KeyboardEvent } from 'react'
-import { Trash2, Lock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle, MessageSquare, History } from 'lucide-react'
+import { Trash2, Lock, Unlock, CheckCircle2, AlertCircle, Calendar as CalendarIcon, FileText, X, Plus, PlusCircle, MessageSquare, History } from 'lucide-react'
 import { MilestoneRow } from '@/types/project'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ import { MilestoneNotesPanel } from '@/components/milestones/MilestoneNotesPanel
 import { MilestoneChangeLogTimeline } from '@/components/milestones/MilestoneChangeLogTimeline'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
+import { unlockMilestone } from '@/lib/actions/milestone-approval-actions'
 
 // Field order for Enter key navigation
 const FIELD_ORDER = ['weight_ttd', 'weight_mdc', 'planned_mandays', 'due_date', 'completed_date'] as const
@@ -39,6 +40,13 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
     // Notes/History panel state
     const [notesPanel, setNotesPanel] = useState<{ milestoneId: string; milestoneName: string } | null>(null)
     const [historyPanel, setHistoryPanel] = useState<{ milestoneId: string; milestoneName: string } | null>(null)
+
+    // Unlock dialog state
+    const [unlockDialog, setUnlockDialog] = useState<{
+        open: boolean; index: number; milestoneId: string; milestoneName: string
+    } | null>(null)
+    const [unlockReason, setUnlockReason] = useState('')
+    const [unlockLoading, setUnlockLoading] = useState(false)
 
     // Handle Enter key to move to next field in row, or next row
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, rowIndex: number, fieldName: string) => {
@@ -160,6 +168,38 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
         if (milestones[index].is_locked) return
         const updated = milestones.filter((_, i) => i !== index)
         setMilestones(updated)
+    }
+
+    const handleUnlockClick = (index: number) => {
+        const m = milestones[index]
+        if (!m.id || !m.is_locked) return
+        setUnlockReason('')
+        setUnlockDialog({ open: true, index, milestoneId: m.id, milestoneName: m.milestone_name || 'Milestone' })
+    }
+
+    const handleUnlockConfirm = async () => {
+        if (!unlockDialog || !unlockReason.trim()) return
+        setUnlockLoading(true)
+        try {
+            const result = await unlockMilestone(unlockDialog.milestoneId, unlockReason.trim())
+            if (result.success) {
+                const updated = [...milestones]
+                updated[unlockDialog.index] = {
+                    ...updated[unlockDialog.index],
+                    is_locked: false,
+                    is_approved: false,
+                    is_verified: false
+                }
+                setMilestones(updated)
+                setUnlockDialog(null)
+            } else {
+                alert(result.error || 'ไม่สามารถปลดล็อกได้')
+            }
+        } catch {
+            alert('เกิดข้อผิดพลาดในการปลดล็อก')
+        } finally {
+            setUnlockLoading(false)
+        }
     }
 
     // Add a single milestone from config
@@ -303,6 +343,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                 <th className="px-3 py-3 w-28 text-center">Support End</th>
                                 <th className="px-2 py-3 w-16 text-center text-xs">Docs</th>
                                 <th className="px-2 py-3 w-14 text-center text-xs" title="Mark as TTD KPI Failed (manual)">TTD Fail</th>
+                                <th className="px-2 py-3 w-14 text-center text-xs" title="Mark as Docs KPI Failed (manual)">Docs Fail</th>
                                 <th className="px-2 py-3 w-12 text-center text-xs">KPI</th>
                                 <th className="px-2 py-3 w-20 text-center">Status</th>
                                 <th className="px-2 py-3 w-16 text-center text-xs">Verified</th>
@@ -312,7 +353,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                         <tbody className="divide-y divide-slate-100">
                             {milestones.length === 0 ? (
                                 <tr>
-                                    <td colSpan={15} className="px-4 py-8 text-center text-slate-400">
+                                    <td colSpan={16} className="px-4 py-8 text-center text-slate-400">
                                         No milestones added.
                                     </td>
                                 </tr>
@@ -335,7 +376,15 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                             {/* Lock / Approve Checkbox */}
                                             <td className="px-3 py-2 text-center">
                                                 {isLocked ? (
-                                                    <Lock className="w-4 h-4 text-slate-400 mx-auto" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUnlockClick(i)}
+                                                        className="group relative mx-auto flex items-center justify-center w-6 h-6 rounded hover:bg-amber-50 transition-colors"
+                                                        title="คลิกเพื่อปลดล็อก Milestone"
+                                                    >
+                                                        <Lock className="w-4 h-4 text-slate-400 group-hover:hidden" />
+                                                        <Unlock className="w-4 h-4 text-amber-500 hidden group-hover:block" />
+                                                    </button>
                                                 ) : (
                                                     <input
                                                         type="checkbox"
@@ -491,6 +540,24 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                         onChange={(e) => handleUpdateMilestone(i, 'kpi_ttd_manual_fail', e.target.checked)}
                                                         disabled={isLocked}
                                                         title="ติ๊กเพื่อระบุว่า Milestone นี้ตก KPI Time to Delivery"
+                                                    />
+                                                )}
+                                            </td>
+
+                                            {/* Docs Manual Fail */}
+                                            <td className="px-2 py-2 text-center">
+                                                {m.is_verified ? (
+                                                    <span className={`text-xs font-medium ${m.kpi_docs_manual_fail ? 'text-rose-600' : 'text-slate-300'}`}>
+                                                        {m.kpi_docs_manual_fail ? 'Fail' : '-'}
+                                                    </span>
+                                                ) : (
+                                                    <input
+                                                        type="checkbox"
+                                                        className="rounded border-rose-300 text-rose-500 focus:ring-rose-500 cursor-pointer"
+                                                        checked={m.kpi_docs_manual_fail || false}
+                                                        onChange={(e) => handleUpdateMilestone(i, 'kpi_docs_manual_fail', e.target.checked)}
+                                                        disabled={isLocked}
+                                                        title="ติ๊กเพื่อระบุว่า Milestone นี้ตก KPI Docs On-time"
                                                     />
                                                 )}
                                             </td>
@@ -663,6 +730,53 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                     )}
                 </SheetContent>
             </Sheet>
+
+            {/* Unlock Milestone Dialog */}
+            {unlockDialog?.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="fixed inset-0 bg-black/50" onClick={() => setUnlockDialog(null)} />
+                    <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-100">
+                                <Unlock className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">ปลดล็อก Milestone</h3>
+                                <p className="text-sm text-slate-500">{unlockDialog.milestoneName}</p>
+                            </div>
+                        </div>
+                        <p className="text-sm text-slate-600 mb-3">
+                            การปลดล็อกจะทำให้สามารถแก้ไข Milestone นี้ได้อีกครั้ง กรุณาระบุเหตุผล
+                        </p>
+                        <textarea
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                            rows={3}
+                            placeholder="ระบุเหตุผลในการปลดล็อก..."
+                            value={unlockReason}
+                            onChange={(e) => setUnlockReason(e.target.value)}
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2 mt-4">
+                            <button
+                                type="button"
+                                onClick={() => setUnlockDialog(null)}
+                                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                                disabled={unlockLoading}
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleUnlockConfirm}
+                                disabled={!unlockReason.trim() || unlockLoading}
+                                className="px-4 py-2 text-sm font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {unlockLoading ? 'กำลังปลดล็อก...' : 'ปลดล็อก'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

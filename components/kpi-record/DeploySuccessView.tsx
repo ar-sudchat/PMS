@@ -3,12 +3,27 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { SuperTable } from "@/components/shared/SuperTable/SuperTable"
-import { Plus, Edit, Trash2, CheckCircle2, XCircle, X, RefreshCw, TrendingUp, Send, BarChart3 } from "lucide-react"
+import { Plus, Edit, Trash2, CheckCircle2, XCircle, RefreshCw, Send, Rocket } from "lucide-react"
 import { getDeployRecords, deleteDeployRecord, getDeploySuccessKPI, getActiveCustomers, DeployRecord, submitDeployRecordForApproval, getDeploySuccessMonthlyTrend } from "@/lib/actions/deploy-record-actions"
 import { DeployRecordModal } from "@/components/kpi-record/DeployRecordModal"
 import { toast } from "sonner"
 import { SmartCombobox } from "@/components/shared/SmartCombobox"
 import { ApprovalStatusBadge } from "@/components/approval/ApprovalStatusBadge"
+
+const MONTHS = [
+    { value: 1, label: 'ม.ค.' },
+    { value: 2, label: 'ก.พ.' },
+    { value: 3, label: 'มี.ค.' },
+    { value: 4, label: 'เม.ย.' },
+    { value: 5, label: 'พ.ค.' },
+    { value: 6, label: 'มิ.ย.' },
+    { value: 7, label: 'ก.ค.' },
+    { value: 8, label: 'ส.ค.' },
+    { value: 9, label: 'ก.ย.' },
+    { value: 10, label: 'ต.ค.' },
+    { value: 11, label: 'พ.ย.' },
+    { value: 12, label: 'ธ.ค.' },
+]
 
 interface DeploySuccessViewProps {
     currentUserId: string
@@ -46,7 +61,7 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
 
     // Filters
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
-    const [monthFilter, setMonthFilter] = useState<number | null>(null)
+    const [monthFilter, setMonthFilter] = useState<string>("all")
     const [customerFilter, setCustomerFilter] = useState<string | null>(null)
     const [customers, setCustomers] = useState<{ id: string, name: string }[]>([])
 
@@ -151,21 +166,10 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
         }
     }
 
-    const clearFilters = () => {
-        setCustomerFilter(null)
-        setYearFilter(new Date().getFullYear())
-    }
-
-    const getSuccessRateColor = (rate: number) => {
-        if (rate >= 95) return 'text-green-600'
-        if (rate >= 80) return 'text-amber-600'
-        return 'text-red-600'
-    }
-
     const getSuccessRateBgColor = (rate: number) => {
-        if (rate >= 95) return 'bg-green-100 text-green-700'
+        if (rate >= 95) return 'bg-emerald-100 text-emerald-700'
         if (rate >= 80) return 'bg-amber-100 text-amber-700'
-        return 'bg-red-100 text-red-700'
+        return 'bg-rose-100 text-rose-700'
     }
 
     const formatWeek = (weekNumber: number, weekStartDate: string) => {
@@ -221,7 +225,7 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
             size: 100,
             cell: ({ row }) => (
                 <div className="text-center">
-                    <span className={`text-lg font-bold ${row.original.rollback_count > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    <span className={`text-lg font-bold ${row.original.rollback_count > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                         {row.original.rollback_count}
                     </span>
                 </div>
@@ -236,11 +240,11 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
                 return (
                     <div className="flex items-center gap-2">
                         {rate >= 95 ? (
-                            <CheckCircle2 size={18} className="text-green-600" />
+                            <CheckCircle2 size={18} className="text-emerald-600" />
                         ) : (
-                            <XCircle size={18} className="text-red-600" />
+                            <XCircle size={18} className="text-rose-600" />
                         )}
-                        <span className={`px-2 py-1 rounded text-sm font-bold ${getSuccessRateBgColor(rate)}`}>
+                        <span className={`px-2 py-0.5 rounded text-sm font-bold ${getSuccessRateBgColor(rate)}`}>
                             {rate}%
                         </span>
                     </div>
@@ -276,11 +280,10 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
                 const status = record.approval_status || 'DRAFT'
                 return (
                     <div className="flex items-center gap-1 justify-end">
-                        {/* Submit for approval button - only for DRAFT status */}
                         {status === 'DRAFT' && (
                             <button
                                 onClick={() => handleSubmitForApproval(record)}
-                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
                                 title="Submit for Approval"
                             >
                                 <Send size={16} />
@@ -295,7 +298,7 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
                         </button>
                         <button
                             onClick={() => handleDelete(record.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                             title="Delete"
                         >
                             <Trash2 size={16} />
@@ -308,205 +311,153 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
 
     const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
+    // Filter data by selected month
+    const filteredData = monthFilter !== "all"
+        ? data.filter(d => new Date(d.week_start_date).getMonth() + 1 === parseInt(monthFilter))
+        : data
+
     return (
-        <div className={embedded ? "p-4" : "p-6 w-full"}>
-            {/* Page Header */}
-            <div className={`flex items-center justify-between ${embedded ? 'mb-3' : 'mb-6'}`}>
-                {!embedded && (
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">Deploy Success Records</h1>
-                        <p className="text-slate-500 text-sm mt-1">Track deployment success rate - Target: ≥95%</p>
-                    </div>
-                )}
-                {embedded && <div className="text-sm text-slate-500">Target: ≥95% Success Rate</div>}
-                <button
-                    onClick={handleCreate}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
-                >
-                    <Plus size={16} />
-                    New Record
-                </button>
-            </div>
-
-            {/* KPI Summary Cards */}
-            <div className={`grid grid-cols-5 gap-3 ${embedded ? 'mb-3' : 'mb-6'}`}>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className="text-2xl font-bold text-blue-600">{summary.total_deploy}</div>
-                    <div className="text-sm text-slate-500">Total Deploys</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className="text-2xl font-bold text-green-600">{summary.success_count}</div>
-                    <div className="text-sm text-slate-500">Successful</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className={`text-2xl font-bold ${summary.total_rollback > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {summary.total_rollback}
-                    </div>
-                    <div className="text-sm text-slate-500">Rollbacks</div>
-                </div>
-                <div className="bg-white rounded-xl border p-4">
-                    <div className={`text-2xl font-bold ${getSuccessRateColor(summary.success_rate)}`}>
-                        {summary.success_rate}%
-                    </div>
-                    <div className="text-sm text-slate-500">Success Rate</div>
-                </div>
-                <div className={`rounded-xl border p-4 ${summary.is_pass ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex items-center gap-2">
-                        {summary.is_pass ? (
-                            <>
-                                <CheckCircle2 size={24} className="text-green-600" />
-                                <span className="text-xl font-bold text-green-700">PASS</span>
-                            </>
-                        ) : (
-                            <>
-                                <XCircle size={24} className="text-red-600" />
-                                <span className="text-xl font-bold text-red-700">FAIL</span>
-                            </>
-                        )}
-                    </div>
-                    <div className="text-sm text-slate-500">Target: ≥{summary.target}%</div>
-                </div>
-            </div>
-
-            {/* Monthly Trend */}
+        <div className={embedded ? "p-4 space-y-4" : "p-6 space-y-4 w-full bg-slate-50 min-h-screen"}>
+            {/* Compact Header Bar */}
             {!embedded && (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
-                    <div className="flex items-center justify-between mb-5">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
-                                <BarChart3 size={18} className="text-blue-600" />
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                    {/* Top row: Icon + Title + Score badge + summary + Customer filter + Year + Month + Add + Refresh */}
+                    <div className="flex flex-wrap items-center gap-4 px-5 py-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-blue-100 rounded-lg">
+                                <Rocket size={18} className="text-blue-600" />
                             </div>
-                            Monthly Trend - {yearFilter}
-                        </h3>
-                        {monthFilter !== null && (
-                            <button
-                                onClick={() => setMonthFilter(null)}
-                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
-                            >
-                                <X size={14} />
-                                แสดงทั้งหมด
-                            </button>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-12 gap-2">
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-                            const item = monthlyTrend.find(t => t.month === month)
-                            const hasData = item && item.total_deploy > 0
-                            const isPass = hasData && item.success_rate >= 95
-                            const rate = item?.success_rate || 0
-                            const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
-                            const isSelected = monthFilter === month
+                            <h1 className="text-lg font-bold text-slate-800">Deploy Success</h1>
+                        </div>
 
-                            return (
-                                <div
-                                    key={month}
-                                    onClick={() => setMonthFilter(isSelected ? null : month)}
-                                    className={`rounded-xl p-3 text-center transition-all hover:shadow-sm cursor-pointer ${
-                                        isSelected
-                                            ? 'ring-2 ring-blue-300 border-blue-400 shadow-md bg-blue-50 border'
-                                            : !hasData
-                                                ? 'bg-slate-100 border border-slate-200 hover:border-slate-300'
-                                                : isPass
-                                                    ? 'bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-200 hover:border-emerald-300'
-                                                    : 'bg-gradient-to-b from-rose-50 to-red-100 border border-rose-200 hover:border-rose-300'
-                                    }`}
-                                >
-                                    {/* Month Label */}
-                                    <div className="text-xs text-slate-500 font-medium mb-2">
-                                        {monthNames[month - 1]}
-                                    </div>
-                                    {/* Rate */}
-                                    <div className={`text-lg font-bold ${!hasData ? 'text-slate-400' : isPass ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {hasData ? `${rate}%` : '-'}
-                                    </div>
-                                    {/* Deploy/Rollback counts */}
-                                    {hasData && (
-                                        <div className="mt-2 space-y-0.5">
-                                            <div className="text-[10px] text-slate-500">
-                                                Deploy: <span className="font-semibold text-blue-600">{item.total_deploy}</span>
-                                            </div>
-                                            <div className="text-[10px] text-slate-500">
-                                                Rollback: <span className={`font-semibold ${item.total_rollback > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{item.total_rollback}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {!hasData && (
-                                        <div className="text-[10px] text-slate-400 mt-2">No Data</div>
-                                    )}
-                                </div>
-                            )
-                        })}
+                        <div className="h-6 w-px bg-slate-200" />
+
+                        {/* Score badge + summary text */}
+                        <div className="flex items-center gap-3">
+                            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${summary.is_pass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                {summary.is_pass ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                {summary.success_rate}%
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <span>Deploy: <span className="font-medium text-blue-600">{summary.total_deploy}</span></span>
+                                <span>Success: <span className="font-medium text-emerald-600">{summary.success_count}</span></span>
+                                <span>Rollback: <span className={`font-medium ${summary.total_rollback > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{summary.total_rollback}</span></span>
+                            </div>
+                        </div>
+
+                        <div className="ml-auto flex items-center gap-2">
+                            {/* Customer Filter */}
+                            <div className="min-w-[180px]">
+                                <SmartCombobox
+                                    options={customers.map(c => ({ value: c.id, label: c.name }))}
+                                    value={customerFilter ? { value: customerFilter, label: customers.find(c => c.id === customerFilter)?.name || '' } : null}
+                                    onChange={(opt) => setCustomerFilter(opt?.value?.toString() || null)}
+                                    placeholder="All Customers"
+                                />
+                            </div>
+                            <select
+                                value={yearFilter}
+                                onChange={(e) => setYearFilter(parseInt(e.target.value))}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                {years.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                            <select
+                                value={monthFilter}
+                                onChange={(e) => setMonthFilter(e.target.value)}
+                                className="px-2 py-1.5 border border-slate-200 rounded-lg outline-none bg-white font-medium text-sm"
+                            >
+                                <option value="all">ทั้งปี</option>
+                                {MONTHS.map(m => (
+                                    <option key={m.value} value={m.value.toString()}>{m.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={handleCreate}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20 font-medium text-sm"
+                            >
+                                <Plus size={15} />
+                                New
+                            </button>
+                            <button
+                                onClick={() => fetchData()}
+                                disabled={isLoading}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                                <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center justify-center gap-6 mt-4 text-xs">
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-b from-emerald-50 to-green-100 border border-emerald-300 rounded" />
-                            <span className="font-medium">Pass (&ge; 95%)</span>
+
+                    {/* Bottom row: Monthly Trend inline + Scoring legend */}
+                    <div className="flex items-center gap-3 px-5 py-2.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            {MONTHS.map((month) => {
+                                const item = monthlyTrend.find(t => t.month === month.value)
+                                const hasData = item && item.total_deploy > 0
+                                const isPass = hasData && item.success_rate >= 95
+                                const rate = item?.success_rate || 0
+                                const isSelected = monthFilter === String(month.value)
+
+                                return (
+                                    <button
+                                        key={month.value}
+                                        onClick={() => setMonthFilter(isSelected ? "all" : String(month.value))}
+                                        className={`flex-1 rounded-md px-1 py-1 text-center transition-all min-w-0 ${
+                                            isSelected
+                                                ? 'ring-2 ring-blue-300 border-blue-400 shadow-sm bg-blue-50'
+                                                : hasData
+                                                    ? (isPass ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-rose-50 hover:bg-rose-100')
+                                                    : 'bg-slate-50 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <div className={`text-[9px] font-medium ${hasData ? (isPass ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>{month.label}</div>
+                                        <div className={`text-xs font-bold leading-tight ${hasData ? (isPass ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-300'}`}>
+                                            {hasData ? `${rate}%` : "-"}
+                                        </div>
+                                    </button>
+                                )
+                            })}
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-gradient-to-b from-rose-50 to-red-100 border border-rose-300 rounded" />
-                            <span className="font-medium">Fail (&lt; 95%)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 bg-slate-100 border border-slate-300 rounded" />
-                            <span className="font-medium">No Data</span>
+
+                        <div className="h-8 w-px bg-slate-200 shrink-0" />
+
+                        <div className="flex items-center gap-3 text-[10px] shrink-0">
+                            <span className="text-emerald-600 font-medium">&gt;=95%: Pass</span>
+                            <span className="text-rose-600 font-medium">&lt;95%: Fail</span>
+                            <span className="text-slate-500">(Higher is better)</span>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Filters */}
-            <div className={`bg-white border border-slate-200 rounded-xl p-3 ${embedded ? 'mb-3' : 'mb-4'}`}>
-                <div className="flex items-center gap-4 flex-wrap">
-                    {/* Year Filter */}
+            {/* Embedded: minimal inline controls */}
+            {embedded && (
+                <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-500">Target: &gt;=95% Success Rate</div>
                     <div className="flex items-center gap-2">
-                        <TrendingUp size={18} className="text-slate-400" />
                         <select
                             value={yearFilter}
                             onChange={(e) => setYearFilter(parseInt(e.target.value))}
-                            className="px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
+                            className="px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-sm"
                         >
-                            {years.map(y => (
-                                <option key={y} value={y}>{y}</option>
-                            ))}
+                            {years.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
-                    </div>
-
-                    {/* Customer Filter */}
-                    <div className="min-w-[200px]">
-                        <SmartCombobox
-                            options={customers.map(c => ({ value: c.id, label: c.name }))}
-                            value={customerFilter ? { value: customerFilter, label: customers.find(c => c.id === customerFilter)?.name || '' } : null}
-                            onChange={(opt) => setCustomerFilter(opt?.value?.toString() || null)}
-                            placeholder="All Customers"
-                        />
-                    </div>
-
-                    {/* Refresh */}
-                    <button
-                        onClick={() => fetchData()}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Refresh"
-                    >
-                        <RefreshCw size={18} />
-                    </button>
-
-                    {/* Clear Filters */}
-                    {customerFilter && (
                         <button
-                            onClick={clearFilters}
-                            className="flex items-center gap-1 px-3 py-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            onClick={handleCreate}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium text-sm"
                         >
-                            <X size={16} />
-                            Clear
+                            <Plus size={15} />
+                            New
                         </button>
-                    )}
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Table */}
+            {/* Main Table */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <SuperTable
-                    data={monthFilter ? data.filter(d => new Date(d.week_start_date).getMonth() + 1 === monthFilter) : data}
+                    data={filteredData}
                     columns={columns}
                     isLoading={isLoading}
                     enableGlobalFilter={false}
@@ -539,6 +490,18 @@ export function DeploySuccessView({ currentUserId, embedded = false }: DeploySuc
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-4 justify-center text-xs text-slate-600">
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                    <span>Pass (&gt;= 95%)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-rose-500" />
+                    <span>Fail (&lt; 95%)</span>
+                </div>
             </div>
 
             {/* Modal */}

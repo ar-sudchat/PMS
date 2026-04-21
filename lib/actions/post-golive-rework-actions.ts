@@ -32,6 +32,7 @@ export interface PostGoliveReworkProject {
     rework_manday: number
     rework_ratio: number
     is_pass: boolean
+    kpi_excluded?: boolean
 }
 
 export interface ProjectExceedingTarget {
@@ -135,16 +136,16 @@ export async function getPostGoliveReworkProjects(filters: PostGoliveReworkFilte
         const pool = await getConnection()
         const { year, status, ownerId } = filters
 
-        let whereClause = 'project_year = @year'
+        let whereClause = 'v.project_year = @year'
         if (status && status !== 'all') {
             if (status === 'closed') {
-                whereClause += " AND project_status = 'Closed'"
+                whereClause += " AND v.project_status = 'Closed'"
             } else if (status === 'post-golive') {
-                whereClause += " AND project_status = 'Post Go-Live'"
+                whereClause += " AND v.project_status = 'Post Go-Live'"
             }
         }
         if (ownerId) {
-            whereClause += ' AND project_owner_id = @ownerId'
+            whereClause += ' AND v.project_owner_id = @ownerId'
         }
 
         const result = await pool.request()
@@ -152,22 +153,24 @@ export async function getPostGoliveReworkProjects(filters: PostGoliveReworkFilte
             .input('ownerId', ownerId || null)
             .query(`
                 SELECT
-                    project_id,
-                    project_code,
-                    project_name,
-                    project_owner_id AS owner_id,
-                    owner_name,
-                    golive_completed_date,
-                    close_golive_completed_date,
-                    project_status,
-                    sold_mandays,
-                    total_manday,
-                    rework_manday,
+                    v.project_id,
+                    v.project_code,
+                    v.project_name,
+                    v.project_owner_id AS owner_id,
+                    v.owner_name,
+                    v.golive_completed_date,
+                    v.close_golive_completed_date,
+                    v.project_status,
+                    v.sold_mandays,
+                    v.total_manday,
+                    v.rework_manday,
                     CASE
-                        WHEN sold_mandays = 0 THEN 0
-                        ELSE (rework_manday / sold_mandays) * 100
-                    END AS rework_ratio
-                FROM pms.vw_post_golive_rework
+                        WHEN v.sold_mandays = 0 THEN 0
+                        ELSE (v.rework_manday / v.sold_mandays) * 100
+                    END AS rework_ratio,
+                    ISNULL(p.kpi_exclude_rework, 0) AS kpi_exclude_rework
+                FROM pms.vw_post_golive_rework v
+                INNER JOIN pms.projects p ON v.project_id = p.id
                 WHERE ${whereClause}
                 ORDER BY golive_completed_date DESC
             `)
@@ -185,7 +188,8 @@ export async function getPostGoliveReworkProjects(filters: PostGoliveReworkFilte
             total_manday: Math.round((row.total_manday || 0) * 10) / 10,
             rework_manday: Math.round((row.rework_manday || 0) * 10) / 10,
             rework_ratio: Math.round((row.rework_ratio || 0) * 100) / 100,
-            is_pass: (row.rework_ratio || 0) <= TARGET_REWORK_RATIO
+            is_pass: (row.rework_ratio || 0) <= TARGET_REWORK_RATIO,
+            kpi_excluded: row.kpi_exclude_rework === 1
         }))
 
         return { success: true, data }

@@ -5,6 +5,7 @@ import sql from 'mssql'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import { isMilestoneLocked } from './milestone-actions'
+import { generateTaskCode } from '@/lib/utils/task-code-generator'
 
 // ============================================
 // TYPES
@@ -247,15 +248,8 @@ export async function createTask(data: {
             }
         }
 
-        // Generate task code
-        const codeResult = await pool.request()
-            .input('storyId', sql.UniqueIdentifier, data.story_id)
-            .query(`
-        SELECT CONCAT('T-', RIGHT('000' + CAST(ISNULL(MAX(TRY_CAST(REPLACE(task_code, 'T-', '') AS INT)), 0) + 1 AS VARCHAR), 3)) AS new_code
-        FROM pms.tasks WHERE story_id = @storyId
-      `)
-
-        const taskCode = codeResult.recordset[0].new_code
+        // Generate globally unique task code (format: YMMNNNN, e.g. 6040001)
+        const taskCode = await generateTaskCode(pool)
         const newId = require('crypto').randomUUID()
 
         // Check if is_count_for_kpi column exists

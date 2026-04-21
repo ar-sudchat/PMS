@@ -454,6 +454,10 @@ export function ProjectOwnerDashboardClient({
                         projectsWithMilestones.map((project) => {
                             const health = healthConfig[project.health_status] || healthConfig.ON_TRACK
                             const isExpanded = expandedProjects.has(project.project_id)
+                            const completedMs = project.milestones.filter(m => m.status === 'completed').length
+                            const inProgressMs = project.milestones.find(m => m.status === 'in_progress')
+                            const overdueMs = project.milestones.filter(m => m.days_overdue > 0 && m.status !== 'completed')
+                            const msProgress = project.milestones.length > 0 ? Math.round(completedMs * 100 / project.milestones.length) : 0
 
                             return (
                                 <div
@@ -473,30 +477,51 @@ export function ProjectOwnerDashboardClient({
                                         onClick={() => toggleProject(project.project_id)}
                                     >
                                         <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={cn("w-3 h-3 rounded-full", health.dotColor)} />
-                                                <div>
+                                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                <div className={cn("w-3 h-3 rounded-full shrink-0", health.dotColor)} />
+                                                <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
                                                         <Link
                                                             href={`/projects/${project.project_id}`}
-                                                            className="font-bold text-gray-900 hover:text-indigo-600"
+                                                            className="font-bold text-gray-900 hover:text-indigo-600 shrink-0"
                                                             onClick={e => e.stopPropagation()}
                                                         >
                                                             {project.project_code}
                                                         </Link>
-                                                        <span className="text-gray-400">|</span>
-                                                        <span className="text-gray-700">{project.project_name}</span>
+                                                        <span className="text-gray-400 shrink-0">|</span>
+                                                        <span className="text-gray-700 truncate">{project.project_name}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                                                        <span>{project.customer_name || '-'}</span>
-                                                        <span className="flex items-center gap-1">
+                                                    <div className="flex items-center gap-3 mt-1 text-sm text-gray-500 flex-wrap">
+                                                        <span className="shrink-0">{project.customer_name || '-'}</span>
+                                                        {/* Milestone Progress Inline */}
+                                                        <span className="flex items-center gap-1 shrink-0">
                                                             <Target className="h-3.5 w-3.5" />
-                                                            {project.milestones.length} Milestones
+                                                            <span className="font-medium">{completedMs}/{project.milestones.length}</span> MS
                                                         </span>
+                                                        {/* Current Milestone */}
+                                                        {inProgressMs && (
+                                                            <span className="flex items-center gap-1 text-blue-600 shrink-0">
+                                                                <Zap className="h-3 w-3" />
+                                                                {inProgressMs.milestone_name}
+                                                                {inProgressMs.days_overdue > 0 && (
+                                                                    <span className="text-red-600 font-medium text-xs">(เกิน {inProgressMs.days_overdue}d)</span>
+                                                                )}
+                                                                {inProgressMs.days_until_due > 0 && inProgressMs.days_until_due <= 7 && (
+                                                                    <span className="text-amber-600 text-xs">(อีก {inProgressMs.days_until_due}d)</span>
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                        {/* Overdue Warning */}
+                                                        {overdueMs.length > 0 && !inProgressMs && (
+                                                            <span className="flex items-center gap-1 text-red-600 font-medium text-xs shrink-0">
+                                                                <AlertCircle className="h-3 w-3" />
+                                                                {overdueMs.length} MS เกินกำหนด
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-4">
+                                            <div className="flex items-center gap-4 shrink-0 ml-3">
                                                 <div className="text-right">
                                                     <div className={cn("text-lg font-bold", getStatusColor(project.manday_percent))}>
                                                         {Math.round(project.actual_mandays)}/{Math.round(project.planned_mandays)} MD
@@ -515,12 +540,28 @@ export function ProjectOwnerDashboardClient({
                                             </div>
                                         </div>
 
-                                        {/* Mini Progress */}
-                                        <div className="mt-3">
-                                            <Progress
-                                                value={Math.min(project.manday_percent, 100)}
-                                                className={cn("h-1.5 rounded-full", getProgressColor(project.manday_percent))}
-                                            />
+                                        {/* Dual Progress Bars */}
+                                        <div className="mt-3 grid grid-cols-2 gap-3">
+                                            <div>
+                                                <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                                                    <span>Man-day</span>
+                                                    <span>{Math.round(project.manday_percent)}%</span>
+                                                </div>
+                                                <Progress
+                                                    value={Math.min(project.manday_percent, 100)}
+                                                    className={cn("h-1.5 rounded-full", getProgressColor(project.manday_percent))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                                                    <span>Milestone</span>
+                                                    <span>{completedMs}/{project.milestones.length}</span>
+                                                </div>
+                                                <Progress
+                                                    value={msProgress}
+                                                    className="h-1.5 rounded-full [&>div]:bg-indigo-500"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 

@@ -88,6 +88,8 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'project-owner-dashboard', label: 'My Projects Dashboard', labelTh: 'แดชบอร์ดโครงการของฉัน', path: '/project-owner-dashboard', icon: FolderOpen },
           { id: 'manday-monitor', label: 'Man-day Monitor', labelTh: 'ติดตาม Man-day', path: '/manday-monitor', icon: BarChart3 },
           { id: 'project-status-overview', label: 'Project Status Overview', labelTh: 'ภาพรวมสถานะโครงการ', path: '/project-status-overview', icon: ClipboardList },
+          { id: 'team-dashboard', label: 'Team Dashboard', labelTh: 'แดชบอร์ดทีม', path: '/team-dashboard', icon: Users },
+          { id: 'executive-dashboard', label: 'Executive Dashboard', labelTh: 'แดชบอร์ดผู้บริหาร', path: '/executive-dashboard', icon: BarChart3 },
         ]
       }
     ]
@@ -163,8 +165,8 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'บันทึกเวลา',
         children: [
           { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
+          { id: 'kanban', label: 'Kanban Board', labelTh: 'บอร์ดบริหารงาน', path: '/kanban', icon: Layers },
           { id: 'my-calendar', label: 'My Calendar', labelTh: 'ปฏิทินของฉัน', path: '/my-calendar', icon: Calendar },
-          { id: 'daily-standup', label: 'Daily Stand-up', labelTh: 'Daily Stand-up', path: '/standup', icon: Users },
         ]
       },
       {
@@ -234,6 +236,7 @@ export const MENU_CONFIG: MenuModule[] = [
           { id: 'time-to-delivery', label: 'Time to Delivery', labelTh: 'ส่งมอบตรงเวลา', path: '/kpi-record/time-to-delivery', icon: Timer },
           { id: 'manday-control', label: 'Man-day Control', labelTh: 'ควบคุม Man-day', path: '/kpi-record/manday-control', icon: Calculator },
           { id: 'defect-ratio', label: 'Defect Ratio', labelTh: 'อัตรา Defect', path: '/kpi-record/defect-ratio', icon: Bug },
+          { id: 'individual-analysis', label: 'Individual Analysis', labelTh: 'วิเคราะห์ KPI รายบุคคล', path: '/kpi-record/individual-analysis', icon: UserCheck },
         ]
       },
       {

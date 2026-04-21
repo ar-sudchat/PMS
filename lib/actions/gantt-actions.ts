@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { generateTaskCode } from '@/lib/utils/task-code-generator'
 
 // ============================================
 // TYPES
@@ -299,17 +300,8 @@ export async function createTask(data: {
 
         const pool = await getConnection()
 
-        // Generate task code
-        const codeResult = await pool.request()
-            .input('storyId', sql.UniqueIdentifier, storyId)
-            .query(`SELECT TOP 1 task_code FROM pms.tasks WHERE story_id = @storyId ORDER BY created_at DESC`)
-
-        let nextNum = 1
-        if (codeResult.recordset.length > 0) {
-            const match = (codeResult.recordset[0].task_code || 'T-000').match(/T-(\d+)/)
-            if (match) nextNum = parseInt(match[1]) + 1
-        }
-        const taskCode = `T-${String(nextNum).padStart(3, '0')}`
+        // Generate globally unique task code (format: YMMNNNN, e.g. 6040001)
+        const taskCode = await generateTaskCode(pool)
 
         const result = await pool.request()
             .input('storyId', sql.UniqueIdentifier, storyId)
