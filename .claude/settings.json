@@ -20,7 +20,10 @@
       "Bash(ls -t /Users/artit/PMS/scripts/*defect* /Users/artit/PMS/scripts/*post*golive* /Users/artit/PMS/scripts/*rework*)",
       "Bash(wc -l /Users/artit/PMS/lib/actions/kpi-*.ts)",
       "Bash(grep -l \"vw_kpi_\" /Users/artit/PMS/scripts/*.sql)",
-      "Bash(grep -h \"CREATE VIEW pms.vw_kpi_\" /Users/artit/PMS/scripts/*.sql)"
+      "Bash(grep -h \"CREATE VIEW pms.vw_kpi_\" /Users/artit/PMS/scripts/*.sql)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(ps -p 55194 -o command=)"
     ]
   }
 }
