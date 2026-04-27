@@ -411,9 +411,10 @@ export function MandayAssessmentView({ initialData, currentYear, employeeId }: P
                                                 <div className="flex gap-1 justify-center">
                                                     {record.attachments.map((file, i) => (
                                                         <a
-                                                            href={`/api/files/${file.path}`}
+                                                            href={`/api/files/${file.path.split('/').map(encodeURIComponent).join('/')}`}
                                                             key={i}
                                                             target="_blank"
+                                                            rel="noopener noreferrer"
                                                             className="text-purple-600 hover:text-purple-800"
                                                             title={file.name}
                                                         >

@@ -393,9 +393,10 @@ export function ContactCustomerView({ initialData, currentYear }: Props) {
                                                 <div className="flex gap-1 justify-center">
                                                     {record.attachments.map((file, i) => (
                                                         <a
-                                                            href={`/api/files/${file.path}`}
+                                                            href={`/api/files/${file.path.split('/').map(encodeURIComponent).join('/')}`}
                                                             key={i}
                                                             target="_blank"
+                                                            rel="noopener noreferrer"
                                                             className="text-blue-600 hover:text-blue-800"
                                                             title={file.name}
                                                         >

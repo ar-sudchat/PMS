@@ -144,6 +144,52 @@ function generateStoredName(originalName: string): string {
     return `${timestamp}_${uuid}${ext}`
 }
 
+// Hard server-side cap for any single uploaded file. Per-call clients can still
+// pass a smaller maxFiles/maxSizeMB on the FileUpload component, but this is the
+// absolute ceiling that prevents bypassing the UI entirely.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 25 MB
+const FORBIDDEN_EXTENSIONS = new Set([
+    '.exe', '.bat', '.cmd', '.com', '.msi', '.scr', '.cpl',
+    '.sh', '.bash', '.zsh', '.ps1', '.psm1', '.vbs', '.js', '.jse',
+    '.wsf', '.wsh', '.jar', '.app', '.dll', '.so'
+])
+
+/**
+ * Resolve a relative storage path safely under the storage root.
+ * Throws if the path escapes the root via "..", absolute paths, or other tricks.
+ */
+function resolveSafeStoragePath(storagePath: string, relativePath: string): string {
+    if (!relativePath || typeof relativePath !== 'string') {
+        throw new Error('Invalid file path')
+    }
+    if (path.isAbsolute(relativePath)) {
+        throw new Error('Invalid file path')
+    }
+    const root = path.resolve(storagePath)
+    const fullPath = path.resolve(root, relativePath)
+    const rel = path.relative(root, fullPath)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error('Invalid file path')
+    }
+    return fullPath
+}
+
+/**
+ * Sanitize a subFolder string supplied from client code so it cannot escape root.
+ */
+function sanitizeSubFolder(subFolder?: string): string | undefined {
+    if (!subFolder) return undefined
+    const normalized = subFolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    if (!normalized) return undefined
+    if (normalized.split('/').some((seg) => seg === '..' || seg === '.')) {
+        throw new Error('Invalid subFolder')
+    }
+    if (path.isAbsolute(normalized)) {
+        throw new Error('Invalid subFolder')
+    }
+    return normalized
+}
+
 // ============================================
 // MAIN FILE SERVICE FUNCTIONS
 // ============================================
@@ -165,19 +211,30 @@ export async function uploadFile(
             return { success: false, error: 'Unauthorized' }
         }
 
+        // Reject obviously dangerous extensions even if a caller bypasses the UI's `accept`.
+        const ext = path.extname(originalName).toLowerCase()
+        if (FORBIDDEN_EXTENSIONS.has(ext)) {
+            return { success: false, error: `ไม่อนุญาตให้อัปโหลดไฟล์ประเภท ${ext}` }
+        }
+
+        // Convert base64 to Buffer if needed, then enforce the size cap before
+        // touching disk so a malicious client can't fill storage.
+        const buffer = typeof fileData === 'string'
+            ? Buffer.from(fileData, 'base64')
+            : fileData
+        if (buffer.length > MAX_UPLOAD_BYTES) {
+            return { success: false, error: `ไฟล์เกินขนาดสูงสุด ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB` }
+        }
+
         const storagePath = await getStoragePath()
+        const safeSubFolder = sanitizeSubFolder(subFolder)
         const storedName = generateStoredName(originalName)
-        const relativePath = subFolder ? path.join(subFolder, storedName) : storedName
-        const fullPath = path.join(storagePath, relativePath)
+        const relativePath = safeSubFolder ? path.posix.join(safeSubFolder, storedName) : storedName
+        const fullPath = resolveSafeStoragePath(storagePath, relativePath)
         const dirPath = path.dirname(fullPath)
 
         // Ensure directory exists
         await ensureDirectoryExists(dirPath)
-
-        // Convert base64 to Buffer if needed
-        const buffer = typeof fileData === 'string'
-            ? Buffer.from(fileData, 'base64')
-            : fileData
 
         // Write file
         await fs.writeFile(fullPath, buffer)
@@ -217,7 +274,7 @@ export async function readFile(filePath: string): Promise<ReadResult> {
         }
 
         const storagePath = await getStoragePath()
-        const fullPath = path.join(storagePath, filePath)
+        const fullPath = resolveSafeStoragePath(storagePath, filePath)
 
         // Check if file exists
         try {
@@ -250,7 +307,7 @@ export async function deleteFile(filePath: string): Promise<DeleteResult> {
         }
 
         const storagePath = await getStoragePath()
-        const fullPath = path.join(storagePath, filePath)
+        const fullPath = resolveSafeStoragePath(storagePath, filePath)
 
         // Check if file exists
         try {
@@ -277,7 +334,7 @@ export async function deleteFile(filePath: string): Promise<DeleteResult> {
 export async function fileExists(filePath: string): Promise<FileExistsResult> {
     try {
         const storagePath = await getStoragePath()
-        const fullPath = path.join(storagePath, filePath)
+        const fullPath = resolveSafeStoragePath(storagePath, filePath)
 
         try {
             await fs.access(fullPath)
@@ -314,7 +371,7 @@ export async function getFileInfo(filePath: string): Promise<{
         }
 
         const storagePath = await getStoragePath()
-        const fullPath = path.join(storagePath, filePath)
+        const fullPath = resolveSafeStoragePath(storagePath, filePath)
 
         // Check if file exists
         try {
@@ -366,7 +423,8 @@ export async function listFiles(subFolder?: string): Promise<{
         }
 
         const storagePath = await getStoragePath()
-        const targetPath = subFolder ? path.join(storagePath, subFolder) : storagePath
+        const safeSubFolder = sanitizeSubFolder(subFolder)
+        const targetPath = safeSubFolder ? resolveSafeStoragePath(storagePath, safeSubFolder) : path.resolve(storagePath)
 
         // Check if directory exists
         try {
@@ -381,7 +439,7 @@ export async function listFiles(subFolder?: string): Promise<{
             entries.map(async (entry) => {
                 const entryPath = path.join(targetPath, entry.name)
                 const stats = await fs.stat(entryPath)
-                const relativePath = subFolder ? path.join(subFolder, entry.name) : entry.name
+                const relativePath = safeSubFolder ? path.posix.join(safeSubFolder, entry.name) : entry.name
 
                 return {
                     name: entry.name,
@@ -418,8 +476,8 @@ export async function copyFile(sourcePath: string, destPath: string): Promise<{
         }
 
         const storagePath = await getStoragePath()
-        const sourceFullPath = path.join(storagePath, sourcePath)
-        const destFullPath = path.join(storagePath, destPath)
+        const sourceFullPath = resolveSafeStoragePath(storagePath, sourcePath)
+        const destFullPath = resolveSafeStoragePath(storagePath, destPath)
 
         // Check if source exists
         try {
@@ -458,8 +516,8 @@ export async function moveFile(sourcePath: string, destPath: string): Promise<{
         }
 
         const storagePath = await getStoragePath()
-        const sourceFullPath = path.join(storagePath, sourcePath)
-        const destFullPath = path.join(storagePath, destPath)
+        const sourceFullPath = resolveSafeStoragePath(storagePath, sourcePath)
+        const destFullPath = resolveSafeStoragePath(storagePath, destPath)
 
         // Check if source exists
         try {
@@ -497,7 +555,7 @@ export async function createDirectory(dirPath: string): Promise<{
         }
 
         const storagePath = await getStoragePath()
-        const fullPath = path.join(storagePath, dirPath)
+        const fullPath = resolveSafeStoragePath(storagePath, dirPath)
 
         await fs.mkdir(fullPath, { recursive: true })
 
@@ -525,7 +583,7 @@ export async function deleteDirectory(dirPath: string, recursive: boolean = fals
         }
 
         const storagePath = await getStoragePath()
-        const fullPath = path.join(storagePath, dirPath)
+        const fullPath = resolveSafeStoragePath(storagePath, dirPath)
 
         // Check if directory exists
         try {
@@ -597,33 +655,6 @@ export async function getFileDataUrl(filePath: string): Promise<{
     }
 }
 
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-/**
- * Format file size to human readable
- */
-export async function formatFileSize(bytes: number): Promise<string> {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-/**
- * Validate file extension
- */
-export async function isAllowedExtension(filename: string, allowedExtensions: string[]): Promise<boolean> {
-    const ext = path.extname(filename).toLowerCase()
-    return allowedExtensions.includes(ext)
-}
-
-/**
- * Validate file size
- */
-export async function isAllowedSize(size: number, maxSizeInMB: number): Promise<boolean> {
-    const maxSizeInBytes = maxSizeInMB * 1024 * 1024
-    return size <= maxSizeInBytes
-}
+// Utility helpers (formatFileSize, isAllowedExtension, isAllowedSize) moved to
+// lib/utils/file-utils.ts so they can be imported from client components without
+// pulling in the entire 'use server' module.

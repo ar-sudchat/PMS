@@ -6,6 +6,66 @@ import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import { isMilestoneLocked } from './milestone-actions'
 import { generateTaskCode } from '@/lib/utils/task-code-generator'
+import { moveFile, deleteFile } from '@/lib/services/file-service'
+
+// ============================================
+// ATTACHMENT HELPERS
+// ============================================
+
+type RawAttachment = {
+    id?: string
+    name: string
+    path: string
+    size: number
+    mimeType?: string
+    type?: string
+    uploadedAt?: string
+}
+
+/**
+ * Move temp-uploaded files into a permanent `tasks/{task_code}/` folder and
+ * rewrite their `path` fields. Falls back to the original metadata if the move
+ * fails so the user does not lose access to a successfully uploaded file.
+ */
+async function relocateTaskAttachments(attachments: RawAttachment[], taskCode: string) {
+    const targetFolder = `tasks/${taskCode}`
+    const result: RawAttachment[] = []
+    for (const att of attachments) {
+        if (!att.path.startsWith('tasks/temp-')) {
+            result.push(att)
+            continue
+        }
+        const filename = att.path.split('/').pop() || ''
+        const destPath = `${targetFolder}/${filename}`
+        const moveResult = await moveFile(att.path, destPath)
+        if (moveResult.success) {
+            result.push({ ...att, path: destPath })
+        } else {
+            console.error('relocateTaskAttachments: move failed', att.path, moveResult.error)
+            result.push(att)
+        }
+    }
+    return result
+}
+
+/**
+ * Delete attachment files left in `tasks/temp-*` folders when the user cancels
+ * create-task. Called from the modal so the storage doesn't accumulate orphans.
+ */
+export async function discardTempTaskAttachments(paths: string[]) {
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: 'Unauthorized' }
+    for (const p of paths) {
+        if (typeof p === 'string' && p.startsWith('tasks/temp-')) {
+            try {
+                await deleteFile(p)
+            } catch (error) {
+                console.error('discardTempTaskAttachments: delete failed', p, error)
+            }
+        }
+    }
+    return { success: true }
+}
 
 // ============================================
 // TYPES
@@ -317,9 +377,11 @@ export async function createTask(data: {
                 AND COLUMN_NAME = 'attachments'
             `)
             if (attachmentsColumnCheck.recordset.length > 0) {
+                // Move files from `tasks/temp-*` into the permanent `tasks/{task_code}` folder.
+                const finalAttachments = await relocateTaskAttachments(data.attachments, taskCode)
                 await pool.request()
                     .input('taskId', sql.UniqueIdentifier, taskId)
-                    .input('attachments', sql.NVarChar, JSON.stringify(data.attachments))
+                    .input('attachments', sql.NVarChar, JSON.stringify(finalAttachments))
                     .query(`UPDATE pms.tasks SET attachments = @attachments WHERE id = @taskId`)
             }
         }

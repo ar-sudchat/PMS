@@ -10,7 +10,7 @@ import {
     deleteRequestAttachment
 } from '@/lib/actions/project-request-actions'
 import { toast } from 'sonner'
-import { FileIcon, Trash2, Download, Loader2 } from 'lucide-react'
+import { FileIcon, Trash2, ExternalLink, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -136,6 +136,15 @@ export function ProjectRequestAttachments({
                             </div>
 
                             <div className="flex items-center gap-2">
+                                <a
+                                    href={`/api/files/${file.file_path.split('/').map(encodeURIComponent).join('/')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="ดูไฟล์"
+                                    className="inline-flex items-center justify-center h-9 w-9 rounded-md text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                    <ExternalLink className="h-4 w-4" />
+                                </a>
                                 {canEdit && (
                                     <Button
                                         variant="ghost"
