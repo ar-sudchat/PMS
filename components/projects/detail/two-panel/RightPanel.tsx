@@ -7,8 +7,9 @@ import { TasksPanelHeader } from './TasksPanelHeader'
 import { SuperTable } from '@/components/shared/SuperTable/SuperTable'
 import { CreateStoryModal as StoryModal } from '@/components/modals/CreateStoryModal'
 import { NewTaskModal as TaskModal } from '@/components/modals/NewTaskModal'
+import { BulkTaskModal } from '@/components/modals/BulkTaskModal'
 import { toast } from 'sonner'
-import { Pencil, Trash2, CheckCircle2, Circle, Clock, AlertCircle, Calendar, Paperclip, Check, X } from 'lucide-react'
+import { Pencil, Trash2, CheckCircle2, Circle, Clock, AlertCircle, Calendar, Paperclip, Check, X, Layers } from 'lucide-react'
 
 interface RightPanelProps {
     projectId: string
@@ -25,6 +26,7 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
     // Modal States
     const [isEditStoryOpen, setIsEditStoryOpen] = useState(false)
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
+    const [isBulkAddOpen, setIsBulkAddOpen] = useState(false)
     const [taskModalMode, setTaskModalMode] = useState<'create' | 'edit'>('create')
     const [selectedTask, setSelectedTask] = useState<TaskListItem | undefined>(undefined)
 
@@ -353,6 +355,14 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
                             >
                                 ＋ Add Task
                             </button>
+                            <button
+                                onClick={() => setIsBulkAddOpen(true)}
+                                className="px-3 py-1.5 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 flex items-center gap-1.5 transition-colors shadow-sm"
+                                title="สร้างหลาย Task พร้อมกัน"
+                            >
+                                <Layers className="w-4 h-4" />
+                                Bulk Add
+                            </button>
                         </div>
                     )}
                     onRowClick={(task) => handleEditTask(task)}
@@ -385,6 +395,19 @@ export function RightPanel({ projectId, selectedStory, onRefreshStories, milesto
                 mode={taskModalMode}
                 task={selectedTask}
                 currentUserId={currentUserId}
+            />
+
+            <BulkTaskModal
+                isOpen={isBulkAddOpen}
+                onClose={() => setIsBulkAddOpen(false)}
+                storyId={selectedStory.id}
+                storyCode={selectedStory.code}
+                storyTitle={selectedStory.title}
+                currentUserId={currentUserId}
+                onSuccess={() => {
+                    fetchTasks()
+                    onRefreshStories()
+                }}
             />
         </div>
     )

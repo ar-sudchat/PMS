@@ -48,6 +48,146 @@ async function relocateTaskAttachments(attachments: RawAttachment[], taskCode: s
     return result
 }
 
+// ============================================
+// BULK CREATE TASKS
+// ============================================
+
+export interface BulkTaskInput {
+    title: string
+    task_type: string
+    priority: string
+    estimated_hours?: number
+    due_date?: string
+    assignee_id?: string
+    is_count_for_kpi?: boolean
+    attachments?: RawAttachment[]
+}
+
+/**
+ * Create up to N tasks for the same story in a single transaction.
+ * - Generates a unique task_code per row (the code generator uses UPDLOCK so the
+ *   loop is safe under concurrent inserts).
+ * - Relocates each row's temp-uploaded attachments to its permanent
+ *   `tasks/{task_code}/` folder after the inserts commit.
+ * - Returns per-row results so the caller can show what was created.
+ */
+export async function createTasksBulk(input: {
+    story_id: string
+    tasks: BulkTaskInput[]
+}) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        if (!input.tasks || input.tasks.length === 0) {
+            return { success: false, error: 'No tasks to create' }
+        }
+        for (const t of input.tasks) {
+            if (!t.title?.trim()) return { success: false, error: 'Task title is required for all rows' }
+            if (!t.task_type) return { success: false, error: `Task type is required: "${t.title}"` }
+            if (!t.priority) return { success: false, error: `Priority is required: "${t.title}"` }
+        }
+
+        const pool = await getConnection()
+
+        // Milestone-lock check (same gate as createTask)
+        const storyResult = await pool.request()
+            .input('storyId', sql.UniqueIdentifier, input.story_id)
+            .query(`SELECT milestone_id FROM pms.stories WHERE id = @storyId`)
+        if (storyResult.recordset.length > 0 && storyResult.recordset[0].milestone_id) {
+            const milestoneId = storyResult.recordset[0].milestone_id
+            const isLocked = await isMilestoneLocked(milestoneId)
+            if (isLocked) {
+                return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถเพิ่ม Task ได้' }
+            }
+        }
+
+        // Detect optional columns once outside the transaction
+        const colCheck = await pool.request().query(`
+            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'pms' AND TABLE_NAME = 'tasks'
+              AND COLUMN_NAME IN ('is_count_for_kpi', 'attachments')
+        `)
+        const hasKpiColumn = colCheck.recordset.some((r: any) => r.COLUMN_NAME === 'is_count_for_kpi')
+        const hasAttachmentsColumn = colCheck.recordset.some((r: any) => r.COLUMN_NAME === 'attachments')
+
+        const transaction = new sql.Transaction(pool)
+        const created: { id: string; task_code: string; title: string }[] = []
+
+        try {
+            await transaction.begin()
+
+            for (const t of input.tasks) {
+                const codeRequest = new sql.Request(transaction)
+                const taskCode = await generateTaskCode(codeRequest)
+                const newId = require('crypto').randomUUID()
+
+                const insertRequest = new sql.Request(transaction)
+                    .input('id', sql.UniqueIdentifier, newId)
+                    .input('taskCode', sql.NVarChar, taskCode)
+                    .input('storyId', sql.UniqueIdentifier, input.story_id)
+                    .input('title', sql.NVarChar, t.title.trim())
+                    .input('taskType', sql.NVarChar, t.task_type)
+                    .input('assigneeId', sql.UniqueIdentifier, t.assignee_id || null)
+                    .input('reviewerId', sql.UniqueIdentifier, user.id)
+                    .input('priority', sql.NVarChar, t.priority)
+                    .input('estimatedHours', sql.Decimal(10, 2), t.estimated_hours ?? null)
+                    .input('dueDate', sql.Date, t.due_date ? new Date(t.due_date) : null)
+                    .input('createdBy', sql.UniqueIdentifier, user.id)
+
+                let insertQuery: string
+                if (hasKpiColumn) {
+                    insertRequest.input('isCountForKpi', sql.Bit, t.is_count_for_kpi !== false ? 1 : 0)
+                    insertQuery = `
+                        INSERT INTO pms.tasks (id, task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, is_count_for_kpi, created_at, updated_at)
+                        VALUES (@id, @taskCode, @storyId, @title, NULL, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, 'todo', 1, @isCountForKpi, GETDATE(), GETDATE())
+                    `
+                } else {
+                    insertQuery = `
+                        INSERT INTO pms.tasks (id, task_code, story_id, title, description, task_type, assignee_id, reviewer_id, priority, estimated_hours, due_date, created_by, status, is_active, created_at, updated_at)
+                        VALUES (@id, @taskCode, @storyId, @title, NULL, @taskType, @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate, @createdBy, 'todo', 1, GETDATE(), GETDATE())
+                    `
+                }
+                await insertRequest.query(insertQuery)
+                created.push({ id: newId, task_code: taskCode, title: t.title.trim() })
+            }
+
+            await transaction.commit()
+        } catch (txErr: any) {
+            try { await transaction.rollback() } catch { /* noop */ }
+            throw txErr
+        }
+
+        // Post-commit: relocate temp attachments per task and persist metadata.
+        // We do this outside the transaction because file moves are non-transactional
+        // and a partial failure should not roll back tasks already created.
+        if (hasAttachmentsColumn) {
+            for (let i = 0; i < input.tasks.length; i++) {
+                const row = input.tasks[i]
+                const c = created[i]
+                if (!row.attachments || row.attachments.length === 0) continue
+                const finalAttachments = await relocateTaskAttachments(row.attachments, c.task_code)
+                await pool.request()
+                    .input('taskId', sql.UniqueIdentifier, c.id)
+                    .input('attachments', sql.NVarChar(sql.MAX), JSON.stringify(finalAttachments))
+                    .query(`UPDATE pms.tasks SET attachments = @attachments WHERE id = @taskId`)
+            }
+        }
+
+        // Revalidate project view once
+        const storyProjectResult = await pool.request()
+            .input('storyId', sql.UniqueIdentifier, input.story_id)
+            .query(`SELECT project_id FROM pms.stories WHERE id = @storyId`)
+        if (storyProjectResult.recordset[0]?.project_id) {
+            revalidatePath(`/projects/${storyProjectResult.recordset[0].project_id}`)
+        }
+
+        return { success: true, data: { count: created.length, tasks: created } }
+    } catch (error: any) {
+        console.error('createTasksBulk error:', error)
+        return { success: false, error: error.message }
+    }
+}
+
 /**
  * Delete attachment files left in `tasks/temp-*` folders when the user cancels
  * create-task. Called from the modal so the storage doesn't accumulate orphans.
