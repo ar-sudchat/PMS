@@ -6,6 +6,7 @@ import { MyTask, unassignFromTask } from '@/lib/actions/my-tasks-actions'
 import { getTimeEntriesForTask, deleteTimeEntry, TaskTimeEntry } from '@/lib/actions/timesheet-actions'
 import { getChecklistItems, toggleChecklistItem, ChecklistItem } from '@/lib/actions/checklist-actions'
 import { getTaskAttachments, Attachment } from '@/lib/actions/attachment-actions'
+import { formatFileSize } from '@/lib/utils/file-utils'
 import { format } from 'date-fns'
 import { Calendar, Clock, CheckSquare, AlignLeft, AlertCircle, Trash2, History, ListChecks, Square, CheckSquare2, Paperclip, FileText, Image, ExternalLink, UserX } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -106,12 +107,6 @@ export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlle
         } finally {
             setLoadingAttachments(false)
         }
-    }
-
-    const formatFileSize = (bytes: number) => {
-        if (bytes < 1024) return bytes + ' B'
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
     }
 
     const getFileIcon = (type: string) => {
@@ -511,7 +506,7 @@ export function TaskDetailModal({ open, onOpenChange, task, activeTab: controlle
                                                         </div>
                                                     </div>
                                                     <a
-                                                        href={`/api/files/${encodeURIComponent(file.path)}`}
+                                                        href={`/api/files/${file.path.split('/').map(encodeURIComponent).join('/')}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"

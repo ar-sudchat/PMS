@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, KeyboardEvent } from 'react'
 import { X, CheckCircle, Calendar, Clock, Plus, Trash2, ListChecks, Paperclip } from 'lucide-react'
-import { createTask, updateTask, getTaskTypes } from '@/lib/actions/task-actions'
+import { createTask, updateTask, getTaskTypes, discardTempTaskAttachments } from '@/lib/actions/task-actions'
 import { getAssignableEmployees, getEmployees } from '@/lib/actions/employee-actions'
 import { getChecklistItems, createChecklistItem, deleteChecklistItem, ChecklistItem } from '@/lib/actions/checklist-actions'
 import { getTaskAttachments, updateTaskAttachments, Attachment } from '@/lib/actions/attachment-actions'
@@ -74,6 +74,12 @@ export function NewTaskModal({
     // Attachments state
     const [attachments, setAttachments] = useState<Attachment[]>([])
     const [activeTab, setActiveTab] = useState<'details' | 'attachments'>('details')
+    // Stable per-modal-session temp folder so React re-renders don't generate
+    // multiple temp- folders for the same in-progress task.
+    const tempSessionRef = useRef<string>('')
+    if (!tempSessionRef.current) {
+        tempSessionRef.current = `tasks/temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    }
 
     const titleInputRef = useRef<HTMLInputElement>(null)
     const formRef = useRef<HTMLFormElement>(null)
@@ -335,6 +341,13 @@ export function NewTaskModal({
             if (result && result.success) {
                 if (onSuccess) onSuccess()
 
+                // Files have been moved out of the temp folder by createTask, so the
+                // current temp session is empty. Start a fresh one for any follow-up
+                // task created in the same modal session.
+                if (mode === 'create') {
+                    tempSessionRef.current = `tasks/temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                }
+
                 if (closeAfter) {
                     onClose()
                 } else {
@@ -353,6 +366,24 @@ export function NewTaskModal({
         } finally {
             setIsSaving(false)
         }
+    }
+
+    // Wrap onClose so cancelling out of create-mode also wipes any temp uploads
+    // the user already made; otherwise those files orphan in storage.
+    const handleClose = async () => {
+        if (mode === 'create' && attachments.length > 0) {
+            const tempPaths = attachments
+                .map(a => a.path)
+                .filter(p => typeof p === 'string' && p.startsWith('tasks/temp-'))
+            if (tempPaths.length > 0) {
+                try {
+                    await discardTempTaskAttachments(tempPaths)
+                } catch (error) {
+                    console.error('Failed to discard temp attachments', error)
+                }
+            }
+        }
+        onClose()
     }
 
     if (!isOpen) return null
@@ -416,7 +447,7 @@ export function NewTaskModal({
                             : `Edit Task: ${task?.task_code}`}
                         {mode === 'create' && storyCode && <span className="text-sm font-normal text-slate-500">({storyCode})</span>}
                     </h2>
-                    <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-700">
+                    <button onClick={handleClose} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-slate-700">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -738,7 +769,7 @@ export function NewTaskModal({
                             }}
                             maxFiles={10}
                             maxSizeMB={10}
-                            subFolder={mode === 'edit' ? `tasks/${task?.task_code || 'unknown'}` : `tasks/temp-${Date.now()}`}
+                            subFolder={mode === 'edit' ? `tasks/${task?.task_code || 'unknown'}` : tempSessionRef.current}
                             label=""
                             disabled={isTaskCompleted}
                         />
@@ -764,7 +795,7 @@ export function NewTaskModal({
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                onClick={onClose}
+                                onClick={handleClose}
                                 className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-white hover:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all text-sm"
                             >
                                 {isTaskCompleted ? 'Close' : 'Cancel'}

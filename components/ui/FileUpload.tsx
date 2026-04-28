@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { Upload, X, File, Image, FileText, Paperclip, Eye, Download, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { uploadFile, deleteFile, getFileDataUrl } from '@/lib/services/file-service'
+import { formatFileSize } from '@/lib/utils/file-utils'
 
 interface UploadedFile {
     id: string
@@ -23,14 +24,6 @@ interface FileUploadProps {
     disabled?: boolean
     label?: string
     helperText?: string
-}
-
-const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 const getFileIcon = (mimeType: string) => {
@@ -122,16 +115,19 @@ export default function FileUpload({
     }, [value, onChange, maxFiles, maxSizeMB, subFolder])
 
     const handleRemove = useCallback(async (file: UploadedFile) => {
+        // Always drop the metadata first so the user can clear phantom rows
+        // even if the underlying file is already missing.
+        onChange?.(value.filter(f => f.id !== file.id))
         try {
             const result = await deleteFile(file.path)
             if (result.success) {
-                onChange?.(value.filter(f => f.id !== file.id))
                 toast.success('File removed')
             } else {
-                toast.error(result.error || 'Failed to remove file')
+                // Soft-fail: metadata is gone but warn that the on-disk file may linger
+                toast.warning(result.error || 'ลบไฟล์บนเซิร์ฟเวอร์ไม่สำเร็จ')
             }
         } catch (error) {
-            toast.error('Failed to remove file')
+            toast.warning('ลบไฟล์บนเซิร์ฟเวอร์ไม่สำเร็จ')
         }
     }, [value, onChange])
 

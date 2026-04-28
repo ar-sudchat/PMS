@@ -3,6 +3,7 @@
 import sql from 'mssql'
 import { getConnection } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { deleteFile } from '@/lib/services/file-service'
 import {
     submitForApproval,
     approveRequest as approveApprovalRequest,
@@ -830,7 +831,7 @@ export async function addRequestAttachment(data: {
             `)
 
         revalidatePath('/project-requests')
-        revalidatePath(`/ project - requests / ${data.requestId} `)
+        revalidatePath(`/project-requests/${data.requestId}`)
         return { success: true }
     } catch (error: any) {
         return { success: false, error: error.message }
@@ -841,9 +842,18 @@ export async function deleteRequestAttachment(id: string) {
     try {
         const pool = await getConnection()
 
+        const fileResult = await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query(`SELECT file_path FROM pms.project_request_attachments WHERE id = @id`)
+
         await pool.request()
             .input('id', sql.UniqueIdentifier, id)
             .query(`DELETE FROM pms.project_request_attachments WHERE id = @id`)
+
+        const filePath: string | undefined = fileResult.recordset[0]?.file_path
+        if (filePath) {
+            await deleteFile(filePath)
+        }
 
         revalidatePath('/project-requests')
         return { success: true }

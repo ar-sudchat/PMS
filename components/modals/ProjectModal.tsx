@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Plus, Trash2, FileText, Check, AlertCircle, Paperclip, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { Project, ProjectFormData, MilestoneRow } from '@/types/project'
@@ -20,7 +20,7 @@ import {
 import { getProjectTypes, ProjectType } from '@/lib/actions/project-type-actions'
 import { getProjectGroups, ProjectGroup } from '@/lib/actions/project-group-actions'
 import { getChanceConfigs, ChanceConfig } from '@/lib/actions/chance-actions'
-import { getProjectAttachments, updateProjectAttachments, Attachment } from '@/lib/actions/attachment-actions'
+import { getProjectAttachments, updateProjectAttachments, discardTempProjectAttachments, Attachment } from '@/lib/actions/attachment-actions'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { MilestonesTab } from './ProjectModal/MilestonesTab'
 import { DeliverablesTab } from './ProjectModal/DeliverablesTab'
@@ -44,6 +44,11 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
 
     // Attachments State
     const [attachments, setAttachments] = useState<Attachment[]>([])
+    // Stable per-modal-session temp folder so each new file lands in the same place.
+    const tempSessionRef = useRef<string>('')
+    if (!tempSessionRef.current) {
+        tempSessionRef.current = `projects/temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    }
 
     // Form State - Project Info
     const [formData, setFormData] = useState({
@@ -496,6 +501,23 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
         return `${ids.length} items`
     }
 
+    // Wrap onClose so cancelling out of create-mode discards any temp uploads.
+    const handleClose = async () => {
+        if (mode === 'create' && attachments.length > 0) {
+            const tempPaths = attachments
+                .map(a => a.path)
+                .filter(p => typeof p === 'string' && p.startsWith('projects/temp-'))
+            if (tempPaths.length > 0) {
+                try {
+                    await discardTempProjectAttachments(tempPaths)
+                } catch (error) {
+                    console.error('Failed to discard temp project attachments', error)
+                }
+            }
+        }
+        onClose()
+    }
+
     if (!open) return null
 
     // Combobox Options
@@ -506,7 +528,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             {/* Overlay */}
-            <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
 
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-7xl mx-4 flex flex-col items-stretch h-[85vh] max-h-[95vh]">
@@ -516,7 +538,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     <h2 className="text-xl font-semibold">
                         {mode === 'create' ? 'Create New Project' : 'Edit Project'}
                     </h2>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+                    <button onClick={handleClose} className="p-2 hover:bg-slate-100 rounded-lg">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -1089,7 +1111,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                             }}
                             maxFiles={10}
                             maxSizeMB={10}
-                            subFolder={mode === 'edit' ? `projects/${project?.project_code || 'unknown'}` : `projects/temp-${Date.now()}`}
+                            subFolder={mode === 'edit' ? `projects/${project?.project_code || 'unknown'}` : tempSessionRef.current}
                             label=""
                         />
                     </div>
@@ -1100,7 +1122,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={handleClose}
                             className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100"
                         >
                             Cancel

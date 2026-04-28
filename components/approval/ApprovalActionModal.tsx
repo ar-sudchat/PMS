@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { approveRequest, rejectRequest, fetchDocumentAttachments } from '@/lib/actions/approval-actions'
 import { getFileDataUrl } from '@/lib/services/file-service'
+import { formatFileSize } from '@/lib/utils/file-utils'
 
 interface UploadedFile {
     id: string
@@ -96,10 +97,13 @@ export function ApprovalActionModal({
                 }))
                 setAttachments(initialAttachments)
 
-                // Load previews for all image files in parallel
+                // Load previews for image files with bounded concurrency to avoid
+                // hammering the server (and blowing up memory) when a doc has many images.
                 const imageFiles = result.attachments.filter((f: UploadedFile) => getFileType(f).startsWith('image/'))
+                const CONCURRENCY = 3
+                const queue = [...imageFiles]
 
-                await Promise.all(imageFiles.map(async (file: UploadedFile) => {
+                const loadOne = async (file: UploadedFile) => {
                     try {
                         const previewResult = await getFileDataUrl(file.path)
                         if (previewResult.success && previewResult.dataUrl) {
@@ -122,7 +126,15 @@ export function ApprovalActionModal({
                                 : f
                         ))
                     }
-                }))
+                }
+
+                const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+                    while (queue.length > 0) {
+                        const file = queue.shift()
+                        if (file) await loadOne(file)
+                    }
+                })
+                await Promise.all(workers)
             }
         } catch (error) {
             console.error('Failed to load attachments:', error)
@@ -152,12 +164,6 @@ export function ApprovalActionModal({
         } catch (error) {
             toast.error('Failed to download file')
         }
-    }
-
-    const formatFileSize = (bytes: number) => {
-        if (bytes < 1024) return bytes + ' B'
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
     }
 
     const handleSubmit = async () => {
