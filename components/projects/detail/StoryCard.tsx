@@ -1,9 +1,10 @@
 'use client'
 
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Layers } from 'lucide-react'
 import { useState } from 'react'
 import { TaskCard } from './TaskCard'
 import { NewTaskModal } from '@/components/modals/NewTaskModal'
+import { BulkTaskModal } from '@/components/modals/BulkTaskModal'
 
 interface StoryCardProps {
     story: any
@@ -16,6 +17,7 @@ interface StoryCardProps {
 export function StoryCard({ story, tasks, projectId, currentUserId, onRefresh }: StoryCardProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [showAddTask, setShowAddTask] = useState(false)
+    const [showBulkAdd, setShowBulkAdd] = useState(false)
 
     const priorityColors = {
         critical: 'bg-red-100 text-red-800',
@@ -98,16 +100,29 @@ export function StoryCard({ story, tasks, projectId, currentUserId, onRefresh }:
                             </div>
                         )}
 
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                setShowAddTask(true)
-                            }}
-                            className="w-full py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Add Task
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    setShowAddTask(true)
+                                }}
+                                className="flex-1 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Add Task
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    setShowBulkAdd(true)
+                                }}
+                                className="px-4 py-2 border-2 border-dashed border-blue-300 bg-blue-50 rounded-lg text-blue-700 hover:border-blue-500 hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 font-medium"
+                                title="สร้างหลาย Task พร้อมกัน"
+                            >
+                                <Layers className="w-4 h-4" />
+                                Bulk Add
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -120,6 +135,18 @@ export function StoryCard({ story, tasks, projectId, currentUserId, onRefresh }:
                 currentUserId={currentUserId}
                 onSuccess={() => {
                     setShowAddTask(false)
+                    onRefresh()
+                }}
+            />
+
+            <BulkTaskModal
+                isOpen={showBulkAdd}
+                onClose={() => setShowBulkAdd(false)}
+                storyId={story.id}
+                storyCode={story.story_code}
+                storyTitle={story.title}
+                currentUserId={currentUserId}
+                onSuccess={() => {
                     onRefresh()
                 }}
             />

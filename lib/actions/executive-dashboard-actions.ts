@@ -206,6 +206,7 @@ export async function getExecutiveDashboardData(year: number): Promise<Executive
     // 4. Monthly Trend (this year)
     const trendResult = await pool.request()
       .input('year', sql.Int, year)
+      .input('month', sql.Int, currentMonth)
       .query(`
         SELECT
           m.month_num AS month,
