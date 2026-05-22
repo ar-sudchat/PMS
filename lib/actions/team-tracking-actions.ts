@@ -8,14 +8,14 @@ import sql from 'mssql'
 // Cached column-existence flags so the page works even if a migration
 // has not yet been applied.
 let _colFlags: { icon: boolean; status: boolean } | null = null
-async function checkOptionalCols(pool: any) {
+async function checkOptionalCols(pool: sql.ConnectionPool) {
     if (_colFlags) return _colFlags
     const res = await pool.request().query(`
         SELECT name FROM sys.columns
         WHERE object_id = OBJECT_ID('pms.team_tracking_entries')
           AND name IN ('icon', 'status', 'completed_date', 'postponed_date')
     `)
-    const names = new Set(res.recordset.map((r: any) => r.name))
+    const names = new Set(res.recordset.map((r: { name: string }) => r.name))
     _colFlags = {
         icon: names.has('icon'),
         status: names.has('status') && names.has('completed_date') && names.has('postponed_date'),
@@ -88,6 +88,17 @@ export interface AssignableEmployee {
     position_code: string | null
 }
 
+export interface TrackingProject {
+    id: string
+    project_code: string
+    name: string
+    customer_name: string | null
+    project_type_code: string | null
+    project_type_color: string | null
+    owner_name: string | null
+    pm_name: string | null
+}
+
 // ============================================
 // GET TEAM TRACKING DATA
 // (projects matched by filter + entries within month range)
@@ -99,12 +110,53 @@ export async function getTeamTrackingData(
     monthEnd: string      // 'yyyy-MM-dd'
 ) {
     try {
-        const projectsResult = await getProjects(filters)
+        let matchedProjectIds: string[] | null = null
+        const projectsFilters = { ...filters }
+
+        if (filters.ownerId) {
+            try {
+                const pool = await getConnection()
+                const request = pool.request()
+                request.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
+                request.input('monthStart', sql.Date, monthStart)
+                request.input('monthEnd', sql.Date, monthEnd)
+                const result = await request.query(`
+                    SELECT DISTINCT p.id
+                    FROM pms.projects p
+                    LEFT JOIN pms.team_tracking_entries t ON p.id = t.project_id AND t.is_active = 1
+                    WHERE p.is_active = 1
+                      AND (
+                        p.project_owner_id = @ownerId 
+                        OR (t.assignee_id = @ownerId AND t.entry_date BETWEEN @monthStart AND @monthEnd)
+                        OR EXISTS (
+                            SELECT 1 
+                            FROM pms.tasks tk 
+                            JOIN pms.stories s ON tk.story_id = s.id 
+                            WHERE s.project_id = p.id 
+                              AND tk.assignee_id = @ownerId 
+                              AND tk.is_active = 1 
+                              AND s.is_active = 1
+                        )
+                      )
+                `)
+                matchedProjectIds = result.recordset.map((r: { id: string }) => r.id)
+            } catch (err) {
+                console.error('Error fetching matched project IDs for employee filter:', err)
+            }
+            // Remove ownerId from filter payload passed to getProjects so we can filter in JS
+            delete projectsFilters.ownerId
+        }
+
+        const projectsResult = await getProjects(projectsFilters)
         if (!projectsResult.success || !projectsResult.data) {
             return { success: false, error: projectsResult.error || 'Failed to load projects', data: null }
         }
 
-        const projects = projectsResult.data as any[]
+        let projects = projectsResult.data as TrackingProject[]
+        if (matchedProjectIds !== null) {
+            projects = projects.filter((p) => matchedProjectIds!.includes(p.id))
+        }
+
         if (projects.length === 0) {
             return { success: true, data: { projects: [], entries: [] as TrackingEntry[] } }
         }
@@ -198,7 +250,7 @@ export async function getProjectMilestones(projectId: string) {
             .query(`
                 SELECT
                     pm.id,
-                    COALESCE(pm.name, mc.name) AS name,
+                    mc.name AS name,
                     mc.color,
                     mc.code,
                     pm.sort_order
@@ -209,7 +261,7 @@ export async function getProjectMilestones(projectId: string) {
             `)
         return {
             success: true,
-            data: result.recordset.map((m: any) => ({
+            data: result.recordset.map((m: { id: string; name: string | null; color: string | null; code: string | null }) => ({
                 id: m.id,
                 name: m.name || m.code || 'Milestone',
                 color: m.color || null,

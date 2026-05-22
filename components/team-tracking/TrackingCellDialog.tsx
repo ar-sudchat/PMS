@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { Plus, Trash2, Loader2, Search, ChevronDown, Check, CheckCircle2, CalendarClock, Circle, CornerDownRight, X } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Plus, Trash2, Loader2, Search, ChevronDown, Check, CheckCircle2, CalendarClock, Circle, CornerDownRight, X, Bold, Italic, Underline, List, ListOrdered, Palette } from 'lucide-react'
 import {
     TrackingEntry,
     TrackingStatus,
@@ -227,7 +227,7 @@ export function TrackingCellDialog({
     return (
         <div
             aria-hidden={!open}
-            className={`fixed top-0 right-0 bottom-0 z-50 w-[400px] max-w-[95vw] bg-white border-l border-slate-200 shadow-2xl flex flex-col transition-transform duration-200 ease-out ${
+            className={`fixed top-0 right-0 bottom-0 z-50 w-[600px] max-w-[95vw] bg-white border-l border-slate-200 shadow-2xl flex flex-col transition-transform duration-200 ease-out ${
                 open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
             }`}
         >
@@ -426,10 +426,10 @@ function EntryForm({
         : null
 
     return (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
             {/* Status */}
             <div>
-                <label className="block text-[11px] text-slate-600 mb-1">สถานะ</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">สถานะ</label>
                 <div className="flex gap-1.5">
                     {STATUS_OPTIONS.map((s) => {
                         const Icon = s.Icon
@@ -445,7 +445,7 @@ function EntryForm({
                                     }
                                     onPatch(patch)
                                 }}
-                                className={`flex-1 px-2 py-1.5 rounded border text-xs flex items-center justify-center gap-1.5 transition-colors ${
+                                className={`flex-1 px-2 py-2 rounded border text-xs flex items-center justify-center gap-1.5 transition-colors ${
                                     selected
                                         ? 'border-transparent text-white'
                                         : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
@@ -458,138 +458,125 @@ function EntryForm({
                         )
                     })}
                 </div>
-                {form.status === 'DONE' && (
-                    <div className="mt-1.5">
-                        <label className="block text-[11px] text-slate-600 mb-0.5">วันที่เสร็จ</label>
+            </div>
+
+            {/* Date + Assignee in same row */}
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        {form.status === 'DONE' ? 'วันที่เสร็จ' : form.status === 'POSTPONED' ? 'เลื่อนไปวันที่' : 'วันที่งาน'}
+                    </label>
+                    {form.status === 'DONE' ? (
                         <input
                             type="date"
                             value={form.completed_date || entryDate}
                             onChange={(e) => onPatch({ completed_date: e.target.value || null })}
-                            className="px-2 py-1 border border-slate-300 rounded text-xs"
+                            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
-                    </div>
-                )}
-                {form.status === 'POSTPONED' && (
-                    <div className="mt-1.5">
-                        <label className="block text-[11px] text-slate-600 mb-0.5">เลื่อนไปวันที่</label>
+                    ) : form.status === 'POSTPONED' ? (
                         <input
                             type="date"
                             value={form.postponed_date || ''}
                             onChange={(e) => onPatch({ postponed_date: e.target.value || null })}
-                            className="px-2 py-1 border border-slate-300 rounded text-xs"
+                            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
-                    </div>
-                )}
-            </div>
-
-            {/* Assignee */}
-            <div className="relative">
-                <label className="block text-[11px] text-slate-600 mb-1">ผู้รับผิดชอบ</label>
-                <button
-                    type="button"
-                    onClick={() => setAssigneeOpen((o) => !o)}
-                    className="w-full flex items-center justify-between px-2 py-1.5 border border-slate-300 rounded text-xs text-left bg-white hover:border-slate-400"
-                >
-                    <span className={form.assignee_id ? 'text-slate-900' : 'text-slate-400'}>
-                        {selectedLabel}
-                    </span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-
-                {assigneeOpen && (
-                    <>
-                        <div
-                            className="fixed inset-0 z-[60]"
-                            onClick={() => {
-                                setAssigneeOpen(false)
-                                setAssigneeQuery('')
-                            }}
+                    ) : (
+                        <input
+                            type="date"
+                            value={entryDate}
+                            readOnly
+                            className="w-full px-3 py-2 border border-slate-200 rounded text-sm bg-slate-50 text-slate-600"
                         />
-                        <div className="absolute z-[70] top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
-                            <div className="p-1.5 border-b border-slate-100">
-                                <div className="relative">
-                                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        value={assigneeQuery}
-                                        onChange={(e) => setAssigneeQuery(e.target.value)}
-                                        placeholder="ค้นหา..."
-                                        autoFocus
-                                        className="w-full pl-7 pr-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
+                    )}
+                </div>
+
+                <div className="relative">
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">ผู้รับผิดชอบ</label>
+                    <button
+                        type="button"
+                        onClick={() => setAssigneeOpen((o) => !o)}
+                        className="w-full flex items-center justify-between px-3 py-2 border border-slate-300 rounded text-sm text-left bg-white hover:border-slate-400"
+                    >
+                        <span className={`truncate ${form.assignee_id ? 'text-slate-900' : 'text-slate-400'}`}>
+                            {selectedLabel}
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    </button>
+
+                    {assigneeOpen && (
+                        <>
+                            <div
+                                className="fixed inset-0 z-[60]"
+                                onClick={() => {
+                                    setAssigneeOpen(false)
+                                    setAssigneeQuery('')
+                                }}
+                            />
+                            <div className="absolute z-[70] top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
+                                <div className="p-1.5 border-b border-slate-100">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={assigneeQuery}
+                                            onChange={(e) => setAssigneeQuery(e.target.value)}
+                                            placeholder="ค้นหา..."
+                                            autoFocus
+                                            className="w-full pl-7 pr-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="max-h-48 overflow-y-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onPatch({ assignee_id: null })
+                                            setAssigneeOpen(false)
+                                            setAssigneeQuery('')
+                                        }}
+                                        className="w-full px-2 py-1.5 text-left text-xs hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100"
+                                    >
+                                        <div className="w-3.5">
+                                            {!form.assignee_id && <Check className="w-3 h-3 text-indigo-600" />}
+                                        </div>
+                                        <span className="text-slate-500">ไม่ระบุ</span>
+                                    </button>
+                                    {filteredEmployees.length === 0 ? (
+                                        <div className="py-4 text-center text-xs text-slate-500">ไม่พบรายการ</div>
+                                    ) : (
+                                        filteredEmployees.map((opt) => {
+                                            const isSelected = form.assignee_id === opt.value
+                                            return (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onPatch({ assignee_id: opt.value })
+                                                        setAssigneeOpen(false)
+                                                        setAssigneeQuery('')
+                                                    }}
+                                                    className={`w-full px-2 py-1.5 text-left text-xs hover:bg-slate-50 flex items-center gap-2 ${
+                                                        isSelected ? 'bg-indigo-50/50' : ''
+                                                    }`}
+                                                >
+                                                    <div className="w-3.5">
+                                                        {isSelected && <Check className="w-3 h-3 text-indigo-600" />}
+                                                    </div>
+                                                    <span className="truncate">{opt.label}</span>
+                                                </button>
+                                            )
+                                        })
+                                    )}
                                 </div>
                             </div>
-                            <div className="max-h-48 overflow-y-auto">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onPatch({ assignee_id: null })
-                                        setAssigneeOpen(false)
-                                        setAssigneeQuery('')
-                                    }}
-                                    className="w-full px-2 py-1.5 text-left text-xs hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100"
-                                >
-                                    <div className="w-3.5">
-                                        {!form.assignee_id && <Check className="w-3 h-3 text-blue-600" />}
-                                    </div>
-                                    <span className="text-slate-500">ไม่ระบุ</span>
-                                </button>
-                                {filteredEmployees.length === 0 ? (
-                                    <div className="py-4 text-center text-[11px] text-slate-500">ไม่พบรายการ</div>
-                                ) : (
-                                    filteredEmployees.map((opt) => {
-                                        const isSelected = form.assignee_id === opt.value
-                                        return (
-                                            <button
-                                                key={opt.value}
-                                                type="button"
-                                                onClick={() => {
-                                                    onPatch({ assignee_id: opt.value })
-                                                    setAssigneeOpen(false)
-                                                    setAssigneeQuery('')
-                                                }}
-                                                className={`w-full px-2 py-1.5 text-left text-xs hover:bg-slate-50 flex items-center gap-2 ${
-                                                    isSelected ? 'bg-blue-50/50' : ''
-                                                }`}
-                                            >
-                                                <div className="w-3.5">
-                                                    {isSelected && <Check className="w-3 h-3 text-blue-600" />}
-                                                </div>
-                                                <span className="truncate">{opt.label}</span>
-                                            </button>
-                                        )
-                                    })
-                                )}
-                            </div>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* Role */}
-            <div>
-                <label className="block text-[11px] text-slate-600 mb-1">บทบาท</label>
-                <div className="flex flex-wrap gap-1">
-                    {ROLE_OPTIONS.map((r) => (
-                        <button
-                            key={r.value}
-                            type="button"
-                            onClick={() => onPatch({ assignee_role: r.value })}
-                            className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
-                                form.assignee_role === r.value
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                            }`}
-                        >
-                            {r.label}
-                        </button>
-                    ))}
+                        </>
+                    )}
                 </div>
             </div>
 
             {/* Milestone (combobox, optional) */}
             <div className="relative">
-                <label className="block text-[11px] text-slate-600 mb-1">
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
                     Milestone <span className="text-slate-400">(ไม่บังคับ)</span>
                 </label>
                 <button
@@ -692,29 +679,26 @@ function EntryForm({
                 )}
             </div>
 
-            {/* Note */}
+            {/* Note (rich text) */}
             <div>
-                <label className="block text-[11px] text-slate-600 mb-1">รายละเอียด</label>
-                <textarea
-                    value={form.note}
-                    onChange={(e) => onPatch({ note: e.target.value })}
-                    rows={2}
-                    placeholder="ใส่รายละเอียดงาน..."
-                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <label className="block text-xs font-medium text-slate-700 mb-1">รายละเอียด</label>
+                <RichNoteEditor
+                    valueHtml={form.note}
+                    onChange={(html) => onPatch({ note: html })}
                 />
             </div>
 
             {/* Color + Icon */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-[11px] text-slate-600 mb-1">สี</label>
-                    <div className="flex flex-wrap gap-1">
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">สี</label>
+                    <div className="flex flex-wrap gap-1.5">
                         {COLOR_PRESETS.map((c) => (
                             <button
                                 key={c.value}
                                 type="button"
                                 onClick={() => onPatch({ color: c.value })}
-                                className={`w-5 h-5 rounded-full border-2 transition-transform ${
+                                className={`w-7 h-7 rounded-full border-2 transition-transform ${
                                     form.color === c.value
                                         ? 'border-slate-900 scale-110'
                                         : 'border-white hover:scale-105'
@@ -727,21 +711,21 @@ function EntryForm({
                 </div>
 
                 <div>
-                    <label className="block text-[11px] text-slate-600 mb-1">ไอคอน</label>
-                    <div className="flex flex-wrap gap-1">
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">ไอคอน</label>
+                    <div className="flex flex-wrap gap-1.5">
                         <button
                             type="button"
                             onClick={() => onPatch({ icon: null })}
-                            className={`h-6 px-1.5 rounded border flex items-center justify-center text-[9px] ${
+                            className={`h-8 px-2 rounded border flex items-center justify-center text-xs ${
                                 !form.icon
-                                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                                     : 'border-slate-200 text-slate-400 hover:border-slate-300'
                             }`}
                             title="ไม่มี"
                         >
                             -
                         </button>
-                        {ICON_OPTIONS.map((opt) => {
+                        {ICON_OPTIONS.slice(0, 7).map((opt) => {
                             const Icon = opt.Icon
                             const selected = form.icon === opt.name
                             return (
@@ -749,15 +733,15 @@ function EntryForm({
                                     key={opt.name}
                                     type="button"
                                     onClick={() => onPatch({ icon: opt.name })}
-                                    className={`h-6 w-6 rounded border flex items-center justify-center transition-colors ${
+                                    className={`h-8 w-8 rounded border flex items-center justify-center transition-colors ${
                                         selected
-                                            ? 'border-blue-600 bg-blue-50'
+                                            ? 'border-indigo-600 bg-indigo-50'
                                             : 'border-slate-200 hover:border-slate-300'
                                     }`}
                                     title={opt.label}
                                 >
                                     <Icon
-                                        className="w-3 h-3"
+                                        className="w-4 h-4"
                                         style={{ color: selected ? form.color : '#475569' }}
                                     />
                                 </button>
@@ -768,5 +752,138 @@ function EntryForm({
             </div>
 
         </div>
+    )
+}
+
+// ============================================================
+// RichNoteEditor — minimal contenteditable with B/I/U + color toolbar.
+// Stores HTML in the model; displays as-is. For internal use only.
+// ============================================================
+
+const TEXT_COLORS = [
+    { color: '#0f172a', label: 'ปกติ' },
+    { color: '#ef4444', label: 'แดง' },
+    { color: '#f59e0b', label: 'ส้ม' },
+    { color: '#10b981', label: 'เขียว' },
+    { color: '#3b82f6', label: 'น้ำเงิน' },
+    { color: '#8b5cf6', label: 'ม่วง' },
+]
+
+function RichNoteEditor({ valueHtml, onChange }: { valueHtml: string; onChange: (html: string) => void }) {
+    const editorRef = useRef<HTMLDivElement>(null)
+    const lastValueRef = useRef<string>('')
+    const [colorOpen, setColorOpen] = useState(false)
+
+    // Sync external value into the editor only when the model differs from what's already rendered.
+    // (Avoid re-setting innerHTML on every keystroke — that would move the cursor.)
+    useEffect(() => {
+        if (!editorRef.current) return
+        if (valueHtml !== lastValueRef.current) {
+            editorRef.current.innerHTML = valueHtml || ''
+            lastValueRef.current = valueHtml || ''
+        }
+    }, [valueHtml])
+
+    const exec = (cmd: string, value?: string) => {
+        editorRef.current?.focus()
+        // execCommand is deprecated but still works in all modern browsers; sufficient for an internal note field.
+        try { document.execCommand(cmd, false, value) } catch { /* ignore */ }
+        flush()
+    }
+
+    const flush = () => {
+        if (!editorRef.current) return
+        const html = editorRef.current.innerHTML
+        lastValueRef.current = html
+        onChange(html)
+    }
+
+    return (
+        <div className="border border-slate-300 rounded-md overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+            {/* Toolbar */}
+            <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-slate-200 bg-slate-50">
+                <ToolbarBtn title="ตัวหนา (Ctrl+B)" onClick={() => exec('bold')}>
+                    <Bold className="w-3.5 h-3.5" />
+                </ToolbarBtn>
+                <ToolbarBtn title="ตัวเอน (Ctrl+I)" onClick={() => exec('italic')}>
+                    <Italic className="w-3.5 h-3.5" />
+                </ToolbarBtn>
+                <ToolbarBtn title="ขีดเส้นใต้ (Ctrl+U)" onClick={() => exec('underline')}>
+                    <Underline className="w-3.5 h-3.5" />
+                </ToolbarBtn>
+
+                <div className="w-px h-4 bg-slate-300 mx-1" />
+
+                <ToolbarBtn title="รายการแบบจุด" onClick={() => exec('insertUnorderedList')}>
+                    <List className="w-3.5 h-3.5" />
+                </ToolbarBtn>
+                <ToolbarBtn title="รายการแบบเลข" onClick={() => exec('insertOrderedList')}>
+                    <ListOrdered className="w-3.5 h-3.5" />
+                </ToolbarBtn>
+
+                <div className="w-px h-4 bg-slate-300 mx-1" />
+
+                {/* Color picker */}
+                <div className="relative">
+                    <ToolbarBtn title="สีตัวอักษร" onClick={() => setColorOpen(o => !o)}>
+                        <Palette className="w-3.5 h-3.5" />
+                    </ToolbarBtn>
+                    {colorOpen && (
+                        <>
+                            <div className="fixed inset-0 z-[60]" onClick={() => setColorOpen(false)} />
+                            <div className="absolute z-[70] top-full left-0 mt-1 p-1.5 bg-white border border-slate-200 rounded shadow-lg flex gap-1">
+                                {TEXT_COLORS.map(c => (
+                                    <button
+                                        key={c.color}
+                                        type="button"
+                                        title={c.label}
+                                        onClick={() => { exec('foreColor', c.color); setColorOpen(false) }}
+                                        className="w-6 h-6 rounded border border-slate-200 hover:scale-110 transition-transform"
+                                        style={{ background: c.color }}
+                                    />
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className="flex-1" />
+                <ToolbarBtn title="ล้างฟอร์แมต" onClick={() => exec('removeFormat')}>
+                    <span className="text-[10px] font-bold">Tx</span>
+                </ToolbarBtn>
+            </div>
+
+            {/* Editable area */}
+            <div
+                ref={editorRef}
+                contentEditable
+                onInput={flush}
+                onBlur={flush}
+                suppressContentEditableWarning
+                className="px-3 py-2 text-sm min-h-[180px] max-h-[320px] overflow-y-auto outline-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_b]:font-bold [&_i]:italic"
+                data-placeholder="ใส่รายละเอียดงาน..."
+            />
+            <style jsx>{`
+                div[contenteditable]:empty::before {
+                    content: attr(data-placeholder);
+                    color: rgb(148 163 184);
+                    pointer-events: none;
+                }
+            `}</style>
+        </div>
+    )
+}
+
+function ToolbarBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+    return (
+        <button
+            type="button"
+            title={title}
+            onClick={(e) => { e.preventDefault(); onClick() }}
+            onMouseDown={(e) => e.preventDefault()}  // keep selection in editor
+            className="p-1.5 rounded hover:bg-slate-200/70 text-slate-600 hover:text-slate-900 flex items-center justify-center"
+        >
+            {children}
+        </button>
     )
 }

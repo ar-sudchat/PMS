@@ -63,7 +63,10 @@ export async function setAuthCookie(token: string) {
     const cookieStore = await cookies()
     cookieStore.set('auth-token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        // Cookie is sent over plain HTTP for internal-network deploys
+        // (e.g. http://192.168.x.x). Set COOKIE_INSECURE=1 in env to opt
+        // out of the Secure flag even when NODE_ENV=production.
+        secure: process.env.NODE_ENV === 'production' && process.env.COOKIE_INSECURE !== '1',
         sameSite: 'lax',
         maxAge: 60 * 60 * 8 // 8 hours
     })

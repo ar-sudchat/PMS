@@ -36,6 +36,18 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Windows deploy build artifacts (keep scripts + INSTALL.txt; ignore generated bundles)
+/deploy-windows/app/
+/deploy-windows/node/
+/deploy-windows/.cache/
+/deploy-windows/config.env
+/deploy-windows-*.zip
+
+# Local debug scripts + accidentally-created UNC-path folder (bug: file-service.ts
+# wrote literal "\\\\host\\share\\pms" into the local FS instead of resolving the share)
+/inspect-db.js
+\\*
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

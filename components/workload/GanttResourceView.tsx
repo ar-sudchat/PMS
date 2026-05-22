@@ -218,16 +218,26 @@ function TaskBar({
 // MAIN COMPONENT
 // ============================================
 
+// Local-timezone YYYY-MM-DD (toISOString() shifts to UTC and breaks
+// the week boundary for non-UTC users — see Friday-missing bug).
+function formatLocalDate(d: Date): string {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+}
+
+function mondayOf(today: Date): Date {
+    const day = today.getDay()
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+    const monday = new Date(today)
+    monday.setDate(diff)
+    return monday
+}
+
 export function GanttResourceView() {
     // States
-    const [startDate, setStartDate] = useState(() => {
-        const today = new Date()
-        const day = today.getDay()
-        const diff = today.getDate() - day + (day === 0 ? -6 : 1)
-        const monday = new Date(today)
-        monday.setDate(diff)
-        return monday.toISOString().split('T')[0]
-    })
+    const [startDate, setStartDate] = useState(() => formatLocalDate(mondayOf(new Date())))
     const [employees, setEmployees] = useState<EmployeeWorkload[]>([])
     const [config, setConfig] = useState<WorkloadConfig | null>(null)
     const [isLoading, setIsLoading] = useState(true)
@@ -282,7 +292,7 @@ export function GanttResourceView() {
     const endDate = useMemo(() => {
         const end = new Date(startDate)
         end.setDate(end.getDate() + 4)
-        return end.toISOString().split('T')[0]
+        return formatLocalDate(end)
     }, [startDate])
 
     // Load data
@@ -309,7 +319,7 @@ export function GanttResourceView() {
     const navigateWeek = (direction: 'prev' | 'next') => {
         const current = new Date(startDate)
         current.setDate(current.getDate() + (direction === 'next' ? 7 : -7))
-        setStartDate(current.toISOString().split('T')[0])
+        setStartDate(formatLocalDate(current))
     }
 
     // Filter employees
@@ -562,14 +572,7 @@ export function GanttResourceView() {
                             <button onClick={() => navigateWeek('prev')} className="p-1.5 hover:bg-slate-50 border-r">
                                 <ChevronLeft className="w-4 h-4" />
                             </button>
-                            <button onClick={() => {
-                                const today = new Date()
-                                const day = today.getDay()
-                                const diff = today.getDate() - day + (day === 0 ? -6 : 1)
-                                const monday = new Date(today)
-                                monday.setDate(diff)
-                                setStartDate(monday.toISOString().split('T')[0])
-                            }} className="px-2 hover:bg-slate-50 text-xs font-medium text-slate-600 h-full">
+                            <button onClick={() => setStartDate(formatLocalDate(mondayOf(new Date())))} className="px-2 hover:bg-slate-50 text-xs font-medium text-slate-600 h-full">
                                 To Week
                             </button>
                             <button onClick={() => navigateWeek('next')} className="p-1.5 hover:bg-slate-50 border-l">

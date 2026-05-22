@@ -1,7 +1,17 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { ChevronLeft, ChevronRight, ChevronDown, Search, Check, CalendarCheck } from 'lucide-react'
+import { 
+    ChevronLeft, 
+    ChevronRight, 
+    ChevronDown, 
+    Search, 
+    Check, 
+    CalendarCheck,
+    Image as ImageIcon,
+    FileSpreadsheet,
+    Info
+} from 'lucide-react'
 import { getProjectFilterOptions, ProjectFilters } from '@/lib/actions/project-actions'
 import {
     getTeamTrackingData,
@@ -13,6 +23,9 @@ import {
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import { TrackingGrid } from '@/components/team-tracking/TrackingGrid'
 import { TrackingCellDialog } from '@/components/team-tracking/TrackingCellDialog'
+import html2canvas from 'html2canvas'
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 
 interface FilterOptions {
     customers: { id: string; code: string; name: string }[]
@@ -22,6 +35,17 @@ interface FilterOptions {
     statuses: { id: string; code: string; name: string; color: string }[]
     milestones: { id: string; code: string; name: string; color: string }[]
     projectTypes: { id: string; code: string; name: string; color: string }[]
+}
+
+interface TrackingProject {
+    id: string
+    project_code: string
+    name: string
+    customer_name: string | null
+    project_type_code: string | null
+    project_type_color: string | null
+    owner_name: string | null
+    pm_name: string | null
 }
 
 interface Filters {
@@ -51,6 +75,17 @@ function monthRange(year: number, month: number) {
     return { start, end }
 }
 
+export const LEGEND_ITEMS = [
+    { key: 'DONE', label: 'เสร็จสิ้น (Done)', color: '#10b981', type: 'status' },
+    { key: 'POSTPONED', label: 'เลื่อนแผน (Postponed)', color: '#f59e0b', type: 'status' },
+    { key: 'incoming', label: 'งานเลื่อนเข้า (Postponed In)', color: '#f59e0b', type: 'kind' },
+    { key: 'departed', label: 'งานย้ายออก (Postponed Out)', color: '#94a3b8', type: 'kind' },
+    { key: 'code', label: 'งานพัฒนา (Dev)', color: '#6366f1', type: 'icon' },
+    { key: 'bug', label: 'แก้บั๊ก (Bug)', color: '#ef4444', type: 'icon' },
+    { key: 'meeting', label: 'ประชุม (Meeting)', color: '#ec4899', type: 'icon' },
+    { key: 'task', label: 'Task ทั่วไป', color: '#06b6d4', type: 'icon' },
+]
+
 export default function TeamTrackingPage() {
     const [filterOptions, setFilterOptions] = useState<FilterOptions>({
         customers: [],
@@ -77,13 +112,17 @@ export default function TeamTrackingPage() {
     const [year, setYear] = useState(today.getFullYear())
     const [month, setMonth] = useState(today.getMonth() + 1)
 
-    const [projects, setProjects] = useState<any[]>([])
+    const [projects, setProjects] = useState<TrackingProject[]>([])
     const [entries, setEntries] = useState<TrackingEntry[]>([])
     const [employees, setEmployees] = useState<AssignableEmployee[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const initialLoadedRef = useRef(false)
+    const [isFilterOptionsLoaded, setIsFilterOptionsLoaded] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
 
     const [isMilestoneDropdownOpen, setIsMilestoneDropdownOpen] = useState(false)
+    const [isCapturing, setIsCapturing] = useState(false)
+    const [hoveredLegend, setHoveredLegend] = useState<string | null>(null)
 
     // Drawer state — keep last cell context across close so slide-out animates.
     const [selectedCell, setSelectedCell] = useState<{
@@ -99,27 +138,33 @@ export default function TeamTrackingPage() {
     >({})
 
     const loadFilterOptions = useCallback(async () => {
-        const [optsResult, empResult] = await Promise.all([
-            getProjectFilterOptions(),
-            getAssignableEmployees(),
-        ])
-        if (optsResult.success && optsResult.data) {
-            setFilterOptions(optsResult.data)
-            const activeStatus = optsResult.data.statuses.find(
-                (s: any) => s.code?.toLowerCase() === 'active' || s.name?.toLowerCase() === 'active'
-            )
-            const devType = optsResult.data.projectTypes.find(
-                (t: any) => t.code?.toUpperCase() === 'DEV'
-            )
-            setFilters((prev) => {
-                const next = { ...prev }
-                if (activeStatus && !prev.statusId) next.statusId = activeStatus.id
-                if (devType && !prev.projectTypeId) next.projectTypeId = devType.id
-                return next
-            })
-        }
-        if (empResult.success && empResult.data) {
-            setEmployees(empResult.data)
+        try {
+            const [optsResult, empResult] = await Promise.all([
+                getProjectFilterOptions(),
+                getAssignableEmployees(),
+            ])
+            if (optsResult.success && optsResult.data) {
+                setFilterOptions(optsResult.data)
+                const activeStatus = optsResult.data.statuses.find(
+                    (s) => s.code?.toLowerCase() === 'active' || s.name?.toLowerCase() === 'active'
+                )
+                const devType = optsResult.data.projectTypes.find(
+                    (t) => t.code?.toUpperCase() === 'DEV'
+                )
+                setFilters((prev) => {
+                    const next = { ...prev }
+                    if (activeStatus && !prev.statusId) next.statusId = activeStatus.id
+                    if (devType && !prev.projectTypeId) next.projectTypeId = devType.id
+                    return next
+                })
+            }
+            if (empResult.success && empResult.data) {
+                setEmployees(empResult.data)
+            }
+        } catch (error) {
+            console.error('Failed to load filter options:', error)
+        } finally {
+            setIsFilterOptionsLoaded(true)
         }
     }, [])
 
@@ -156,10 +201,23 @@ export default function TeamTrackingPage() {
     }, [loadFilterOptions])
 
     useEffect(() => {
-        loadData()
-    }, [loadData])
+        if (isFilterOptionsLoaded) {
+            loadData()
+        }
+    }, [loadData, isFilterOptionsLoaded])
 
-    const handleFilterChange = (key: keyof Filters, value: any) => {
+    // Debounce search query changes to prevent rapid database reloading
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setFilters((prev) => {
+                if (prev.search === searchQuery) return prev
+                return { ...prev, search: searchQuery }
+            })
+        }, 400)
+        return () => clearTimeout(timer)
+    }, [searchQuery])
+
+    const handleFilterChange = <K extends keyof Filters>(key: K, value: Filters[K]) => {
         setFilters((prev) => ({ ...prev, [key]: value }))
     }
 
@@ -196,8 +254,84 @@ export default function TeamTrackingPage() {
         setMonth(d.getMonth() + 1)
     }
 
-    const saOwners = useMemo(
-        () => filterOptions.owners.filter((o) => o.position_code === 'SA'),
+    // Capture grid to image
+    const handleCaptureImage = async () => {
+        const element = document.getElementById('tracking-grid-card')
+        if (!element) return
+        setIsCapturing(true)
+        try {
+            const canvas = await html2canvas(element, {
+                useCORS: true,
+                scale: 2, // higher resolution
+                backgroundColor: '#ffffff',
+                logging: false,
+                ignoreElements: (el) => el.tagName === 'BUTTON' || el.classList.contains('no-export')
+            })
+            const dataUrl = canvas.toDataURL('image/png')
+            const monthStr = THAI_MONTHS[month - 1]
+            saveAs(dataUrl, `team-tracking-${year + 543}-${monthStr}.png`)
+        } catch (error) {
+            console.error('Error capturing image:', error)
+        } finally {
+            setIsCapturing(false)
+        }
+    }
+
+    // Export to Excel
+    const handleExportExcel = () => {
+        if (projects.length === 0) return
+
+        const totalDays = new Date(year, month, 0).getDate()
+        const headers = ['รหัสโครงการ', 'ชื่อโครงการ', 'ลูกค้า', 'ประเภท', 'พนักงาน', 'PM']
+        for (let d = 1; d <= totalDays; d++) {
+            headers.push(`${d}/${month}`)
+        }
+
+        const rows = projects.map((p) => {
+            const projectEntries = entries.filter((e) => e.project_id === p.id)
+            const rowData: Record<string, string> = {
+                'รหัสโครงการ': p.project_code,
+                'ชื่อโครงการ': p.name,
+                'ลูกค้า': p.customer_name || '-',
+                'ประเภท': p.project_type_code || '-',
+                'พนักงาน': p.owner_name || '-',
+                'PM': p.pm_name || '-'
+            }
+
+            for (let d = 1; d <= totalDays; d++) {
+                const dateStr = `${year}-${pad2(month)}-${pad2(d)}`
+                
+                const dayEntries = projectEntries.filter((e) => {
+                    if (e.entry_date === dateStr) return true
+                    if (e.status === 'POSTPONED' && e.postponed_date === dateStr) return true
+                    if (e.status === 'DONE' && e.completed_date === dateStr) return true
+                    return false
+                })
+
+                if (dayEntries.length > 0) {
+                    rowData[`${d}/${month}`] = dayEntries.map((e) => {
+                        const statusStr = e.status === 'DONE' ? '[เสร็จ]' : e.status === 'POSTPONED' ? '[เลื่อน]' : '[แผน]'
+                        return `${statusStr} ${e.assignee_name || 'ไม่ระบุ'}: ${e.note || ''}`
+                    }).join(' | ')
+                } else {
+                    rowData[`${d}/${month}`] = ''
+                }
+            }
+            return rowData
+        })
+
+        const worksheet = XLSX.utils.json_to_sheet(rows)
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Team Tracking')
+
+        const monthStr = THAI_MONTHS[month - 1]
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+        const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' })
+        saveAs(data, `team-tracking-${year + 543}-${monthStr}.xlsx`)
+    }
+
+    const activeEmployees = useMemo(
+        () => filterOptions.owners,
         [filterOptions.owners]
     )
 
@@ -236,196 +370,245 @@ export default function TeamTrackingPage() {
     }
 
     return (
-        <div className="-m-6 -mt-16 p-2 space-y-1.5 text-xs">
-            {/* Header */}
-            <div className="flex items-center justify-between gap-2">
-                <h1 className="text-xs font-bold text-slate-900 flex items-center gap-1.5 whitespace-nowrap">
-                    <CalendarCheck className="w-4 h-4 text-blue-600" />
-                    ติดตามทีม
-                    <span className="font-normal text-slate-400">
-                        ({projects.length} โครงการ · {entries.length} รายการ)
-                    </span>
-                </h1>
+        <div className="-m-6 -mt-16 p-3 space-y-3.5 text-xs bg-slate-50/30 min-h-screen">
+            {/* Header - Glassmorphic styled banner */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl p-4 shadow-md border border-indigo-500/20">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_60%)] pointer-events-none" />
+                <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
+                    <div className="space-y-1">
+                        <h1 className="text-base font-bold flex items-center gap-2 whitespace-nowrap">
+                            <CalendarCheck className="w-5 h-5 text-amber-300 animate-[bounce_2s_infinite]" />
+                            <span className="bg-gradient-to-r from-white to-slate-100 bg-clip-text text-transparent">ติดตามทีมโครงการ</span>
+                            <span className="inline-flex items-center gap-1 bg-white/10 backdrop-blur-md text-[11px] font-semibold text-slate-100 px-2.5 py-0.5 rounded-full border border-white/10">
+                                {projects.length} โครงการ · {entries.length} แผนงาน
+                            </span>
+                        </h1>
+                        <p className="text-[10px] text-indigo-100/80">ระบบติดตามและบริหารจัดการงานโครงการสำหรับทีมพัฒนา</p>
+                    </div>
 
-                {/* Month Selector */}
-                <div className="flex items-center gap-1.5">
-                    <button
-                        onClick={goToday}
-                        className="px-2 py-0.5 text-xs border border-slate-300 rounded text-slate-700 hover:bg-slate-50"
-                    >
-                        วันนี้
-                    </button>
-                    <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden">
+                    {/* Actions Bar */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Capture button */}
                         <button
-                            onClick={goPrevMonth}
-                            className="px-1 py-0.5 text-slate-600 hover:bg-slate-100"
+                            onClick={handleCaptureImage}
+                            disabled={isCapturing}
+                            className="px-3 py-1.5 text-[11px] border border-white/20 rounded-lg text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all duration-200 flex items-center gap-1.5 font-medium disabled:opacity-50 shadow-sm"
+                            title="จับภาพตารางงานเป็นรูปภาพ"
                         >
-                            <ChevronLeft className="w-3 h-3" />
+                            <ImageIcon className="w-3.5 h-3.5 text-indigo-200" />
+                            {isCapturing ? 'กำลังจับภาพ...' : 'จับภาพบอร์ด'}
                         </button>
-                        <div className="px-2 py-0.5 text-xs font-medium text-slate-900 min-w-[110px] text-center">
-                            {THAI_MONTHS[month - 1]} {year + 543}
+
+                        {/* Export excel button */}
+                        <button
+                            onClick={handleExportExcel}
+                            className="px-3 py-1.5 text-[11px] border border-emerald-500/20 bg-emerald-500/20 hover:bg-emerald-500/30 text-white rounded-lg active:scale-95 transition-all duration-200 flex items-center gap-1.5 font-medium shadow-sm"
+                            title="ส่งออกตารางเป็นไฟล์ Excel"
+                        >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+                            ส่งออก Excel
+                        </button>
+
+                        <div className="h-5 w-px bg-white/20 mx-1 shrink-0" />
+
+                        {/* Month selector */}
+                        <button
+                            onClick={goToday}
+                            className="px-3 py-1.5 text-[11px] border border-white/20 rounded-lg text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all duration-200 font-medium shadow-sm"
+                        >
+                            วันนี้
+                        </button>
+                        <div className="flex items-center bg-white/15 border border-white/20 rounded-lg overflow-hidden shadow-sm backdrop-blur-md">
+                            <button
+                                onClick={goPrevMonth}
+                                className="px-2 py-1.5 text-white/95 hover:bg-white/10 transition-colors"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <div className="px-3 py-1.5 text-[11px] font-bold text-white min-w-[120px] text-center bg-white/5">
+                                {THAI_MONTHS[month - 1]} {year + 543}
+                            </div>
+                            <button
+                                onClick={goNextMonth}
+                                className="px-2 py-1.5 text-white/95 hover:bg-white/10 transition-colors"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
                         </div>
-                        <button
-                            onClick={goNextMonth}
-                            className="px-1 py-0.5 text-slate-600 hover:bg-slate-100"
-                        >
-                            <ChevronRight className="w-3 h-3" />
-                        </button>
                     </div>
                 </div>
             </div>
 
-            {/* Filters - compact single row */}
-            <div className="bg-white px-2 py-1.5 rounded border border-slate-200 shadow-sm">
-                <div className="flex flex-wrap items-center gap-1.5">
+            {/* Filters - Glassmorphism style with elevated aesthetics */}
+            <div className="bg-white/80 backdrop-blur-md px-4 py-3 rounded-2xl border border-slate-200/60 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                <div className="flex flex-wrap items-end gap-3.5">
                     {/* Fiscal Year */}
-                    <select
-                        value={filters.year}
-                        onChange={(e) =>
-                            handleFilterChange('year', e.target.value ? parseInt(e.target.value) : '')
-                        }
-                        className="px-2 py-1 border border-slate-300 rounded text-xs min-w-[90px]"
-                        title="Fiscal Year"
-                    >
-                        <option value="">All Years</option>
-                        {filterOptions.years.map((y) => (
-                            <option key={y} value={y}>
-                                {y}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ปีงบประมาณ</span>
+                        <select
+                            value={filters.year}
+                            onChange={(e) =>
+                                handleFilterChange('year', e.target.value ? parseInt(e.target.value) : '')
+                            }
+                            className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs min-w-[90px] bg-slate-50/50 hover:bg-slate-50 focus:border-indigo-500 focus:bg-white transition-all duration-150 outline-none shadow-sm font-medium"
+                            title="Fiscal Year"
+                        >
+                            <option value="">ทุกปี</option>
+                            {filterOptions.years.map((y) => (
+                                <option key={y} value={y}>
+                                    {y}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
                     {/* Customer */}
-                    <div className="min-w-[170px] [&_button]:!py-1 [&_button]:!px-2 [&_button]:!text-xs [&_button]:!rounded">
-                        <SmartCombobox
-                            placeholder="All Customers"
-                            options={[
-                                { value: '', label: 'All Customers' },
-                                ...filterOptions.customers.map((c) => ({
-                                    value: c.id,
-                                    label: c.name,
-                                })),
-                            ]}
-                            value={
-                                filters.customerId
-                                    ? filterOptions.customers.find((c) => c.id === filters.customerId)
-                                        ? {
-                                              value: filters.customerId,
-                                              label: filterOptions.customers.find((c) => c.id === filters.customerId)!.name,
-                                          }
-                                        : null
-                                    : { value: '', label: 'All Customers' }
-                            }
-                            onChange={(opt) => handleFilterChange('customerId', opt?.value || '')}
-                            maxDisplayItems={10}
-                        />
+                    <div className="flex flex-col gap-1 min-w-[170px]">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ลูกค้า</span>
+                        <div className="[&_button]:!py-1.5 [&_button]:!px-2.5 [&_button]:!text-xs [&_button]:!rounded-lg [&_button]:bg-slate-50/50 [&_button]:border-slate-200 [&_button]:hover:bg-slate-50">
+                            <SmartCombobox
+                                placeholder="ลูกค้าทั้งหมด"
+                                options={[
+                                    { value: '', label: 'ลูกค้าทั้งหมด' },
+                                    ...filterOptions.customers.map((c) => ({
+                                        value: c.id,
+                                        label: c.name,
+                                    })),
+                                ]}
+                                value={
+                                    filters.customerId
+                                        ? filterOptions.customers.find((c) => c.id === filters.customerId)
+                                            ? {
+                                                  value: filters.customerId,
+                                                  label: filterOptions.customers.find((c) => c.id === filters.customerId)!.name,
+                                              }
+                                            : null
+                                        : { value: '', label: 'ลูกค้าทั้งหมด' }
+                                }
+                                onChange={(opt) => handleFilterChange('customerId', String(opt?.value || ''))}
+                                maxDisplayItems={10}
+                            />
+                        </div>
                     </div>
 
                     {/* Project Manager */}
-                    <div className="min-w-[150px] [&_button]:!py-1 [&_button]:!px-2 [&_button]:!text-xs [&_button]:!rounded">
-                        <SmartCombobox
-                            placeholder="All PMs"
-                            options={[
-                                { value: '', label: 'All PMs' },
-                                ...filterOptions.managers.map((m) => ({
-                                    value: m.id,
-                                    label: m.name_th || m.name,
-                                })),
-                            ]}
-                            value={
-                                filters.managerId
-                                    ? filterOptions.managers.find((m) => m.id === filters.managerId)
-                                        ? {
-                                              value: filters.managerId,
-                                              label:
-                                                  filterOptions.managers.find((m) => m.id === filters.managerId)!.name_th ||
-                                                  filterOptions.managers.find((m) => m.id === filters.managerId)!.name,
-                                          }
-                                        : null
-                                    : { value: '', label: 'All PMs' }
-                            }
-                            onChange={(opt) => handleFilterChange('managerId', opt?.value || '')}
-                            maxDisplayItems={10}
-                        />
+                    <div className="flex flex-col gap-1 min-w-[150px]">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ผู้จัดการโครงการ (PM)</span>
+                        <div className="[&_button]:!py-1.5 [&_button]:!px-2.5 [&_button]:!text-xs [&_button]:!rounded-lg [&_button]:bg-slate-50/50 [&_button]:border-slate-200 [&_button]:hover:bg-slate-50">
+                            <SmartCombobox
+                                placeholder="PM ทั้งหมด"
+                                options={[
+                                    { value: '', label: 'PM ทั้งหมด' },
+                                    ...filterOptions.managers.map((m) => ({
+                                        value: m.id,
+                                        label: m.name_th || m.name,
+                                    })),
+                                ]}
+                                value={
+                                    filters.managerId
+                                        ? filterOptions.managers.find((m) => m.id === filters.managerId)
+                                            ? {
+                                                  value: filters.managerId,
+                                                  label:
+                                                      filterOptions.managers.find((m) => m.id === filters.managerId)!.name_th ||
+                                                      filterOptions.managers.find((m) => m.id === filters.managerId)!.name,
+                                              }
+                                            : null
+                                        : { value: '', label: 'PM ทั้งหมด' }
+                                }
+                                onChange={(opt) => handleFilterChange('managerId', String(opt?.value || ''))}
+                                maxDisplayItems={10}
+                            />
+                        </div>
                     </div>
 
-                    {/* Owner */}
-                    <div className="min-w-[170px] [&_button]:!py-1 [&_button]:!px-2 [&_button]:!text-xs [&_button]:!rounded">
-                        <SmartCombobox
-                            placeholder="All SAs"
-                            options={[
-                                { value: '', label: 'All SAs' },
-                                ...saOwners.map((o) => ({
-                                    value: o.id,
-                                    label: o.name_th || o.name,
-                                })),
-                            ]}
-                            value={
-                                filters.ownerId
-                                    ? saOwners.find((o) => o.id === filters.ownerId)
-                                        ? {
-                                              value: filters.ownerId,
-                                              label: (() => {
-                                                  const o = saOwners.find((o) => o.id === filters.ownerId)!
-                                                  return o.name_th || o.name
-                                              })(),
-                                          }
-                                        : null
-                                    : { value: '', label: 'All SAs' }
-                            }
-                            onChange={(opt) => handleFilterChange('ownerId', opt?.value || '')}
-                            maxDisplayItems={10}
-                        />
+                    {/* Employee (Changed from SA to activeEmployees) */}
+                    <div className="flex flex-col gap-1 min-w-[175px]">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">พนักงาน</span>
+                        <div className="[&_button]:!py-1.5 [&_button]:!px-2.5 [&_button]:!text-xs [&_button]:!rounded-lg [&_button]:bg-slate-50/50 [&_button]:border-slate-200 [&_button]:hover:bg-slate-50">
+                            <SmartCombobox
+                                placeholder="พนักงานทั้งหมด"
+                                options={[
+                                    { value: '', label: 'พนักงานทั้งหมด' },
+                                    ...activeEmployees.map((o) => ({
+                                        value: o.id,
+                                        label: `${o.name_th || o.name}${o.position_code ? ` (${o.position_code})` : ''}`,
+                                    })),
+                                ]}
+                                value={
+                                    filters.ownerId
+                                        ? activeEmployees.find((o) => o.id === filters.ownerId)
+                                            ? {
+                                                  value: filters.ownerId,
+                                                  label: (() => {
+                                                      const o = activeEmployees.find((o) => o.id === filters.ownerId)!
+                                                      return `${o.name_th || o.name}${o.position_code ? ` (${o.position_code})` : ''}`
+                                                  })(),
+                                              }
+                                            : null
+                                        : { value: '', label: 'พนักงานทั้งหมด' }
+                                }
+                                onChange={(opt) => handleFilterChange('ownerId', String(opt?.value || ''))}
+                                maxDisplayItems={10}
+                            />
+                        </div>
                     </div>
 
                     {/* Type */}
-                    <select
-                        value={filters.projectTypeId}
-                        onChange={(e) => handleFilterChange('projectTypeId', e.target.value)}
-                        className="px-2 py-1 border border-slate-300 rounded text-xs min-w-[90px]"
-                        title="Type"
-                    >
-                        <option value="">All Types</option>
-                        {filterOptions.projectTypes.map((t) => (
-                            <option key={t.id} value={t.id}>
-                                {t.code}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ประเภทงาน</span>
+                        <select
+                            value={filters.projectTypeId}
+                            onChange={(e) => handleFilterChange('projectTypeId', e.target.value)}
+                            className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs min-w-[95px] bg-slate-50/50 hover:bg-slate-50 focus:border-indigo-500 focus:bg-white transition-all duration-150 outline-none shadow-sm font-medium"
+                            title="Type"
+                        >
+                            <option value="">ทุกประเภท</option>
+                            {filterOptions.projectTypes.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                    {t.code}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
                     {/* Status */}
-                    <select
-                        value={filters.statusId}
-                        onChange={(e) => handleFilterChange('statusId', e.target.value)}
-                        className="px-2 py-1 border border-slate-300 rounded text-xs min-w-[110px]"
-                        title="Status"
-                    >
-                        <option value="">All Status</option>
-                        {filterOptions.statuses.map((s) => (
-                            <option key={s.id} value={s.id}>
-                                {s.name}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">สถานะโครงการ</span>
+                        <select
+                            value={filters.statusId}
+                            onChange={(e) => handleFilterChange('statusId', e.target.value)}
+                            className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs min-w-[110px] bg-slate-50/50 hover:bg-slate-50 focus:border-indigo-500 focus:bg-white transition-all duration-150 outline-none shadow-sm font-medium"
+                            title="Status"
+                        >
+                            <option value="">ทุกสถานะ</option>
+                            {filterOptions.statuses.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
                     {/* Milestone Multi-select */}
-                    <div className="relative">
+                    <div className="flex flex-col gap-1 relative">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">หมุดหมายหลัก</span>
                         <button
                             type="button"
                             onClick={() => setIsMilestoneDropdownOpen(!isMilestoneDropdownOpen)}
-                            className="px-2 py-1 border border-slate-300 rounded text-xs min-w-[140px] flex items-center justify-between gap-2 bg-white"
+                            className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs min-w-[140px] flex items-center justify-between gap-2 bg-slate-50/50 hover:bg-slate-50 focus:border-indigo-500 focus:bg-white transition-all duration-150 outline-none shadow-sm font-medium text-left"
                             title="Milestone"
                         >
                             <span
                                 className={
-                                    filters.milestoneIds.length > 0 ? 'text-slate-900' : 'text-slate-400'
+                                    filters.milestoneIds.length > 0 ? 'text-slate-900 font-semibold' : 'text-slate-400 font-normal'
                                 }
                             >
                                 {filters.milestoneIds.length > 0
-                                    ? `${filters.milestoneIds.length} selected`
-                                    : 'All Milestones'}
+                                    ? `เลือกแล้ว ${filters.milestoneIds.length} รายการ`
+                                    : 'หมุดหมายทั้งหมด'}
                             </span>
-                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                         </button>
 
                         {isMilestoneDropdownOpen && (
@@ -434,19 +617,19 @@ export default function TeamTrackingPage() {
                                     className="fixed inset-0 z-10"
                                     onClick={() => setIsMilestoneDropdownOpen(false)}
                                 />
-                                <div className="absolute z-20 top-full left-0 mt-1 w-56 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                <div className="absolute z-20 top-full left-0 mt-1.5 w-56 bg-white border border-slate-200/80 rounded-xl shadow-lg max-h-60 overflow-y-auto p-1 backdrop-blur-sm">
                                     {filters.milestoneIds.length > 0 && (
                                         <button
                                             onClick={() => handleFilterChange('milestoneIds', [])}
-                                            className="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 border-b"
+                                            className="w-full px-3 py-1.5 text-left text-xs font-semibold text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border-b border-slate-100"
                                         >
-                                            Clear all
+                                            ล้างทั้งหมด
                                         </button>
                                     )}
                                     {filterOptions.milestones.map((m) => (
                                         <label
                                             key={m.id}
-                                            className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                                            className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
                                         >
                                             <input
                                                 type="checkbox"
@@ -455,9 +638,9 @@ export default function TeamTrackingPage() {
                                                 className="hidden"
                                             />
                                             <div
-                                                className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                                className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
                                                     filters.milestoneIds.includes(m.id)
-                                                        ? 'bg-blue-600 border-blue-600'
+                                                        ? 'bg-indigo-600 border-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.3)]'
                                                         : 'border-slate-300'
                                                 }`}
                                             >
@@ -465,7 +648,7 @@ export default function TeamTrackingPage() {
                                                     <Check className="w-3 h-3 text-white" />
                                                 )}
                                             </div>
-                                            <span className="text-sm" style={{ color: m.color }}>
+                                            <span className="text-[11px] font-semibold" style={{ color: m.color || '#475569' }}>
                                                 {m.name}
                                             </span>
                                         </label>
@@ -476,28 +659,75 @@ export default function TeamTrackingPage() {
                     </div>
 
                     {/* Search */}
-                    <div className="relative ml-auto w-52">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                        <input
-                            type="text"
-                            value={filters.search}
-                            onChange={(e) => handleFilterChange('search', e.target.value)}
-                            placeholder="ค้นหาชื่อ/รหัสโครงการ..."
-                            className="w-full pl-7 pr-2 py-1 border border-slate-300 rounded text-xs"
-                        />
+                    <div className="flex flex-col gap-1 relative ml-auto w-56">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ค้นหาโครงการ</span>
+                        <div className="relative w-full">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="ค้นหาชื่อ/รหัสโครงการ..."
+                                className="w-full pl-8.5 pr-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50/50 focus:bg-white focus:border-indigo-500 transition-all shadow-inner outline-none font-medium"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Grid */}
-            <TrackingGrid
-                projects={projects}
-                entries={entries}
-                year={year}
-                month={month}
-                onCellClick={handleCellClick}
-                isLoading={isLoading}
-            />
+            {/* Interactive Legend Bar - Floating premium design */}
+            <div className="bg-white/70 backdrop-blur-md border border-slate-200/50 rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-[10px] shadow-[0_2px_12px_-3px_rgba(0,0,0,0.03)]">
+                <div className="flex items-center gap-2 text-slate-500 font-semibold">
+                    <Info className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span>ชี้เมาส์ที่แถบอธิบายเพื่อไฮไลท์ประเภทงานในตารางบอร์ด:</span>
+                </div>
+                <div className="flex items-center flex-wrap gap-2">
+                    {LEGEND_ITEMS.map((item) => (
+                        <div
+                            key={item.key}
+                            onMouseEnter={() => setHoveredLegend(item.key)}
+                            onMouseLeave={() => setHoveredLegend(null)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer transition-all duration-200 border ${
+                                hoveredLegend === item.key 
+                                ? 'bg-white shadow-[0_4px_12px_rgba(99,102,241,0.15)] border-indigo-400 scale-105 text-indigo-700 font-bold' 
+                                : 'bg-white hover:bg-slate-50 hover:shadow-sm border-slate-100 hover:scale-105 text-slate-600 font-medium'
+                            }`}
+                        >
+                            {item.key === 'incoming' ? (
+                                <div className="w-2.5 h-2.5 rounded-full flex items-center justify-center bg-amber-100">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                </div>
+                            ) : item.key === 'departed' ? (
+                                <div className="w-2.5 h-2.5 rounded-full flex items-center justify-center bg-slate-200">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400 opacity-60" />
+                                </div>
+                            ) : (
+                                <div 
+                                    className="w-2 h-2 rounded-full shadow-[0_0_6px_rgba(0,0,0,0.1)]" 
+                                    style={{ 
+                                        backgroundColor: item.color,
+                                        boxShadow: hoveredLegend === item.key ? `0 0 8px ${item.color}80` : 'none'
+                                    }} 
+                                />
+                            )}
+                            <span>{item.label}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Grid Container */}
+            <div id="tracking-grid-card" className="bg-white rounded-2xl border border-slate-200/60 shadow-lg overflow-hidden p-1.5 bg-gradient-to-b from-slate-50/50 to-white transition-all duration-300">
+                <TrackingGrid
+                    projects={projects}
+                    entries={entries}
+                    year={year}
+                    month={month}
+                    onCellClick={handleCellClick}
+                    isLoading={isLoading}
+                    highlightFilter={hoveredLegend}
+                />
+            </div>
 
             {/* Cell drawer — always mounted so slide-out animates */}
             <TrackingCellDialog

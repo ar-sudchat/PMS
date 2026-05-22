@@ -36,6 +36,17 @@ interface Props {
     month: number   // 1-based
     onCellClick: (projectId: string, date: string) => void
     isLoading?: boolean
+    highlightFilter?: string | null
+    /** Optional date range override (yyyy-mm-dd). If both provided, render exactly
+     *  those days instead of the full year/month. Useful for "last week + current month"
+     *  rolling windows. */
+    startDate?: string
+    endDate?: string
+    /** Hide customer column (default true for backward compat with /team-tracking). */
+    showCustomer?: boolean
+    /** When provided, รหัส (project_code) becomes clickable and invokes this callback
+     *  with the project's id — used to open a project popup from a host page. */
+    onProjectClick?: (projectId: string) => void
 }
 
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -59,29 +70,69 @@ function EntryMark({ cell, size = 'sm' }: { cell: CellEntry; size?: 'sm' | 'md' 
     const { entry, kind } = cell
     const sz = size === 'md' ? 'w-3.5 h-3.5' : 'w-3 h-3'
     const dotSz = size === 'md' ? 'w-2.5 h-2.5' : 'w-2 h-2'
+    
+    // Smooth fade & bounce entry animations
+    const wrapperClass = `flex items-center justify-center p-0.5 rounded-md border shadow-sm transition-all duration-300 hover:scale-110`
 
     if (kind === 'incoming') {
-        return <CornerDownRight className={sz} style={{ color: '#f59e0b' }} />
+        return (
+            <span className={`${wrapperClass} bg-amber-50 border-amber-200/50 text-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.15)]`} title="เลื่อนเข้ามา">
+                <CornerDownRight className={sz} />
+            </span>
+        )
     }
     if (kind === 'departed') {
-        // Faded arrow indicating the work moved away from this original day.
-        return <ArrowRight className={`${sz} opacity-50`} style={{ color: '#94a3b8' }} />
+        return (
+            <span className={`${wrapperClass} bg-slate-50 border-slate-200/40 text-slate-400 opacity-60`} title="ย้ายแผนออก">
+                <ArrowRight className={sz} />
+            </span>
+        )
     }
     if (entry.status === 'DONE') {
-        return <CheckCircle2 className={sz} style={{ color: '#10b981' }} />
+        return (
+            <span className={`${wrapperClass} bg-emerald-50 border-emerald-200/50 text-emerald-500 shadow-[0_1px_4px_rgba(16,185,129,0.15)]`} title="เสร็จสิ้น">
+                <CheckCircle2 className={sz} />
+            </span>
+        )
     }
     if (entry.status === 'POSTPONED') {
-        return <CalendarClock className={sz} style={{ color: '#f59e0b' }} />
+        return (
+            <span className={`${wrapperClass} bg-amber-50 border-amber-200/50 text-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.15)]`} title="เลื่อนแผน">
+                <CalendarClock className={sz} />
+            </span>
+        )
     }
     const color =
         (entry.color_source === 'MILESTONE' && entry.milestone_color) ||
         entry.color ||
         '#94a3b8'
     const Icon = entry.icon ? ICON_MAP[entry.icon] : null
+    
     if (Icon) {
-        return <Icon className={sz} style={{ color }} />
+        return (
+            <span 
+                className={`${wrapperClass} bg-white border-slate-100`} 
+                style={{ 
+                    color, 
+                    boxShadow: `0 1px 4px ${color}15`,
+                    borderColor: `${color}20`
+                }}
+            >
+                <Icon className={sz} />
+            </span>
+        )
     }
-    return <div className={`${dotSz} rounded-full`} style={{ backgroundColor: color }} />
+    return (
+        <span 
+            className={`${wrapperClass} bg-white border-slate-100`}
+            style={{ 
+                boxShadow: `0 1px 4px ${color}15`,
+                borderColor: `${color}20`
+            }}
+        >
+            <div className={`${dotSz} rounded-full`} style={{ backgroundColor: color }} />
+        </span>
+    )
 }
 
 function cellTooltip(cell: CellEntry): string {
@@ -108,8 +159,25 @@ function cellTooltip(cell: CellEntry): string {
     return `${who}${entry.note ? `: ${entry.note}` : ''}`
 }
 
-export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading }: Props) {
+function isCellMatched(cellEntries: CellEntry[], filter: string | null | undefined): boolean {
+    if (!filter) return true
+    return cellEntries.some((c) => {
+        if (filter === 'DONE' || filter === 'POSTPONED') {
+            return c.entry.status === filter
+        }
+        if (filter === 'incoming' || filter === 'departed') {
+            return c.kind === filter
+        }
+        return c.entry.icon === filter
+    })
+}
+
+export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading, highlightFilter, startDate, endDate, showCustomer = true, onProjectClick }: Props) {
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+    const todayStr = useMemo(() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    }, [])
     const [sortKey, setSortKey] = useState<SortKey | null>(null)
     const [sortDir, setSortDir] = useState<SortDir>(null)
 
@@ -139,7 +207,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
         return sorted
     }, [projects, sortKey, sortDir])
 
-    const SortIcon = ({ k }: { k: SortKey }) => {
+    const getSortIcon = (k: SortKey) => {
         if (sortKey !== k) return <ArrowUpDown className="w-3 h-3 text-slate-300" />
         return sortDir === 'asc' ? (
             <ArrowUp className="w-3 h-3 text-blue-600" />
@@ -149,17 +217,35 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
     }
 
     const days = useMemo(() => {
+        const arr: { day: number; date: string; weekend: boolean; monthShort?: string }[] = []
+        // If a date range is provided, iterate from startDate to endDate (inclusive).
+        // Otherwise fall back to the entire calendar month.
+        if (startDate && endDate) {
+            const s = new Date(startDate)
+            const e = new Date(endDate)
+            const cur = new Date(s)
+            while (cur <= e) {
+                arr.push({
+                    day: cur.getDate(),
+                    date: `${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}-${pad2(cur.getDate())}`,
+                    weekend: cur.getDay() === 0 || cur.getDay() === 6,
+                    monthShort: THAI_MONTHS_SHORT[cur.getMonth()],
+                })
+                cur.setDate(cur.getDate() + 1)
+            }
+            return arr
+        }
         const total = daysInMonth(year, month)
-        const arr: { day: number; date: string; weekend: boolean }[] = []
         for (let d = 1; d <= total; d++) {
             arr.push({
                 day: d,
                 date: `${year}-${pad2(month)}-${pad2(d)}`,
                 weekend: isWeekend(year, month, d),
+                monthShort: THAI_MONTHS_SHORT[month - 1],
             })
         }
         return arr
-    }, [year, month])
+    }, [year, month, startDate, endDate])
 
     // Group entries: projectId -> date -> CellEntry[]
     //
@@ -223,82 +309,89 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
 
     if (isLoading) {
         return (
-            <div className="bg-white rounded border border-slate-200 p-8 text-center text-xs text-slate-500">
-                กำลังโหลด...
-            </div>
-        )
-    }
-
-    if (projects.length === 0) {
-        return (
-            <div className="bg-white rounded border border-slate-200 p-8 text-center text-xs text-slate-500">
-                ไม่พบโครงการ
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-xs text-slate-500 shadow-inner">
+                กำลังโหลดข้อมูล...
             </div>
         )
     }
 
     return (
-        <div className="bg-white rounded border border-slate-200 overflow-hidden">
-            <div className="overflow-auto max-h-[calc(100vh-160px)]">
+        <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-inner">
+            <div className="overflow-auto max-h-[calc(100vh-170px)] scrollbar-thin scrollbar-thumb-slate-200">
                 <table className="min-w-full border-collapse text-xs">
-                    <thead className="bg-slate-50 sticky top-0 z-20">
+                    <thead className="bg-slate-50/95 backdrop-blur-sm sticky top-0 z-20 border-b border-slate-200 shadow-sm">
                         <tr>
-                            <th className="sticky left-0 top-0 z-30 bg-slate-50 border-b border-r border-slate-200 px-2 py-1.5 text-center font-medium text-slate-700 w-[40px] min-w-[40px]">
+                            <th className="sticky left-0 top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-2 py-2 text-center font-bold text-slate-700 w-[40px] min-w-[40px] shadow-[1px_0_0_rgba(0,0,0,0.05)]">
                                 No.
                             </th>
                             <th
                                 onClick={() => toggleSort('project_code')}
-                                className="sticky left-[40px] top-0 z-30 bg-slate-50 border-b border-r border-slate-200 px-2 py-1.5 text-left font-medium text-slate-700 min-w-[80px] cursor-pointer hover:bg-slate-100 select-none"
+                                className="sticky left-[40px] top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-2.5 py-2 text-left font-bold text-slate-700 min-w-[80px] cursor-pointer hover:bg-slate-200/80 transition-colors select-none shadow-[1px_0_0_rgba(0,0,0,0.05)]"
                             >
                                 <span className="inline-flex items-center gap-1">
-                                    Code <SortIcon k="project_code" />
+                                    รหัส {getSortIcon('project_code')}
                                 </span>
                             </th>
                             <th
                                 onClick={() => toggleSort('name')}
-                                className="sticky left-[120px] top-0 z-30 bg-slate-50 border-b border-r border-slate-200 px-2 py-1.5 text-left font-medium text-slate-700 min-w-[180px] cursor-pointer hover:bg-slate-100 select-none"
+                                className="sticky left-[120px] top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-3 py-2 text-left font-bold text-slate-700 min-w-[180px] cursor-pointer hover:bg-slate-200/80 transition-colors select-none shadow-[2px_0_4px_rgba(0,0,0,0.05)]"
                             >
                                 <span className="inline-flex items-center gap-1">
-                                    Project Name <SortIcon k="name" />
+                                    ชื่อโครงการ {getSortIcon('name')}
                                 </span>
                             </th>
-                            <th
-                                onClick={() => toggleSort('customer_name')}
-                                className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-medium text-slate-700 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none"
-                            >
-                                <span className="inline-flex items-center gap-1">
-                                    Customer <SortIcon k="customer_name" />
-                                </span>
-                            </th>
+                            {showCustomer && (
+                                <th
+                                    onClick={() => toggleSort('customer_name')}
+                                    className="border-b border-r border-slate-200 px-3 py-2 text-left font-bold text-slate-600 min-w-[140px] cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                                >
+                                    <span className="inline-flex items-center gap-1">
+                                        ลูกค้า {getSortIcon('customer_name')}
+                                    </span>
+                                </th>
+                            )}
                             <th
                                 onClick={() => toggleSort('project_type_code')}
-                                className="border-b border-r border-slate-200 px-2 py-1.5 text-center font-medium text-slate-700 min-w-[50px] cursor-pointer hover:bg-slate-100 select-none"
+                                className="border-b border-r border-slate-200 px-2 py-2 text-center font-bold text-slate-600 min-w-[50px] cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
                             >
-                                <span className="inline-flex items-center gap-1">
-                                    Type <SortIcon k="project_type_code" />
+                                <span className="inline-flex items-center justify-center gap-1">
+                                    ประเภท {getSortIcon('project_type_code')}
                                 </span>
                             </th>
                             <th
                                 onClick={() => toggleSort('owner_name')}
-                                className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-medium text-slate-700 min-w-[140px] cursor-pointer hover:bg-slate-100 select-none"
+                                className="border-b border-r border-slate-200 px-3 py-2 text-left font-bold text-slate-600 min-w-[140px] cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
                             >
                                 <span className="inline-flex items-center gap-1">
-                                    SA <SortIcon k="owner_name" />
+                                    พนักงาน {getSortIcon('owner_name')}
                                 </span>
                             </th>
-                            {days.map((d) => (
-                                <th
-                                    key={d.day}
-                                    className={`border-b border-r border-slate-200 px-1 py-1.5 text-center font-medium min-w-[36px] ${
-                                        d.weekend ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-700'
-                                    }`}
-                                    title={`${d.day} ${monthLabel}`}
-                                >
-                                    <div className="text-[10px] leading-tight whitespace-nowrap">
-                                        {d.day}-{THAI_MONTHS_SHORT[month - 1]}
-                                    </div>
-                                </th>
-                            ))}
+                            {days.map((d) => {
+                                const isToday = d.date === todayStr
+                                return (
+                                    <th
+                                        key={d.date}
+                                        className={`border-b border-r border-slate-200 px-1 py-1.5 text-center font-bold min-w-[38px] transition-all relative ${
+                                            isToday
+                                                ? 'bg-gradient-to-b from-indigo-600 to-blue-600 text-white ring-2 ring-indigo-500 ring-offset-0 z-30 shadow-[0_4px_12px_rgba(79,70,229,0.25)]'
+                                                : d.weekend
+                                                ? 'bg-slate-100/85 text-slate-400'
+                                                : 'bg-slate-50/90 text-slate-600'
+                                        }`}
+                                        title={`${d.day} ${monthLabel}${isToday ? ' (วันนี้)' : ''}`}
+                                    >
+                                        <div className="text-[10px] leading-tight whitespace-nowrap flex flex-col items-center justify-center">
+                                            <span className={isToday ? 'text-xs font-extrabold text-amber-300' : 'font-semibold text-slate-700'}>{d.day}</span>
+                                            <span className={isToday ? 'text-[8px] font-extrabold tracking-widest text-indigo-100 uppercase' : 'text-[8px] font-normal opacity-75'}>
+                                                {isToday ? 'วันนี้' : (d.monthShort ?? THAI_MONTHS_SHORT[month - 1])}
+                                            </span>
+                                        </div>
+                                        {isToday && (
+                                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 animate-pulse" />
+                                        )}
+                                    </th>
+                                )
+                            })}
                         </tr>
                     </thead>
                     <tbody>
@@ -307,74 +400,117 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                             const projectEntries = entriesByProjectAndDate.get(p.id)
                             const assignees = assigneesByProject.get(p.id)
                             const assigneeList = assignees ? Array.from(assignees.values()) : []
-
+ 
                             return (
                                 <Fragment key={p.id}>
                                     {/* Main project row */}
-                                    <tr className="hover:bg-slate-50/50">
-                                        <td className="sticky left-0 z-10 bg-white border-b border-r border-slate-200 px-2 py-2 align-middle text-center text-slate-500 w-[40px] min-w-[40px]">
+                                    <tr className="hover:bg-slate-50/70 transition-colors duration-150 group">
+                                        <td className="sticky left-0 z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle text-center text-slate-400 w-[40px] min-w-[40px] font-medium group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
                                             {idx + 1}
                                         </td>
-                                        <td className="sticky left-[40px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2 align-middle">
-                                            <div className="flex items-center gap-1">
+                                        <td className="sticky left-[40px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
+                                            <div className="flex items-center gap-1.5">
                                                 {assigneeList.length > 0 && (
                                                     <button
                                                         onClick={() => toggleExpand(p.id)}
-                                                        className="p-0.5 hover:bg-slate-200 rounded"
+                                                        className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
                                                     >
                                                         {isExpanded ? (
-                                                            <ChevronDown className="w-3 h-3 text-slate-500" />
+                                                            <ChevronDown className="w-3 h-3" />
                                                         ) : (
-                                                            <ChevronRight className="w-3 h-3 text-slate-500" />
+                                                            <ChevronRight className="w-3 h-3" />
                                                         )}
                                                     </button>
                                                 )}
-                                                <span className="font-medium text-slate-900">{p.project_code}</span>
+                                                {onProjectClick ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); onProjectClick(p.id) }}
+                                                        className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+                                                        title="แก้ไขโครงการ"
+                                                    >
+                                                        {p.project_code}
+                                                    </button>
+                                                ) : (
+                                                    <a
+                                                        href={`/projects/${p.id}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+                                                        title="เปิดหน้าโครงการ (edit)"
+                                                    >
+                                                        {p.project_code}
+                                                    </a>
+                                                )}
                                             </div>
                                         </td>
-                                        <td className="sticky left-[120px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2 align-middle">
-                                            <div className="text-slate-900 truncate max-w-[200px]" title={p.name}>
+                                        <td className="sticky left-[120px] z-10 bg-white border-b border-r border-slate-200 px-2.5 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
+                                            <div className="text-slate-900 font-semibold truncate max-w-[200px]" title={p.name}>
                                                 {p.name}
                                             </div>
                                         </td>
-                                        <td className="border-b border-r border-slate-200 px-2 py-2 align-middle">
-                                            <div className="flex items-center gap-1 text-slate-700">
-                                                <Building className="w-3 h-3 text-slate-400 shrink-0" />
-                                                <span className="truncate max-w-[130px]" title={p.customer_name || ''}>
-                                                    {p.customer_name || '-'}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="border-b border-r border-slate-200 px-1.5 py-2 text-center align-middle">
+                                        {showCustomer && (
+                                            <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle">
+                                                <div className="flex items-center gap-1.5 text-slate-600">
+                                                    <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    <span className="truncate max-w-[130px] font-medium" title={p.customer_name || ''}>
+                                                        {p.customer_name || '-'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        )}
+                                        <td className="border-b border-r border-slate-200 px-1.5 py-2.5 text-center align-middle">
                                             {p.project_type_code && (
                                                 <span
-                                                    className="px-1 py-0.5 rounded text-[10px] font-medium"
+                                                    className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm border border-slate-200/50"
                                                     style={{
-                                                        backgroundColor: p.project_type_color ? `${p.project_type_color}20` : '#f1f5f9',
+                                                        backgroundColor: p.project_type_color ? `${p.project_type_color}15` : '#f1f5f9',
                                                         color: p.project_type_color || '#64748b',
+                                                        borderColor: p.project_type_color ? `${p.project_type_color}30` : 'transparent'
                                                     }}
                                                 >
                                                     {p.project_type_code}
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="border-b border-r border-slate-200 px-2 py-2 align-middle text-slate-700">
-                                            <span className="block truncate whitespace-nowrap max-w-[130px]" title={p.owner_name || ''}>
+                                        <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle text-slate-700">
+                                            <span className="block truncate font-semibold text-slate-700 whitespace-nowrap max-w-[130px]" title={p.owner_name || ''}>
                                                 {p.owner_name || '-'}
                                             </span>
                                         </td>
                                         {days.map((d) => {
                                             const cellEntries = projectEntries?.get(d.date) || []
+                                            const isToday = d.date === todayStr
+                                            const matched = !highlightFilter || isCellMatched(cellEntries, highlightFilter)
                                             const tooltip = cellEntries.length
                                                 ? cellEntries.map(cellTooltip).join(' • ')
                                                 : 'คลิกเพื่อเพิ่ม'
+ 
+                                            // Determine background styles
+                                            let bgClass = 'bg-white'
+                                            if (isToday) {
+                                                bgClass = 'bg-blue-50/30 border-l border-r border-blue-500/20'
+                                            } else if (d.weekend) {
+                                                bgClass = 'bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,rgba(241,245,249,0.3)_4px,rgba(241,245,249,0.3)_8px)] bg-slate-50/30 text-slate-400'
+                                            }
+ 
+                                            // Hover effects
+                                            const hoverClass = 'hover:bg-indigo-50/60 hover:ring-1 hover:ring-indigo-400 hover:scale-[1.08] hover:shadow-md hover:rounded-sm z-10'
+ 
+                                            // Highlight filter styling
+                                            let filterClass = 'transition-all duration-300'
+                                            if (highlightFilter) {
+                                                if (!matched) {
+                                                    filterClass += ' opacity-15 blur-[0.4px] scale-95 pointer-events-none'
+                                                } else {
+                                                    filterClass += ' ring-2 ring-indigo-500 ring-offset-1 scale-110 z-10 bg-indigo-50/50 shadow-md font-bold'
+                                                }
+                                            }
+ 
                                             return (
                                                 <td
-                                                    key={d.day}
+                                                    key={d.date}
                                                     onClick={() => onCellClick(p.id, d.date)}
-                                                    className={`border-b border-r border-slate-200 px-0.5 py-2 text-center cursor-pointer hover:bg-blue-50 transition-colors ${
-                                                        d.weekend ? 'bg-slate-50' : ''
-                                                    }`}
+                                                    className={`border-b border-r border-slate-200 px-0.5 py-2 text-center cursor-pointer transition-all ${bgClass} ${hoverClass} ${filterClass}`}
                                                     title={tooltip}
                                                 >
                                                     {cellEntries.length > 0 && (
@@ -383,7 +519,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                                 <EntryMark key={`${c.entry.id}-${c.kind}-${i}`} cell={c} size="md" />
                                                             ))}
                                                             {cellEntries.length > 3 && (
-                                                                <span className="text-[9px] text-slate-500 ml-0.5">
+                                                                <span className="text-[8px] font-extrabold text-indigo-600 bg-indigo-50 rounded px-1 border border-indigo-100 ml-0.5 shadow-sm">
                                                                     +{cellEntries.length - 3}
                                                                 </span>
                                                             )}
@@ -393,19 +529,30 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                             )
                                         })}
                                     </tr>
-
+ 
                                     {/* Sub-rows (assignees) */}
                                     {isExpanded &&
                                         assigneeList.map((a) => (
-                                            <tr key={`${p.id}-${a.id || 'none'}`} className="bg-slate-50/30">
-                                                <td className="sticky left-0 z-10 bg-slate-50/30 border-b border-r border-slate-200 w-[40px] min-w-[40px]" />
-                                                <td className="sticky left-[40px] z-10 bg-slate-50/30 border-b border-r border-slate-200" />
+                                            <tr key={`${p.id}-${a.id || 'none'}`} className="bg-slate-50/20 hover:bg-slate-100/40 transition-colors duration-150">
+                                                <td className="sticky left-0 z-10 bg-slate-50/40 border-b border-r border-slate-200 w-[40px] min-w-[40px] shadow-[1px_0_0_rgba(0,0,0,0.02)]" />
+                                                <td className="sticky left-[40px] z-10 bg-slate-50/40 border-b border-r border-slate-200 shadow-[1px_0_0_rgba(0,0,0,0.02)]" />
                                                 <td
-                                                    colSpan={4}
-                                                    className="sticky left-[120px] z-10 bg-slate-50/30 border-b border-r border-slate-200 px-2 py-1 text-slate-700"
+                                                    colSpan={showCustomer ? 3 : 2}
+                                                    className="sticky left-[120px] z-10 bg-slate-50/40 border-b border-r border-slate-200 px-2 py-1 text-slate-400 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"
                                                 >
-                                                    <div className="pl-4">
-                                                        <span className="font-medium">{a.name}</span>
+                                                    <div className="pl-4 flex items-center gap-2">
+                                                        <CornerDownRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                        <span className="inline-flex items-center bg-slate-100/80 text-slate-500 rounded-full px-2 py-0.5 text-[9px] font-bold border border-slate-200/50">
+                                                            ผู้ปฏิบัติงาน
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="border-b border-r border-slate-200 px-2.5 py-1.5 align-middle text-slate-700 bg-slate-50/10">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-4 h-4 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[9px] font-bold shadow-sm select-none">
+                                                            {a.name.trim().charAt(0)}
+                                                        </div>
+                                                        <span className="font-semibold text-slate-700">{a.name}</span>
                                                     </div>
                                                 </td>
                                                 {days.map((d) => {
@@ -414,16 +561,38 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                             (c.entry.assignee_id || '__unassigned__') ===
                                                             (a.id || '__unassigned__')
                                                     )
+                                                    const isToday = d.date === todayStr
+                                                    const matched = !highlightFilter || isCellMatched(cellEntries, highlightFilter)
                                                     const tooltip = cellEntries.length
                                                         ? cellEntries.map(cellTooltip).join(' • ')
                                                         : ''
+ 
+                                                    // Determine background styles for expanded sub-row cells
+                                                    let bgClass = 'bg-slate-50/10'
+                                                    if (isToday) {
+                                                        bgClass = 'bg-blue-50/20 border-l border-r border-blue-500/10'
+                                                    } else if (d.weekend) {
+                                                        bgClass = 'bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,rgba(241,245,249,0.25)_4px,rgba(241,245,249,0.25)_8px)] bg-slate-100/20 text-slate-400'
+                                                    }
+ 
+                                                    // Hover effects
+                                                    const hoverClass = 'hover:bg-indigo-50/50 hover:ring-1 hover:ring-indigo-400 hover:scale-[1.06] hover:shadow-sm z-10'
+ 
+                                                    // Highlight filter styling
+                                                    let filterClass = 'transition-all duration-300'
+                                                    if (highlightFilter) {
+                                                        if (!matched) {
+                                                            filterClass += ' opacity-15 blur-[0.4px] scale-95 pointer-events-none'
+                                                        } else {
+                                                            filterClass += ' ring-2 ring-indigo-500 ring-offset-1 scale-110 z-10 bg-indigo-50/40 shadow-md font-bold'
+                                                        }
+                                                    }
+ 
                                                     return (
                                                         <td
-                                                            key={d.day}
+                                                            key={d.date}
                                                             onClick={() => onCellClick(p.id, d.date)}
-                                                            className={`border-b border-r border-slate-200 px-0.5 py-2 text-center cursor-pointer hover:bg-blue-50 transition-colors ${
-                                                                d.weekend ? 'bg-slate-100' : ''
-                                                            }`}
+                                                            className={`border-b border-r border-slate-200 px-0.5 py-1.5 text-center cursor-pointer transition-all ${bgClass} ${hoverClass} ${filterClass}`}
                                                             title={tooltip}
                                                         >
                                                             {cellEntries.length > 0 && (
@@ -436,7 +605,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                                         />
                                                                     ))}
                                                                     {cellEntries.length > 3 && (
-                                                                        <span className="text-[9px] text-slate-500 ml-0.5">
+                                                                        <span className="text-[8px] font-extrabold text-indigo-600 bg-indigo-50 rounded px-1 border border-indigo-100 ml-0.5 shadow-sm">
                                                                             +{cellEntries.length - 3}
                                                                         </span>
                                                                     )}
