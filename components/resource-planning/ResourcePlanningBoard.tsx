@@ -41,7 +41,16 @@ import { getChangeImpactReport, ChangeImpactReport } from '@/lib/actions/depende
 import { updateTaskDateWithCascade } from '@/lib/actions/task-actions'
 import { ImpactAlertDialog } from './ImpactAlertDialog'
 import { ProjectModal } from '@/components/modals/ProjectModal'
-import { FilterOptions } from '@/app/(main)/resource-planning/page'
+// FilterOptions was previously re-exported from the deleted /resource-planning route page.
+// Inlined here so ResourcePlanningBoard remains self-contained.
+interface FilterOptions {
+    customers: { id: string; code: string; name: string }[]
+    managers: { id: string; name: string; name_th: string }[]
+    owners: { id: string; name: string; name_th: string; position_code: string }[]
+    years: number[]
+    statuses: { id: string; code: string; name: string; name_th?: string; color: string }[]
+    milestones: { id: string; code: string; name: string; name_th?: string; color: string }[]
+}
 import { SmartCombobox, Option } from '@/components/shared/SmartCombobox'
 import { ResourceSummaryTable } from './ResourceSummaryTable'
 import { ConflictAlert } from './ConflictAlert'
