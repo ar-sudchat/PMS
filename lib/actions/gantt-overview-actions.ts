@@ -417,6 +417,201 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
     }
 }
 
+// ============================================================
+// Open tracking entries grouped by assignee (powers the "ToDo" tab)
+// Data source: pms.team_tracking_entries — the daily plan entries
+// that the user records on the "รายวัน" tab. Anything not DONE counts as a todo.
+// ============================================================
+
+export interface TodoTask {
+    id: string
+    title: string                 // = entry.note (what was written on the daily tab)
+    status: 'PLANNED' | 'POSTPONED' | string
+    /** Effective due date: postponed_date when status=POSTPONED, otherwise entry_date */
+    due_date: string | null
+    /** The originally-planned date — useful when something has been postponed */
+    planned_date: string | null
+    is_overdue: boolean
+    color: string | null          // entry color (icon tint)
+    icon: string | null
+    project_id: string
+    project_code: string
+    project_name: string
+    project_type_code: string | null
+    project_type_color: string | null
+    milestone_id: string | null
+    milestone_code: string | null
+    milestone_name: string | null
+    milestone_color: string | null
+}
+
+export interface AssigneeBucket {
+    assignee_id: string | null
+    assignee_name: string
+    assignee_nickname: string | null
+    task_count: number
+    overdue_count: number
+    tasks: TodoTask[]
+}
+
+export async function getOpenTasksByAssignee(filters?: {
+    search?: string
+    statusIds?: string[]          // project status filter
+    typeIds?: string[]            // project type filter
+    projectManagerIds?: string[]  // project PM filter
+    assigneeIds?: string[]        // tracking-entry assignee filter
+    includeUnassigned?: boolean   // default false
+    /** ISO yyyy-MM-dd. When set, only entries whose *effective date* matches.
+     *  Effective date = completed_date (DONE) / postponed_date (POSTPONED) / entry_date (PLANNED) */
+    dateFilter?: string
+    /** Include DONE entries (filtered by completed_date when dateFilter is set). */
+    includeDone?: boolean
+}): Promise<{ success: true; data: AssigneeBucket[] } | { success: false; error: string }> {
+    try {
+        const pool = await getConnection()
+        const req = pool.request()
+
+        // Status filter — toggle DONE based on includeDone
+        let where = `t.is_active = 1`
+        if (!filters?.includeDone) {
+            where += ` AND t.status <> 'DONE'`
+        }
+
+        // Effective-date filter
+        if (filters?.dateFilter) {
+            req.input('dateFilter', sql.Date, filters.dateFilter)
+            where += ` AND (
+                (t.status = 'DONE'      AND t.completed_date = @dateFilter) OR
+                (t.status = 'POSTPONED' AND t.postponed_date = @dateFilter) OR
+                (t.status NOT IN ('DONE', 'POSTPONED') AND t.entry_date = @dateFilter)
+            )`
+        }
+
+        if (filters?.search) {
+            where += ` AND (t.note LIKE @search OR p.project_code LIKE @search OR p.name LIKE @search)`
+            req.input('search', sql.NVarChar, `%${filters.search}%`)
+        }
+        if (filters?.statusIds?.length) {
+            where += ` AND p.status_id IN (${filters.statusIds.map((_, i) => `@ps${i}`).join(',')})`
+            filters.statusIds.forEach((id, i) => req.input(`ps${i}`, sql.UniqueIdentifier, id))
+        }
+        if (filters?.typeIds?.length) {
+            where += ` AND p.project_type_id IN (${filters.typeIds.map((_, i) => `@pt${i}`).join(',')})`
+            filters.typeIds.forEach((id, i) => req.input(`pt${i}`, sql.UniqueIdentifier, id))
+        }
+        if (filters?.projectManagerIds?.length) {
+            where += ` AND p.project_manager_id IN (${filters.projectManagerIds.map((_, i) => `@pm${i}`).join(',')})`
+            filters.projectManagerIds.forEach((id, i) => req.input(`pm${i}`, sql.UniqueIdentifier, id))
+        }
+        if (filters?.assigneeIds?.length) {
+            where += ` AND t.assignee_id IN (${filters.assigneeIds.map((_, i) => `@as${i}`).join(',')})`
+            filters.assigneeIds.forEach((id, i) => req.input(`as${i}`, sql.UniqueIdentifier, id))
+        }
+        if (!filters?.includeUnassigned) {
+            where += ` AND t.assignee_id IS NOT NULL`
+        }
+
+        const result = await req.query(`
+            SELECT
+                t.id,
+                t.note,
+                t.status,
+                t.color,
+                t.icon,
+                CONVERT(varchar(10), t.entry_date, 23)     AS entry_date,
+                CONVERT(varchar(10), t.postponed_date, 23) AS postponed_date,
+                CONVERT(varchar(10), t.completed_date, 23) AS completed_date,
+                t.assignee_id,
+                LTRIM(RTRIM(ISNULL(emp.first_name_th, '') + ' ' + ISNULL(emp.last_name_th, ''))) AS assignee_name,
+                emp.nickname AS assignee_nickname,
+                p.id AS project_id, p.project_code, p.name AS project_name,
+                ptc.code AS project_type_code, ptc.color AS project_type_color,
+                t.milestone_id, mc.code AS milestone_code, mc.name AS milestone_name, mc.color AS milestone_color
+            FROM pms.team_tracking_entries t
+            INNER JOIN pms.projects p ON t.project_id = p.id
+            LEFT JOIN pms.employees emp ON t.assignee_id = emp.id
+            LEFT JOIN pms.project_types ptc ON p.project_type_id = ptc.id
+            LEFT JOIN pms.project_milestones pmm ON t.milestone_id = pmm.id
+            LEFT JOIN pms.milestone_configs mc ON pmm.milestone_config_id = mc.id
+            WHERE ${where}
+            ORDER BY emp.first_name_th, emp.last_name_th, t.entry_date ASC
+        `)
+
+        // Group by assignee
+        const buckets = new Map<string, AssigneeBucket>()
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+
+        for (const r of result.recordset) {
+            const key = r.assignee_id || '__unassigned__'
+            if (!buckets.has(key)) {
+                buckets.set(key, {
+                    assignee_id: r.assignee_id,
+                    assignee_name: r.assignee_name?.trim() || 'ไม่ระบุผู้รับผิดชอบ',
+                    assignee_nickname: r.assignee_nickname,
+                    task_count: 0,
+                    overdue_count: 0,
+                    tasks: [],
+                })
+            }
+            const bucket = buckets.get(key)!
+            // Effective date:
+            //   DONE      → completed_date (when it was actually done)
+            //   POSTPONED → postponed_date (the day it was moved to)
+            //   PLANNED   → entry_date
+            let due: string | null
+            if (r.status === 'DONE' && r.completed_date) due = r.completed_date
+            else if (r.status === 'POSTPONED' && r.postponed_date) due = r.postponed_date
+            else due = r.entry_date
+            // Done items are never "overdue" (they're done)
+            const isOverdue = r.status !== 'DONE' && due
+                ? new Date(due).getTime() < today.getTime()
+                : false
+            bucket.tasks.push({
+                id: r.id,
+                title: r.note || '(ไม่มีรายละเอียด)',
+                status: r.status,
+                due_date: due,
+                planned_date: r.entry_date,
+                is_overdue: isOverdue,
+                color: r.color,
+                icon: r.icon,
+                project_id: r.project_id,
+                project_code: r.project_code,
+                project_name: r.project_name,
+                project_type_code: r.project_type_code,
+                project_type_color: r.project_type_color,
+                milestone_id: r.milestone_id,
+                milestone_code: r.milestone_code,
+                milestone_name: r.milestone_name,
+                milestone_color: r.milestone_color,
+            })
+            bucket.task_count++
+            if (isOverdue) bucket.overdue_count++
+        }
+
+        // Sort tasks within each bucket: overdue first (oldest first), then by due_date asc
+        for (const b of buckets.values()) {
+            b.tasks.sort((a, c) => {
+                if (a.is_overdue !== c.is_overdue) return a.is_overdue ? -1 : 1
+                const ad = a.due_date || '9999-12-31'
+                const cd = c.due_date || '9999-12-31'
+                return ad < cd ? -1 : ad > cd ? 1 : 0
+            })
+        }
+
+        // Sort buckets: most overdue first, then most tasks first
+        const sorted = Array.from(buckets.values()).sort((a, b) => {
+            if (b.overdue_count !== a.overdue_count) return b.overdue_count - a.overdue_count
+            return b.task_count - a.task_count
+        })
+
+        return { success: true, data: sorted }
+    } catch (e: any) {
+        console.error('[gantt-overview] getOpenTasksByAssignee error:', e)
+        return { success: false, error: e?.message || 'failed to load open tracking entries' }
+    }
+}
+
 // ------------------------------------------------------------
 // helpers
 // ------------------------------------------------------------

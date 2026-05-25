@@ -410,6 +410,46 @@ export async function updateTrackingEntry(id: string, patch: UpdateTrackingEntry
 }
 
 // ============================================
+// MARK DONE — minimal status flip from the ToDo tab
+// (avoids overwriting note/assignee/etc that updateTrackingEntry would do)
+// ============================================
+
+export async function markTrackingEntryDone(id: string, completedDate?: string) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+        // Default to today (yyyy-mm-dd) in the server's local clock
+        const today = completedDate || (() => {
+            const d = new Date()
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, '0')
+            const dd = String(d.getDate()).padStart(2, '0')
+            return `${y}-${m}-${dd}`
+        })()
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .input('completed_date', sql.Date, today)
+            .input('updated_by', sql.UniqueIdentifier, user.id)
+            .query(`
+                UPDATE pms.team_tracking_entries
+                SET status = 'DONE',
+                    completed_date = @completed_date,
+                    updated_by = @updated_by,
+                    updated_at = GETDATE()
+                WHERE id = @id AND is_active = 1
+            `)
+
+        return { success: true }
+    } catch (error) {
+        console.error('markTrackingEntryDone error:', error)
+        return { success: false, error: 'Failed to mark entry as done' }
+    }
+}
+
+// ============================================
 // DELETE (soft)
 // ============================================
 

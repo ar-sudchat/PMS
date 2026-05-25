@@ -410,7 +410,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                         </td>
                                         <td className="sticky left-[40px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
                                             <div className="flex items-center gap-1.5">
-                                                {assigneeList.length > 0 && (
+                                                {assigneeList.length > 0 ? (
                                                     <button
                                                         onClick={() => toggleExpand(p.id)}
                                                         className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
@@ -421,6 +421,11 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                             <ChevronRight className="w-3 h-3" />
                                                         )}
                                                     </button>
+                                                ) : (
+                                                    // Placeholder keeps the project code column aligned across rows
+                                                    <span className="inline-block p-1" aria-hidden>
+                                                        <span className="block w-3 h-3" />
+                                                    </span>
                                                 )}
                                                 {onProjectClick ? (
                                                     <button
@@ -514,13 +519,17 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                     title={tooltip}
                                                 >
                                                     {cellEntries.length > 0 && (
-                                                        <div className="flex items-center justify-center gap-0.5 flex-wrap">
-                                                            {cellEntries.slice(0, 3).map((c, i) => (
-                                                                <EntryMark key={`${c.entry.id}-${c.kind}-${i}`} cell={c} size="md" />
-                                                            ))}
-                                                            {cellEntries.length > 3 && (
-                                                                <span className="text-[8px] font-extrabold text-indigo-600 bg-indigo-50 rounded px-1 border border-indigo-100 ml-0.5 shadow-sm">
-                                                                    +{cellEntries.length - 3}
+                                                        <div className="flex items-center justify-center">
+                                                            {cellEntries.length === 1 ? (
+                                                                <EntryMark cell={cellEntries[0]} size="md" />
+                                                            ) : (
+                                                                // 2+ entries: show single count badge instead of multiple marks
+                                                                // so the column doesn't need to stretch
+                                                                <span
+                                                                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-md text-[10px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
+                                                                    title={`${cellEntries.length} รายการ`}
+                                                                >
+                                                                    {cellEntries.length}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -548,12 +557,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                     </div>
                                                 </td>
                                                 <td className="border-b border-r border-slate-200 px-2.5 py-1.5 align-middle text-slate-700 bg-slate-50/10">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-4 h-4 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[9px] font-bold shadow-sm select-none">
-                                                            {a.name.trim().charAt(0)}
-                                                        </div>
-                                                        <span className="font-semibold text-slate-700">{a.name}</span>
-                                                    </div>
+                                                    <span className="font-semibold text-slate-700">{a.name}</span>
                                                 </td>
                                                 {days.map((d) => {
                                                     const cellEntries = (projectEntries?.get(d.date) || []).filter(
@@ -596,17 +600,15 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                             title={tooltip}
                                                         >
                                                             {cellEntries.length > 0 && (
-                                                                <div className="flex items-center justify-center gap-0.5 flex-wrap">
-                                                                    {cellEntries.slice(0, 3).map((c, i) => (
-                                                                        <EntryMark
-                                                                            key={`${c.entry.id}-${c.kind}-${i}`}
-                                                                            cell={c}
-                                                                            size="sm"
-                                                                        />
-                                                                    ))}
-                                                                    {cellEntries.length > 3 && (
-                                                                        <span className="text-[8px] font-extrabold text-indigo-600 bg-indigo-50 rounded px-1 border border-indigo-100 ml-0.5 shadow-sm">
-                                                                            +{cellEntries.length - 3}
+                                                                <div className="flex items-center justify-center">
+                                                                    {cellEntries.length === 1 ? (
+                                                                        <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                    ) : (
+                                                                        <span
+                                                                            className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-md text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
+                                                                            title={`${cellEntries.length} รายการ`}
+                                                                        >
+                                                                            {cellEntries.length}
                                                                         </span>
                                                                     )}
                                                                 </div>

@@ -1,23 +1,30 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronLeft, ChevronRight, Search, RefreshCw, GanttChart, CalendarDays } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, RefreshCw, GanttChart, CalendarDays, ListTodo } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import {
     getProjectsForGantt,
+    getOpenTasksByAssignee,
     type GanttProjectRow,
     type GanttListFilters,
+    type AssigneeBucket,
 } from '@/lib/actions/gantt-overview-actions'
+import { TasksByAssigneeView } from './TasksByAssigneeView'
 import { getProjectFilterOptions, getProjectById, type ProjectFilters } from '@/lib/actions/project-actions'
 import { ProjectModal } from '@/components/modals/ProjectModal'
 import {
     getTeamTrackingData,
     getAssignableEmployees,
     getProjectMilestones,
+    markTrackingEntryDone,
     type TrackingEntry,
     type AssignableEmployee,
 } from '@/lib/actions/team-tracking-actions'
+
+// "ผู้ปฏิบัติงาน" dropdown loaded separately from PM list
+type EmployeeOpt = { id: string; name: string; name_th: string }
 import { TrackingGrid } from '@/components/team-tracking/TrackingGrid'
 import { TrackingCellDialog } from '@/components/team-tracking/TrackingCellDialog'
 import { ProjectDetailPopup } from './ProjectDetailPopup'
@@ -26,7 +33,7 @@ import {
     getWeeksForMonth, lastOfMonth, thMonthShort, thShortDate, toISODate,
 } from './gantt-grid-utils'
 
-type ViewMode = 'gantt' | 'daily'
+type ViewMode = 'gantt' | 'daily' | 'todo'
 
 interface DailyTrackingProject {
     id: string
@@ -41,7 +48,7 @@ interface DailyTrackingProject {
 
 interface FilterOptions {
     customers: { id: string; code: string; name: string }[]
-    managers: { id: string; name: string; name_th: string }[]
+    managers: { id: string; name: string; name_th: string }[]  // kept (used by project queries) but not surfaced in UI
     statuses: { id: string; code: string; name: string; color: string }[]
     projectTypes: { id: string; code: string; name: string; color: string }[]
     years: number[]
@@ -49,7 +56,7 @@ interface FilterOptions {
 
 interface UIFilters {
     customerId: string
-    managerId: string
+    employeeId: string
     statusId: string
     projectTypeId: string
     search: string
@@ -61,7 +68,7 @@ export function GanttOverviewBoard() {
     // Filters
     const [opts, setOpts] = React.useState<FilterOptions>(EMPTY_OPTS)
     const [filters, setFilters] = React.useState<UIFilters>({
-        customerId: '', managerId: '', statusId: '', projectTypeId: '', search: '',
+        customerId: '', employeeId: '', statusId: '', projectTypeId: '', search: '',
     })
 
     // View mode: gantt = 3-month timeline / daily = 1-month day-grid with icons
@@ -84,33 +91,48 @@ export function GanttOverviewBoard() {
     // (otherwise we'd fire two requests on mount: empty → then DEV+Active).
     const [filtersReady, setFiltersReady] = React.useState(false)
 
+    // Todo-mode data (open tasks grouped by assignee)
+    const [todoBuckets, setTodoBuckets] = React.useState<AssigneeBucket[]>([])
+    // Todo-tab filters — default: today's items, exclude DONE
+    const [todoDate, setTodoDate] = React.useState<string>(() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })
+    const [todoIncludeDone, setTodoIncludeDone] = React.useState(false)
+
+    // All employees (used by the unified "พนักงาน/ผู้ปฏิบัติงาน" dropdown across all views)
+    const [employees, setEmployees] = React.useState<EmployeeOpt[]>([])
+
     // Daily-mode data + dialog
     const [dailyProjects, setDailyProjects] = React.useState<DailyTrackingProject[]>([])
     const [dailyEntries, setDailyEntries] = React.useState<TrackingEntry[]>([])
-    const [employees, setEmployees] = React.useState<AssignableEmployee[]>([])
+    const [dialogEmployees, setDialogEmployees] = React.useState<AssignableEmployee[]>([])
     const [cellOpen, setCellOpen] = React.useState(false)
     const [cellCtx, setCellCtx] = React.useState<{ projectId: string; projectName: string; date: string } | null>(null)
     const [cellMilestones, setCellMilestones] = React.useState<{ id: string; name: string; color: string | null }[]>([])
 
-    // Load filter options once + apply default DEV / Active filters (match team-tracking).
+    // Load filter options + employees list once + apply default DEV / Active filters.
     // setFiltersReady at the END so the data-loading effect only fires AFTER defaults are in.
     React.useEffect(() => {
-        getProjectFilterOptions().then(res => {
-            if (!res.success || !res.data) {
-                setFiltersReady(true)
-                return
+        Promise.all([getProjectFilterOptions(), getAssignableEmployees()]).then(([res, empRes]) => {
+            if (res.success && res.data) {
+                const data = res.data as FilterOptions
+                setOpts(data)
+                const activeStatus = data.statuses.find(
+                    s => s.code?.toLowerCase() === 'active' || s.name?.toLowerCase() === 'active'
+                )
+                const devType = data.projectTypes.find(t => t.code?.toUpperCase() === 'DEV')
+                setFilters(prev => ({
+                    ...prev,
+                    statusId: prev.statusId || activeStatus?.id || '',
+                    projectTypeId: prev.projectTypeId || devType?.id || '',
+                }))
             }
-            const data = res.data as FilterOptions
-            setOpts(data)
-            const activeStatus = data.statuses.find(
-                s => s.code?.toLowerCase() === 'active' || s.name?.toLowerCase() === 'active'
-            )
-            const devType = data.projectTypes.find(t => t.code?.toUpperCase() === 'DEV')
-            setFilters(prev => ({
-                ...prev,
-                statusId: prev.statusId || activeStatus?.id || '',
-                projectTypeId: prev.projectTypeId || devType?.id || '',
-            }))
+            if (empRes.success && empRes.data) {
+                setEmployees(empRes.data.map(e => ({
+                    id: e.id, name: e.name, name_th: e.name_th || e.name,
+                })))
+            }
             setFiltersReady(true)
         })
     }, [])
@@ -125,7 +147,21 @@ export function GanttOverviewBoard() {
         const startIso = toISODate(windowStart)
         const endIso = toISODate(winEnd)
 
-        if (view === 'daily') {
+        if (view === 'todo') {
+            // Todo mode: open tasks grouped by assignee.
+            // The "พนักงาน" dropdown filters by *task assignee* here (the person doing the work),
+            // not project_manager_id like the other views.
+            const res = await getOpenTasksByAssignee({
+                search: filters.search || undefined,
+                statusIds: filters.statusId ? [filters.statusId] : undefined,
+                typeIds: filters.projectTypeId ? [filters.projectTypeId] : undefined,
+                assigneeIds: filters.employeeId ? [filters.employeeId] : undefined,
+                dateFilter: todoDate || undefined,
+                includeDone: todoIncludeDone,
+            })
+            if (reqId !== reqIdRef.current) return
+            if (res.success) setTodoBuckets(res.data)
+        } else if (view === 'daily') {
             // Daily mode: fetch via team-tracking API (returns projects+entries for the cell grid).
             // If looking at the current calendar month, start from (today - 7 days) so the
             // user can see context from the past week. Otherwise start at first-of-month.
@@ -137,7 +173,8 @@ export function GanttOverviewBoard() {
                 : windowStart
             const ttFilters: ProjectFilters = {
                 customerId: filters.customerId || undefined,
-                managerId: filters.managerId || undefined,
+                // employeeId is interpreted as project_manager_id here (Gantt/Daily list projects by PM)
+                managerId: filters.employeeId || undefined,
                 statusId: filters.statusId || undefined,
                 projectTypeId: filters.projectTypeId || undefined,
                 search: filters.search || undefined,
@@ -154,14 +191,15 @@ export function GanttOverviewBoard() {
                 search: filters.search || undefined,
                 statusIds: filters.statusId ? [filters.statusId] : undefined,
                 typeIds: filters.projectTypeId ? [filters.projectTypeId] : undefined,
-                projectManagerIds: filters.managerId ? [filters.managerId] : undefined,
+                // employeeId interpreted as project_manager_id here
+                projectManagerIds: filters.employeeId ? [filters.employeeId] : undefined,
             }
             const res = await getProjectsForGantt(startIso, endIso, payload)
             if (reqId !== reqIdRef.current) return
             if (res.success) setRows(res.data)
         }
         setLoading(false)
-    }, [filters, windowStart, view, monthsInWindow, filtersReady])
+    }, [filters, windowStart, view, monthsInWindow, filtersReady, todoDate, todoIncludeDone])
 
     React.useEffect(() => { load() }, [load])
 
@@ -181,10 +219,10 @@ export function GanttOverviewBoard() {
         if (!proj) return
         setCellCtx({ projectId, projectName: proj.name, date })
         setCellOpen(true)
-        // Lazy-load employees + milestones on first open
-        if (employees.length === 0) {
+        // Lazy-load dialog employees + milestones on first open
+        if (dialogEmployees.length === 0) {
             const r = await getAssignableEmployees()
-            if (r.success && r.data) setEmployees(r.data)
+            if (r.success && r.data) setDialogEmployees(r.data)
         }
         const m = await getProjectMilestones(projectId)
         if (m.success) setCellMilestones(m.data)
@@ -259,8 +297,18 @@ export function GanttOverviewBoard() {
                     <p className="text-xs text-slate-500">
                         {thMonthShort(months[0])} {months[0].getFullYear() + 543}
                         {months.length > 1 && <>{' – '}{thMonthShort(months[months.length - 1])} {months[months.length - 1].getFullYear() + 543}</>}
-                        {' · '}<b>{view === 'daily' ? dailyProjects.length : filteredRows.length}</b> โครงการ
-                        {' · '}<span className="text-slate-400">{view === 'daily' ? 'มุมมองรายวัน' : 'มุมมอง Gantt'}</span>
+                        {view === 'todo' ? (
+                            <>
+                                {' · '}<b>{todoBuckets.reduce((s, b) => s + b.task_count, 0)}</b> งาน
+                                {' · '}<b>{todoBuckets.length}</b> คน
+                                {' · '}<span className="text-slate-400">รายการงานต่อคน</span>
+                            </>
+                        ) : (
+                            <>
+                                {' · '}<b>{view === 'daily' ? dailyProjects.length : filteredRows.length}</b> โครงการ
+                                {' · '}<span className="text-slate-400">{view === 'daily' ? 'มุมมองรายวัน' : 'มุมมอง Gantt'}</span>
+                            </>
+                        )}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -291,6 +339,19 @@ export function GanttOverviewBoard() {
                         >
                             <CalendarDays className="w-3.5 h-3.5" />
                             รายวัน
+                        </button>
+                        <button
+                            onClick={() => setView('todo')}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-l border-slate-200 transition-colors",
+                                view === 'todo'
+                                    ? "bg-indigo-600 text-white"
+                                    : "text-slate-600 hover:bg-slate-50"
+                            )}
+                            title="รายการงานค้างของแต่ละคน"
+                        >
+                            <ListTodo className="w-3.5 h-3.5" />
+                            ToDo
                         </button>
                     </div>
                     <div className="flex items-center border rounded-lg overflow-hidden bg-white">
@@ -350,28 +411,30 @@ export function GanttOverviewBoard() {
                         </div>
                     </div>
 
-                    {/* PM */}
-                    <div className="flex flex-col gap-1 min-w-[150px]">
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">PM</span>
+                    {/* Employee / Assignee — in Todo view filters task assignee; in Gantt/Daily filters project PM */}
+                    <div className="flex flex-col gap-1 min-w-[170px]">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            {view === 'todo' ? 'ผู้ปฏิบัติงาน' : 'พนักงาน'}
+                        </span>
                         <div className="[&_button]:!py-1.5 [&_button]:!px-2.5 [&_button]:!text-xs [&_button]:!rounded-lg [&_button]:bg-slate-50/50 [&_button]:border-slate-200 [&_button]:hover:bg-slate-50">
                             <SmartCombobox
-                                placeholder="PM ทั้งหมด"
+                                placeholder="ทุกคน"
                                 options={[
-                                    { value: '', label: 'PM ทั้งหมด' },
-                                    ...opts.managers.map((m) => ({ value: m.id, label: m.name_th || m.name })),
+                                    { value: '', label: 'ทุกคน' },
+                                    ...employees.map((e) => ({ value: e.id, label: e.name_th || e.name })),
                                 ]}
                                 value={
-                                    filters.managerId
-                                        ? opts.managers.find(m => m.id === filters.managerId)
+                                    filters.employeeId
+                                        ? employees.find(e => e.id === filters.employeeId)
                                             ? {
-                                                value: filters.managerId,
-                                                label: opts.managers.find(m => m.id === filters.managerId)!.name_th
-                                                    || opts.managers.find(m => m.id === filters.managerId)!.name,
+                                                value: filters.employeeId,
+                                                label: employees.find(e => e.id === filters.employeeId)!.name_th
+                                                    || employees.find(e => e.id === filters.employeeId)!.name,
                                             }
                                             : null
-                                        : { value: '', label: 'PM ทั้งหมด' }
+                                        : { value: '', label: 'ทุกคน' }
                                 }
-                                onChange={(opt) => setFilter('managerId', String(opt?.value || ''))}
+                                onChange={(opt) => setFilter('employeeId', String(opt?.value || ''))}
                                 maxDisplayItems={10}
                             />
                         </div>
@@ -426,7 +489,35 @@ export function GanttOverviewBoard() {
 
             {/* Grid */}
             <div className="flex-1 overflow-auto">
-                {view === 'daily' ? (
+                {view === 'todo' ? (
+                    <TasksByAssigneeView
+                        buckets={todoBuckets}
+                        isLoading={loading}
+                        date={todoDate}
+                        onDateChange={setTodoDate}
+                        includeDone={todoIncludeDone}
+                        onIncludeDoneChange={setTodoIncludeDone}
+                        onProjectClick={handleEditProject}
+                        onMarkDone={async (taskId) => {
+                            const res = await markTrackingEntryDone(taskId)
+                            if (res.success) {
+                                // Optimistically remove from local buckets, then refresh
+                                setTodoBuckets(prev => prev
+                                    .map(b => ({ ...b, tasks: b.tasks.filter(t => t.id !== taskId) }))
+                                    .map(b => ({
+                                        ...b,
+                                        task_count: b.tasks.length,
+                                        overdue_count: b.tasks.filter(t => t.is_overdue).length,
+                                    }))
+                                    .filter(b => b.task_count > 0)
+                                )
+                                load()
+                            } else {
+                                alert('บันทึกสถานะไม่สำเร็จ: ' + (res.error || ''))
+                            }
+                        }}
+                    />
+                ) : view === 'daily' ? (
                     /* Daily view — reuse TrackingGrid from /team-tracking */
                     <div className="p-1.5">
                         <TrackingGrid
@@ -520,7 +611,7 @@ export function GanttOverviewBoard() {
                 projectName={cellCtx?.projectName ?? ''}
                 entryDate={cellCtx?.date ?? ''}
                 entries={cellEntries}
-                employees={employees}
+                employees={dialogEmployees}
                 milestones={cellMilestones}
             />
         </div>
