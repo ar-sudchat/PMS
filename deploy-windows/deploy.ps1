@@ -19,8 +19,11 @@
 #    7. HTTP ping localhost:3000 — show OK / FAIL
 # ============================================================
 
-# >>> EDIT THIS: full path to the deploy-windows-*.zip you copied to the server <<<
-$ZipPath  = "C:\Users\admin\Desktop\deploy-windows-20260522-1956.zip"
+# By default, picks the newest deploy-windows-*.zip in the SAME folder as this script.
+# Override $ZipPath manually if you want a specific build.
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ZipPath   = (Get-ChildItem -Path $ScriptDir -Filter "deploy-windows-*.zip" |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 
 $Install  = "C:\PMS"
 $TaskName = "PMSConsole"
