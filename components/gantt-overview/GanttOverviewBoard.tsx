@@ -22,6 +22,11 @@ import {
     type TrackingEntry,
     type AssignableEmployee,
 } from '@/lib/actions/team-tracking-actions'
+import {
+    createPersonalTodo,
+    markPersonalTodoDone,
+    deletePersonalTodo,
+} from '@/lib/actions/personal-todos-actions'
 
 // "ผู้ปฏิบัติงาน" dropdown loaded separately from PM list
 type EmployeeOpt = { id: string; name: string; name_th: string }
@@ -498,10 +503,39 @@ export function GanttOverviewBoard() {
                         includeDone={todoIncludeDone}
                         onIncludeDoneChange={setTodoIncludeDone}
                         onProjectClick={handleEditProject}
-                        onMarkDone={async (taskId) => {
-                            const res = await markTrackingEntryDone(taskId)
+                        onMarkDone={async (task) => {
+                            // Personal todos and project entries live in different tables.
+                            const res = task.is_personal
+                                ? await markPersonalTodoDone(task.id)
+                                : await markTrackingEntryDone(task.id)
                             if (res.success) {
-                                // Optimistically remove from local buckets, then refresh
+                                // Optimistically drop the row, then refresh
+                                setTodoBuckets(prev => prev
+                                    .map(b => ({ ...b, tasks: b.tasks.filter(t => t.id !== task.id) }))
+                                    .map(b => ({
+                                        ...b,
+                                        task_count: b.tasks.length,
+                                        overdue_count: b.tasks.filter(t => t.is_overdue).length,
+                                    }))
+                                    .filter(b => b.task_count > 0)
+                                )
+                                load()
+                            } else {
+                                alert('บันทึกสถานะไม่สำเร็จ: ' + (res.error || ''))
+                            }
+                        }}
+                        onCreatePersonal={async ({ title, due_date }) => {
+                            const res = await createPersonalTodo({ title, due_date })
+                            if (res.success) {
+                                load()
+                            } else {
+                                alert('เพิ่มงานไม่สำเร็จ: ' + (res.error || ''))
+                            }
+                        }}
+                        onDeletePersonal={async (taskId) => {
+                            if (!confirm('ลบงานนี้?')) return
+                            const res = await deletePersonalTodo(taskId)
+                            if (res.success) {
                                 setTodoBuckets(prev => prev
                                     .map(b => ({ ...b, tasks: b.tasks.filter(t => t.id !== taskId) }))
                                     .map(b => ({
@@ -513,7 +547,7 @@ export function GanttOverviewBoard() {
                                 )
                                 load()
                             } else {
-                                alert('บันทึกสถานะไม่สำเร็จ: ' + (res.error || ''))
+                                alert('ลบไม่สำเร็จ: ' + (res.error || ''))
                             }
                         }}
                     />

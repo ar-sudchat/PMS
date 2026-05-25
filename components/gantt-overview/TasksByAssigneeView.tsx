@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronDown, ChevronRight, AlertTriangle, Clock, CalendarClock, Check } from 'lucide-react'
+import { ChevronDown, ChevronRight, AlertTriangle, Clock, CalendarClock, Check, Plus, Trash2, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AssigneeBucket, TodoTask } from '@/lib/actions/gantt-overview-actions'
 
@@ -17,9 +17,13 @@ interface Props {
     /** Click handler — when supplied, project_code becomes a button that opens
      *  the Edit Project modal in-place (same wiring as the Gantt/Daily tabs). */
     onProjectClick?: (projectId: string) => void
-    /** Called when the user ticks a task as done. Parent should mark it DONE
-     *  on the server and refresh the bucket list. */
-    onMarkDone?: (taskId: string) => Promise<void> | void
+    /** Called when the user ticks a task as done. Parent passes either
+     *  markTrackingEntryDone or markPersonalTodoDone based on task.is_personal. */
+    onMarkDone?: (task: TodoTask) => Promise<void> | void
+    /** Create a new personal todo for the current user. */
+    onCreatePersonal?: (input: { title: string; due_date: string | null }) => Promise<void> | void
+    /** Delete a personal todo (only meaningful when task.is_personal). */
+    onDeletePersonal?: (taskId: string) => Promise<void> | void
 }
 
 function todayISO(): string {
@@ -93,9 +97,26 @@ function avatarColor(name: string): string {
 
 export function TasksByAssigneeView({
     buckets, isLoading, date, onDateChange, includeDone, onIncludeDoneChange,
-    onProjectClick, onMarkDone,
+    onProjectClick, onMarkDone, onCreatePersonal, onDeletePersonal,
 }: Props) {
     const today = todayISO()
+    const [showAddForm, setShowAddForm] = React.useState(false)
+    const [newTitle, setNewTitle] = React.useState('')
+    const [newDue, setNewDue] = React.useState<string>(today)
+    const [submitting, setSubmitting] = React.useState(false)
+
+    const handleAdd = async () => {
+        if (!onCreatePersonal || !newTitle.trim() || submitting) return
+        setSubmitting(true)
+        try {
+            await onCreatePersonal({ title: newTitle.trim(), due_date: newDue || null })
+            setNewTitle('')
+            setNewDue(today)
+            setShowAddForm(false)
+        } finally {
+            setSubmitting(false)
+        }
+    }
     const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
     // Optimistic UI: fade out + hide rows while the server call is in flight
     const [marking, setMarking] = React.useState<Set<string>>(new Set())
@@ -109,16 +130,15 @@ export function TasksByAssigneeView({
         })
     }
 
-    const handleMarkDone = async (taskId: string) => {
-        if (!onMarkDone || marking.has(taskId)) return
-        setMarking(prev => new Set(prev).add(taskId))
+    const handleMarkDone = async (task: TodoTask) => {
+        if (!onMarkDone || marking.has(task.id)) return
+        setMarking(prev => new Set(prev).add(task.id))
         try {
-            await onMarkDone(taskId)
+            await onMarkDone(task)
         } finally {
-            // Even after parent refresh removes the row, clear local state
             setMarking(prev => {
                 const next = new Set(prev)
-                next.delete(taskId)
+                next.delete(task.id)
                 return next
             })
         }
@@ -201,7 +221,7 @@ export function TasksByAssigneeView({
                         ทั้งหมด
                     </button>
                 </div>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-3">
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                         <input
                             type="checkbox"
@@ -211,8 +231,60 @@ export function TasksByAssigneeView({
                         />
                         <span className="text-xs font-medium text-slate-700">แสดงงานที่เสร็จแล้ว</span>
                     </label>
+                    {onCreatePersonal && (
+                        <button
+                            type="button"
+                            onClick={() => setShowAddForm(v => !v)}
+                            className={cn(
+                                "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors",
+                                showAddForm
+                                    ? "bg-slate-100 text-slate-700 border-slate-300"
+                                    : "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                            )}
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            เพิ่มงานของฉัน
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {/* Inline add form for personal todos */}
+            {showAddForm && onCreatePersonal && (
+                <div className="bg-indigo-50/40 border-2 border-indigo-200 border-dashed rounded-xl p-3 flex items-center gap-2 flex-wrap shadow-sm">
+                    <User className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <input
+                        type="text"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+                        placeholder="งานที่ต้องทำของฉัน..."
+                        autoFocus
+                        className="flex-1 min-w-[200px] px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:border-indigo-500 outline-none"
+                    />
+                    <input
+                        type="date"
+                        value={newDue}
+                        onChange={(e) => setNewDue(e.target.value)}
+                        className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-medium bg-white focus:border-indigo-500 outline-none"
+                    />
+                    <button
+                        type="button"
+                        onClick={handleAdd}
+                        disabled={!newTitle.trim() || submitting}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {submitting ? 'กำลังเพิ่ม...' : 'บันทึก'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setShowAddForm(false); setNewTitle('') }}
+                        className="px-3 py-1.5 rounded-lg bg-white text-slate-600 text-xs font-medium border border-slate-300 hover:bg-slate-50"
+                    >
+                        ยกเลิก
+                    </button>
+                </div>
+            )}
 
             {isLoading && buckets.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 text-xs">กำลังโหลด...</div>
@@ -282,7 +354,8 @@ export function TasksByAssigneeView({
                                         key={t.id}
                                         task={t}
                                         onProjectClick={onProjectClick}
-                                        onMarkDone={onMarkDone ? () => handleMarkDone(t.id) : undefined}
+                                        onMarkDone={onMarkDone ? () => handleMarkDone(t) : undefined}
+                                        onDelete={t.is_personal && onDeletePersonal ? () => onDeletePersonal(t.id) : undefined}
                                         isMarking={marking.has(t.id)}
                                     />
                                 ))}
@@ -296,11 +369,12 @@ export function TasksByAssigneeView({
 }
 
 function TaskRow({
-    task, onProjectClick, onMarkDone, isMarking,
+    task, onProjectClick, onMarkDone, onDelete, isMarking,
 }: {
     task: TodoTask
     onProjectClick?: (id: string) => void
     onMarkDone?: () => void
+    onDelete?: () => void
     isMarking: boolean
 }) {
     const dLeft = daysUntil(task.due_date)
@@ -385,51 +459,64 @@ function TaskRow({
                     )}
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500 flex-wrap">
-                    {onProjectClick ? (
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onProjectClick(task.project_id) }}
-                            className="font-mono font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
-                            title={task.project_name}
-                        >
-                            {task.project_code}
-                        </button>
-                    ) : (
-                        <a
-                            href={`/projects/${task.project_id}`}
-                            className="font-mono font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
-                            title={task.project_name}
-                        >
-                            {task.project_code}
-                        </a>
-                    )}
-                    <span className="text-slate-300">·</span>
-                    <span className="truncate max-w-[240px]" title={task.project_name}>{task.project_name}</span>
-                    {task.project_type_code && (
-                        <span
-                            className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold"
-                            style={{ background: `${ptColor}15`, color: ptColor, border: `1px solid ${ptColor}30` }}
-                        >
-                            {task.project_type_code}
+                    {task.is_personal ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                            <User className="w-2.5 h-2.5" />
+                            งานส่วนตัว
                         </span>
-                    )}
-                    {task.milestone_name && (
+                    ) : (
                         <>
-                            <span className="text-slate-300">·</span>
-                            <span
-                                className="inline-flex items-center gap-1 font-medium"
-                                style={{ color: task.milestone_color || '#64748b' }}
-                            >
-                                <span className="w-1.5 h-1.5 rounded-sm" style={{ background: task.milestone_color || '#94a3b8' }} />
-                                {task.milestone_name}
-                            </span>
+                            {onProjectClick && task.project_id ? (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onProjectClick(task.project_id!) }}
+                                    className="font-mono font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                                    title={task.project_name || ''}
+                                >
+                                    {task.project_code}
+                                </button>
+                            ) : task.project_id ? (
+                                <a
+                                    href={`/projects/${task.project_id}`}
+                                    className="font-mono font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                                    title={task.project_name || ''}
+                                >
+                                    {task.project_code}
+                                </a>
+                            ) : null}
+                            {task.project_name && (
+                                <>
+                                    <span className="text-slate-300">·</span>
+                                    <span className="truncate max-w-[240px]" title={task.project_name}>{task.project_name}</span>
+                                </>
+                            )}
+                            {task.project_type_code && (
+                                <span
+                                    className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold"
+                                    style={{ background: `${ptColor}15`, color: ptColor, border: `1px solid ${ptColor}30` }}
+                                >
+                                    {task.project_type_code}
+                                </span>
+                            )}
+                            {task.milestone_name && (
+                                <>
+                                    <span className="text-slate-300">·</span>
+                                    <span
+                                        className="inline-flex items-center gap-1 font-medium"
+                                        style={{ color: task.milestone_color || '#64748b' }}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-sm" style={{ background: task.milestone_color || '#94a3b8' }} />
+                                        {task.milestone_name}
+                                    </span>
+                                </>
+                            )}
                         </>
                     )}
                 </div>
             </div>
 
-            {/* Right: due chip */}
-            <div className="shrink-0 pt-0.5">
+            {/* Right: due chip + (personal) delete button */}
+            <div className="shrink-0 pt-0.5 flex items-center gap-2">
                 <span className={cn(
                     "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap",
                     dueClass
@@ -437,6 +524,16 @@ function TaskRow({
                     <Clock className="w-3 h-3" />
                     {dueText}
                 </span>
+                {onDelete && (
+                    <button
+                        type="button"
+                        onClick={onDelete}
+                        className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
+                        title="ลบงานนี้"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                )}
             </div>
         </li>
     )

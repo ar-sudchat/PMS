@@ -1,6 +1,7 @@
 'use server'
 
 import { getConnection } from '@/lib/db'
+import { getCurrentUser } from '@/lib/auth'
 import sql from 'mssql'
 
 // ============================================================
@@ -425,24 +426,27 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
 
 export interface TodoTask {
     id: string
-    title: string                 // = entry.note (what was written on the daily tab)
-    status: 'PLANNED' | 'POSTPONED' | string
-    /** Effective due date: postponed_date when status=POSTPONED, otherwise entry_date */
+    title: string                 // entry.note OR personal_todo.title (rich HTML)
+    status: 'PLANNED' | 'POSTPONED' | 'DONE' | string
+    /** Effective due date: completed_date (DONE) / postponed_date (POSTPONED) / entry_date | due_date */
     due_date: string | null
     /** The originally-planned date — useful when something has been postponed */
     planned_date: string | null
     is_overdue: boolean
     color: string | null          // entry color (icon tint)
     icon: string | null
-    project_id: string
-    project_code: string
-    project_name: string
+    // Project fields are NULL for personal todos
+    project_id: string | null
+    project_code: string | null
+    project_name: string | null
     project_type_code: string | null
     project_type_color: string | null
     milestone_id: string | null
     milestone_code: string | null
     milestone_name: string | null
     milestone_color: string | null
+    /** True when this row came from pms.personal_todos (owner-only, no project) */
+    is_personal: boolean
 }
 
 export interface AssigneeBucket {
@@ -584,9 +588,82 @@ export async function getOpenTasksByAssignee(filters?: {
                 milestone_code: r.milestone_code,
                 milestone_name: r.milestone_name,
                 milestone_color: r.milestone_color,
+                is_personal: false,
             })
             bucket.task_count++
             if (isOverdue) bucket.overdue_count++
+        }
+
+        // Merge in the current user's personal_todos. They live in a separate table
+        // (no project FK) and only the owner sees them.
+        const me = await getCurrentUser()
+        if (me) {
+            // Apply the same date / done filters so personal todos respect the UI filters.
+            let pWhere = `owner_id = @me AND is_active = 1`
+            if (!filters?.includeDone) pWhere += ` AND status <> 'DONE'`
+            const pReq = pool.request().input('me', sql.UniqueIdentifier, me.id)
+            if (filters?.dateFilter) {
+                pReq.input('pDate', sql.Date, filters.dateFilter)
+                pWhere += ` AND (
+                    (status = 'DONE'  AND completed_date = @pDate) OR
+                    (status <> 'DONE' AND due_date = @pDate)
+                )`
+            }
+            // Optional assignee filter: if user filtered to someone else, skip personal todos
+            const showPersonal = !filters?.assigneeIds?.length || filters.assigneeIds.includes(me.id)
+            if (showPersonal) {
+                const pr = await pReq.query(`
+                    SELECT id, title, status,
+                        CONVERT(varchar(10), due_date,       23) AS due_date,
+                        CONVERT(varchar(10), completed_date, 23) AS completed_date,
+                        color, icon
+                    FROM pms.personal_todos
+                    WHERE ${pWhere}
+                `)
+                if (pr.recordset.length > 0) {
+                    // Find or create the current user's bucket
+                    let myBucket = buckets.get(me.id)
+                    if (!myBucket) {
+                        myBucket = {
+                            assignee_id: me.id,
+                            assignee_name: me.name,
+                            assignee_nickname: null,
+                            task_count: 0,
+                            overdue_count: 0,
+                            tasks: [],
+                        }
+                        buckets.set(me.id, myBucket)
+                    }
+                    for (const r of pr.recordset) {
+                        const due = r.status === 'DONE' && r.completed_date ? r.completed_date : r.due_date
+                        const isOverdue = r.status !== 'DONE' && due
+                            ? new Date(due).getTime() < today.getTime()
+                            : false
+                        myBucket.tasks.push({
+                            id: r.id,
+                            title: r.title || '(ไม่มีรายละเอียด)',
+                            status: r.status,
+                            due_date: due,
+                            planned_date: r.due_date,
+                            is_overdue: isOverdue,
+                            color: r.color,
+                            icon: r.icon,
+                            project_id: null,
+                            project_code: null,
+                            project_name: null,
+                            project_type_code: null,
+                            project_type_color: null,
+                            milestone_id: null,
+                            milestone_code: null,
+                            milestone_name: null,
+                            milestone_color: null,
+                            is_personal: true,
+                        })
+                        myBucket.task_count++
+                        if (isOverdue) myBucket.overdue_count++
+                    }
+                }
+            }
         }
 
         // Sort tasks within each bucket: overdue first (oldest first), then by due_date asc
