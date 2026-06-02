@@ -27,6 +27,7 @@ import {
     markPersonalTodoDone,
     deletePersonalTodo,
 } from '@/lib/actions/personal-todos-actions'
+import { updateMilestoneProgress } from '@/lib/actions/kpi-actions'
 
 // "ผู้ปฏิบัติงาน" dropdown loaded separately from PM list
 type EmployeeOpt = { id: string; name: string; name_th: string }
@@ -35,8 +36,14 @@ import { TrackingCellDialog } from '@/components/team-tracking/TrackingCellDialo
 import { ProjectDetailPopup } from './ProjectDetailPopup'
 import {
     addMonths, computeBarPosition, daysBetween,
-    getWeeksForMonth, lastOfMonth, thMonthShort, thShortDate, toISODate,
+    getWeeksForMonth, getWeeksForRange, lastOfMonth, thMonthShort, thShortDate, toISODate,
 } from './gantt-grid-utils'
+
+// In Gantt and Daily views, extend the visible window by this many extra days
+// past the last month so bars / cells that fall slightly past the month boundary
+// still render.
+const GANTT_TRAIL_DAYS = 15
+const DAILY_TRAIL_DAYS = 15
 
 type ViewMode = 'gantt' | 'daily' | 'todo'
 
@@ -56,6 +63,7 @@ interface FilterOptions {
     managers: { id: string; name: string; name_th: string }[]  // kept (used by project queries) but not surfaced in UI
     statuses: { id: string; code: string; name: string; color: string }[]
     projectTypes: { id: string; code: string; name: string; color: string }[]
+    milestones: { id: string; code: string; name: string; name_th?: string; color: string }[]
     years: number[]
 }
 
@@ -64,16 +72,17 @@ interface UIFilters {
     employeeId: string
     statusId: string
     projectTypeId: string
+    milestoneIds: string[]   // multi-select; [] = ทั้งหมด
     search: string
 }
 
-const EMPTY_OPTS: FilterOptions = { customers: [], managers: [], statuses: [], projectTypes: [], years: [] }
+const EMPTY_OPTS: FilterOptions = { customers: [], managers: [], statuses: [], projectTypes: [], milestones: [], years: [] }
 
 export function GanttOverviewBoard() {
     // Filters
     const [opts, setOpts] = React.useState<FilterOptions>(EMPTY_OPTS)
     const [filters, setFilters] = React.useState<UIFilters>({
-        customerId: '', employeeId: '', statusId: '', projectTypeId: '', search: '',
+        customerId: '', employeeId: '', statusId: '', projectTypeId: '', milestoneIds: [], search: '',
     })
 
     // View mode: gantt = 3-month timeline / daily = 1-month day-grid with icons
@@ -161,6 +170,7 @@ export function GanttOverviewBoard() {
                 statusIds: filters.statusId ? [filters.statusId] : undefined,
                 typeIds: filters.projectTypeId ? [filters.projectTypeId] : undefined,
                 assigneeIds: filters.employeeId ? [filters.employeeId] : undefined,
+                milestoneConfigIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
                 dateFilter: todoDate || undefined,
                 includeDone: todoIncludeDone,
             })
@@ -182,9 +192,13 @@ export function GanttOverviewBoard() {
                 managerId: filters.employeeId || undefined,
                 statusId: filters.statusId || undefined,
                 projectTypeId: filters.projectTypeId || undefined,
+                milestoneIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
                 search: filters.search || undefined,
             }
-            const res = await getTeamTrackingData(ttFilters, toISODate(back), endIso)
+            // Daily view extends the window by DAILY_TRAIL_DAYS past end-of-month
+            const dailyEndDate = new Date(lastOfMonth(windowStart))
+            dailyEndDate.setDate(dailyEndDate.getDate() + DAILY_TRAIL_DAYS)
+            const res = await getTeamTrackingData(ttFilters, toISODate(back), toISODate(dailyEndDate))
             if (reqId !== reqIdRef.current) return
             if (res.success && res.data) {
                 setDailyProjects(res.data.projects)
@@ -198,6 +212,7 @@ export function GanttOverviewBoard() {
                 typeIds: filters.projectTypeId ? [filters.projectTypeId] : undefined,
                 // employeeId interpreted as project_manager_id here
                 projectManagerIds: filters.employeeId ? [filters.employeeId] : undefined,
+                milestoneConfigIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
             }
             const res = await getProjectsForGantt(startIso, endIso, payload)
             if (reqId !== reqIdRef.current) return
@@ -253,19 +268,64 @@ export function GanttOverviewBoard() {
         return rows.filter(r => r.customer_name === c.name)
     }, [rows, filters.customerId, opts.customers])
 
+    // Sort by clicked column header. 3-state: asc → desc → none.
+    type SortKey = 'code' | 'name' | 'due' | 'milestone'
+    const [sortKey, setSortKey] = React.useState<SortKey | null>(null)
+    const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc')
+    const toggleSort = (k: SortKey) => {
+        if (sortKey !== k) { setSortKey(k); setSortDir('asc'); return }
+        if (sortDir === 'asc') setSortDir('desc')
+        else { setSortKey(null); setSortDir('asc') }
+    }
+    const sortedRows = React.useMemo(() => {
+        if (!sortKey) return filteredRows
+        const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+        const arr = [...filteredRows]
+        arr.sort((a, b) => {
+            let va: string, vb: string
+            switch (sortKey) {
+                case 'code':      va = a.project_code || ''; vb = b.project_code || ''; break
+                case 'name':      va = a.name_th || a.name || ''; vb = b.name_th || b.name || ''; break
+                case 'due':       va = a.end_date || '9999-12-31'; vb = b.end_date || '9999-12-31'; break
+                case 'milestone': va = a.current_milestone_name || ''; vb = b.current_milestone_name || ''; break
+            }
+            return collator.compare(va, vb)
+        })
+        if (sortDir === 'desc') arr.reverse()
+        return arr
+    }, [filteredRows, sortKey, sortDir])
+
+    // In Gantt mode we tack on a partial trailing month covering GANTT_TRAIL_DAYS
+    // extra days past the last full month. Daily/Todo modes don't use this.
+    const trail = view === 'gantt'
     const months = React.useMemo(() => {
         const arr: Date[] = []
         for (let i = 0; i < monthsInWindow; i++) arr.push(addMonths(windowStart, i))
+        if (trail) {
+            // 4th entry is the start of the month right after the window
+            arr.push(addMonths(windowStart, monthsInWindow))
+        }
         return arr
-    }, [windowStart, monthsInWindow])
+    }, [windowStart, monthsInWindow, trail])
     const rangeStart = months[0]
-    const rangeEnd = lastOfMonth(months[months.length - 1])
+    // rangeEnd = last full month's end + 15 days (when trail is on), or just last month end
+    const rangeEnd = React.useMemo(() => {
+        if (!trail) return lastOfMonth(months[months.length - 1])
+        const lastFull = lastOfMonth(addMonths(windowStart, monthsInWindow - 1))
+        const e = new Date(lastFull)
+        e.setDate(e.getDate() + GANTT_TRAIL_DAYS)
+        return e
+    }, [months, trail, windowStart, monthsInWindow])
     const totalDays = daysBetween(rangeStart, rangeEnd) + 1
 
-    const weeksPerMonth = React.useMemo(
-        () => months.map(m => getWeeksForMonth(m)),
-        [months]
-    )
+    const weeksPerMonth = React.useMemo(() => {
+        if (!trail) return months.map(m => getWeeksForMonth(m))
+        // First N months: full weeks. Last (partial) month: only up to rangeEnd.
+        return months.map((m, i) => {
+            if (i < monthsInWindow) return getWeeksForMonth(m)
+            return getWeeksForRange(m, rangeEnd)
+        })
+    }, [months, trail, monthsInWindow, rangeEnd])
     const totalWeekCells = weeksPerMonth.reduce((a, ws) => a + ws.length, 0)
 
     // Week boundary % positions (excluding 0% and 100%) for the timeline column —
@@ -475,6 +535,16 @@ export function GanttOverviewBoard() {
                         </select>
                     </div>
 
+                    {/* Milestone — multi-select */}
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Milestone</span>
+                        <MilestoneMultiSelect
+                            options={opts.milestones}
+                            value={filters.milestoneIds}
+                            onChange={(ids) => setFilter('milestoneIds', ids)}
+                        />
+                    </div>
+
                     {/* Search */}
                     <div className="flex flex-col gap-1 relative ml-auto w-56">
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">ค้นหาโครงการ</span>
@@ -571,7 +641,11 @@ export function GanttOverviewBoard() {
                                 }
                                 return toISODate(windowStart)
                             })()}
-                            endDate={toISODate(lastOfMonth(windowStart))}
+                            endDate={(() => {
+                                const e = new Date(lastOfMonth(windowStart))
+                                e.setDate(e.getDate() + DAILY_TRAIL_DAYS)
+                                return toISODate(e)
+                            })()}
                             onCellClick={handleCellClick}
                             onProjectClick={handleEditProject}
                             isLoading={loading && dailyProjects.length === 0}
@@ -587,6 +661,11 @@ export function GanttOverviewBoard() {
                             totalWeekCells={totalWeekCells}
                             codeCol={{ width: 90, label: 'รหัส' }}
                             thirdCol={{ width: 150, label: 'มายสโตนปัจจุบัน' }}
+                            sort={{
+                                activeKey: sortKey,
+                                dir: sortDir,
+                                onToggle: (k) => toggleSort(k as SortKey),
+                            }}
                         />
                         {loading && filteredRows.length === 0 ? (
                             <div className="p-12 text-center text-slate-500 text-xs">กำลังโหลด...</div>
@@ -595,7 +674,7 @@ export function GanttOverviewBoard() {
                                 ไม่พบโครงการตามฟิลเตอร์ที่เลือก
                             </div>
                         ) : (
-                            filteredRows.map((row) => (
+                            sortedRows.map((row) => (
                                 <ProjectRow
                                     key={row.id}
                                     row={row}
@@ -604,6 +683,13 @@ export function GanttOverviewBoard() {
                                     gridPcts={weekBoundaryPcts}
                                     onClick={() => setOpenProjectId(row.id)}
                                     onCodeClick={() => handleEditProject(row.id)}
+                                    onUpdateProgress={async (milestoneId, percent) => {
+                                        // Optimistic: bump the row's % locally; the next load() reconciles.
+                                        setRows(prev => prev.map(r => r.id === row.id ? { ...r, progress: percent } : r))
+                                        const res = await updateMilestoneProgress(milestoneId, percent)
+                                        if (res.success) load()
+                                        else { alert('บันทึก % ไม่สำเร็จ: ' + (res.error || '')); load() }
+                                    }}
                                 />
                             ))
                         )}
@@ -653,6 +739,107 @@ export function GanttOverviewBoard() {
 }
 
 // ============================================================
+// Milestone multi-select — chips popover
+// ============================================================
+
+interface MilestoneOpt {
+    id: string
+    code: string
+    name: string
+    name_th?: string
+    color: string
+}
+
+function MilestoneMultiSelect({
+    options, value, onChange,
+}: {
+    options: MilestoneOpt[]
+    value: string[]
+    onChange: (ids: string[]) => void
+}) {
+    const [open, setOpen] = React.useState(false)
+    const wrapRef = React.useRef<HTMLDivElement | null>(null)
+
+    // Close on click-outside
+    React.useEffect(() => {
+        if (!open) return
+        const onDoc = (e: MouseEvent) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+        }
+        document.addEventListener('mousedown', onDoc)
+        return () => document.removeEventListener('mousedown', onDoc)
+    }, [open])
+
+    const toggle = (id: string) => {
+        if (value.includes(id)) onChange(value.filter(x => x !== id))
+        else onChange([...value, id])
+    }
+
+    const label = value.length === 0
+        ? 'ทั้งหมด'
+        : value.length === 1
+            ? (options.find(o => o.id === value[0])?.name_th || options.find(o => o.id === value[0])?.name || '1 รายการ')
+            : `${value.length} รายการ`
+
+    return (
+        <div className="relative" ref={wrapRef}>
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className={cn(
+                    "px-2.5 py-1.5 border rounded-lg text-xs min-w-[130px] text-left bg-slate-50/50 hover:bg-slate-50 focus:border-indigo-500 focus:bg-white transition-all outline-none shadow-sm font-medium flex items-center justify-between gap-2",
+                    value.length > 0 ? "border-indigo-300 text-indigo-700" : "border-slate-200 text-slate-600"
+                )}
+            >
+                <span className="truncate">{label}</span>
+                <span className="text-slate-400 shrink-0">▾</span>
+            </button>
+            {open && (
+                <div className="absolute z-30 mt-1 w-64 max-h-72 overflow-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">มายสโตน</span>
+                        <button
+                            type="button"
+                            onClick={() => onChange([])}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+                            disabled={value.length === 0}
+                        >
+                            ล้าง
+                        </button>
+                    </div>
+                    {options.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-slate-400">ไม่มีข้อมูล</div>
+                    ) : options.map(opt => {
+                        const checked = value.includes(opt.id)
+                        return (
+                            <label
+                                key={opt.id}
+                                className={cn(
+                                    "flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-slate-50",
+                                    checked && "bg-indigo-50/40"
+                                )}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggle(opt.id)}
+                                    className="w-3.5 h-3.5 rounded accent-indigo-600"
+                                />
+                                <span
+                                    className="w-2 h-2 rounded-sm shrink-0"
+                                    style={{ background: opt.color || '#94a3b8' }}
+                                />
+                                <span className="text-xs text-slate-700 truncate">{opt.name_th || opt.name}</span>
+                            </label>
+                        )
+                    })}
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ============================================================
 // Header (used by main + sub-gantt — exported)
 // ============================================================
 
@@ -667,11 +854,43 @@ interface GridHeaderProps {
     /** Optional third fixed column (e.g. "มายสโตนปัจจุบัน") rendered between midWidth and the timeline. */
     thirdCol?: { width: number; label: string }
     compact?: boolean
+    /** When provided, the fixed column headers become clickable sort triggers. */
+    sort?: {
+        activeKey: string | null
+        dir: 'asc' | 'desc'
+        onToggle: (key: 'code' | 'name' | 'due' | 'milestone') => void
+    }
+}
+
+// Sortable header cell helper — adds arrow indicator + click handler
+function SortHeader({
+    label, sortKey, sort, compact,
+}: {
+    label: string
+    sortKey: 'code' | 'name' | 'due' | 'milestone'
+    sort?: GridHeaderProps['sort']
+    compact: boolean
+}) {
+    const base = cn("px-3 text-xs font-semibold text-slate-700 border-r border-slate-200", compact ? "py-1.5" : "py-2")
+    if (!sort) return <div className={base}>{label}</div>
+    const isActive = sort.activeKey === sortKey
+    return (
+        <button
+            type="button"
+            onClick={() => sort.onToggle(sortKey)}
+            className={cn(base, "text-left inline-flex items-center gap-1 hover:bg-slate-100 transition-colors cursor-pointer select-none", isActive && "text-indigo-700")}
+        >
+            {label}
+            <span className={cn("text-[10px]", isActive ? "text-indigo-600" : "text-slate-300")}>
+                {isActive ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+            </span>
+        </button>
+    )
 }
 
 export function GridHeader({
     months, weeksPerMonth, totalWeekCells,
-    leftWidth = 260, midWidth = 100, codeCol, thirdCol, compact = false,
+    leftWidth = 260, midWidth = 100, codeCol, thirdCol, compact = false, sort,
 }: GridHeaderProps) {
     const codePart = codeCol ? `${codeCol.width}px ` : ''
     const thirdPart = thirdCol ? `${thirdCol.width}px ` : ''
@@ -680,20 +899,12 @@ export function GridHeader({
             <div className="grid sticky top-0 z-20 bg-slate-50 border-b border-slate-200"
                 style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}repeat(${months.length}, minmax(220px, 1fr))` }}>
                 {codeCol && (
-                    <div className={cn("px-3 text-xs font-semibold text-slate-700 border-r border-slate-200", compact ? "py-1.5" : "py-2")}>
-                        {codeCol.label}
-                    </div>
+                    <SortHeader label={codeCol.label} sortKey="code" sort={sort} compact={compact} />
                 )}
-                <div className={cn("px-3 text-xs font-semibold text-slate-700 border-r border-slate-200", compact ? "py-1.5" : "py-2")}>
-                    {compact ? 'กิจกรรม' : 'โครงการ'}
-                </div>
-                <div className={cn("px-3 text-xs font-semibold text-slate-700 border-r border-slate-200", compact ? "py-1.5" : "py-2")}>
-                    กำหนดส่ง
-                </div>
+                <SortHeader label={compact ? 'กิจกรรม' : 'โครงการ'} sortKey="name" sort={sort} compact={compact} />
+                <SortHeader label="กำหนดส่ง" sortKey="due" sort={sort} compact={compact} />
                 {thirdCol && (
-                    <div className={cn("px-3 text-xs font-semibold text-slate-700 border-r border-slate-200", compact ? "py-1.5" : "py-2")}>
-                        {thirdCol.label}
-                    </div>
+                    <SortHeader label={thirdCol.label} sortKey="milestone" sort={sort} compact={compact} />
                 )}
                 {months.map((m, i) => (
                     <div key={i} className={cn("px-2 text-center text-xs font-semibold text-slate-700 border-r border-slate-200 tracking-tight", compact ? "py-1.5" : "py-2")}>
@@ -731,6 +942,9 @@ interface ProjectRowProps {
     gridPcts: number[]
     onClick: () => void
     onCodeClick: () => void
+    /** Inline edit handler — called when the user types a new % on the bar chip.
+     *  Targets the row's CURRENT milestone; the project-level % then recomputes from the avg. */
+    onUpdateProgress?: (milestoneId: string, percent: number) => Promise<void> | void
 }
 
 // Single accent color for all timeline bars — keeps the board calm and lets the
@@ -738,10 +952,32 @@ interface ProjectRowProps {
 // "มายสโตนปัจจุบัน" column (which keeps its own per-phase color marker).
 const BAR_COLOR = '#6366f1'   // indigo-500
 
-function ProjectRow({ row, rangeStart, totalDays, gridPcts, onClick, onCodeClick }: ProjectRowProps) {
+function ProjectRow({ row, rangeStart, totalDays, gridPcts, onClick, onCodeClick, onUpdateProgress }: ProjectRowProps) {
     const bar = computeBarPosition(row.start_date, row.end_date, rangeStart, totalDays)
     const color = BAR_COLOR
     const msColor = row.current_milestone_color || '#64748b'
+
+    // Inline edit state for the % chip
+    const [editing, setEditing] = React.useState(false)
+    const [pctDraft, setPctDraft] = React.useState<string>(String(row.progress))
+    const [saving, setSaving] = React.useState(false)
+    const canEdit = !!(onUpdateProgress && row.current_milestone_id)
+
+    const commit = async () => {
+        if (!canEdit || saving) return
+        const n = Math.max(0, Math.min(100, Math.round(Number(pctDraft) || 0)))
+        setSaving(true)
+        try {
+            await onUpdateProgress!(row.current_milestone_id!, n)
+        } finally {
+            setSaving(false)
+            setEditing(false)
+        }
+    }
+    const cancelEdit = () => {
+        setPctDraft(String(row.progress))
+        setEditing(false)
+    }
 
     return (
         <div
@@ -805,12 +1041,49 @@ function ProjectRow({ row, rangeStart, totalDays, gridPcts, onClick, onCodeClick
                                 background: `linear-gradient(180deg, ${color}, ${color}d9)`,
                             }}
                         />
-                        <div
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-white/95 text-xs font-bold text-slate-800 px-1.5 py-0.5 rounded tabular-nums"
-                            style={{ boxShadow: `0 0 0 1.25px ${color}` }}
-                        >
-                            {row.progress}%
-                        </div>
+                        {editing ? (
+                            <div
+                                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-white text-xs font-bold text-slate-800 px-1.5 py-0.5 rounded inline-flex items-center gap-1 z-20"
+                                style={{ boxShadow: `0 0 0 1.5px ${color}` }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={pctDraft}
+                                    onChange={(e) => setPctDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') commit()
+                                        if (e.key === 'Escape') cancelEdit()
+                                    }}
+                                    onBlur={() => { if (!saving) commit() }}
+                                    autoFocus
+                                    className="w-12 px-1 py-0 text-xs font-bold tabular-nums outline-none border-0 bg-transparent text-right"
+                                />
+                                <span className="text-slate-500">%</span>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (canEdit) {
+                                        setPctDraft(String(row.progress))
+                                        setEditing(true)
+                                    }
+                                }}
+                                className={cn(
+                                    "absolute right-1.5 top-1/2 -translate-y-1/2 bg-white/95 text-xs font-bold text-slate-800 px-1.5 py-0.5 rounded tabular-nums",
+                                    canEdit && "hover:bg-white cursor-pointer"
+                                )}
+                                style={{ boxShadow: `0 0 0 1.25px ${color}` }}
+                                title={canEdit ? "คลิกเพื่อแก้ %" : ""}
+                            >
+                                {row.progress}%
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

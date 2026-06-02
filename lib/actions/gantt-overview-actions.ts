@@ -108,6 +108,7 @@ export interface GanttProjectRow {
     end_date: string | null     // YYYY-MM-DD (latest milestone due, or project.end_date)
     progress: number            // 0-100, average of milestone progress
     milestone_count: number
+    current_milestone_id: string | null
     current_milestone_name: string | null
     current_milestone_color: string | null
 }
@@ -166,6 +167,7 @@ export interface GanttListFilters {
     statusIds?: string[]           // pms.project_status_configs.id
     typeIds?: string[]             // pms.project_types.id
     projectManagerIds?: string[]   // pms.employees.id
+    milestoneConfigIds?: string[]  // pms.milestone_configs.id — filter projects by their CURRENT milestone
 }
 
 // ============================================================
@@ -227,6 +229,15 @@ export async function getProjectsForGantt(
             where.push(`p.project_manager_id IN (${placeholders})`)
         }
 
+        // Milestone filter (multi) — matches the project's CURRENT milestone
+        if (filters.milestoneConfigIds && filters.milestoneConfigIds.length > 0) {
+            const placeholders = filters.milestoneConfigIds.map((id, i) => {
+                reqBuilder.input(`mcg${i}`, sql.UniqueIdentifier, id)
+                return `@mcg${i}`
+            }).join(',')
+            where.push(`cpm.milestone_config_id IN (${placeholders})`)
+        }
+
         // Single aggregate scan of project_milestones (vs 4 correlated subqueries per row).
         const r = await reqBuilder.query(`
             WITH ms_agg AS (
@@ -251,6 +262,7 @@ export async function getProjectsForGantt(
                 sc.code AS status_code,
                 sc.name AS status_name,
                 sc.color AS status_color,
+                cpm.id  AS current_milestone_id,
                 cm.name AS current_milestone_name,
                 cm.color AS current_milestone_color,
                 ma.earliest_ms_due,
@@ -294,6 +306,7 @@ export async function getProjectsForGantt(
                 end_date: end,
                 progress: Math.round(row.avg_progress || 0),
                 milestone_count: row.milestone_count || 0,
+                current_milestone_id: row.current_milestone_id,
                 current_milestone_name: row.current_milestone_name,
                 current_milestone_color: row.current_milestone_color,
             }
@@ -329,6 +342,7 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
                        pm.first_name_th + ' ' + ISNULL(pm.last_name_th, '') AS project_manager_name,
                        pt.name AS project_type_name, pt.color AS project_type_color,
                        sc.code AS status_code, sc.name AS status_name, sc.color AS status_color,
+                       cpm.id AS current_milestone_id,
                        cm.name AS current_milestone_name,
                        cm.color AS current_milestone_color,
                        (SELECT MIN(due_date) FROM pms.project_milestones WHERE project_id = p.id) AS earliest_ms_due,
@@ -388,6 +402,7 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
             end_date: p.latest_ms_due ? toISODate(p.latest_ms_due) : toISODate(p.end_date),
             progress: Math.round(p.avg_progress || 0),
             milestone_count: p.milestone_count || 0,
+            current_milestone_id: p.current_milestone_id || null,
             current_milestone_name: p.current_milestone_name || null,
             current_milestone_color: p.current_milestone_color || null,
         }
@@ -464,6 +479,7 @@ export async function getOpenTasksByAssignee(filters?: {
     typeIds?: string[]            // project type filter
     projectManagerIds?: string[]  // project PM filter
     assigneeIds?: string[]        // tracking-entry assignee filter
+    milestoneConfigIds?: string[] // pms.milestone_configs.id — filter ENTRIES by their milestone
     includeUnassigned?: boolean   // default false
     /** ISO yyyy-MM-dd. When set, only entries whose *effective date* matches.
      *  Effective date = completed_date (DONE) / postponed_date (POSTPONED) / entry_date (PLANNED) */
@@ -510,6 +526,11 @@ export async function getOpenTasksByAssignee(filters?: {
         if (filters?.assigneeIds?.length) {
             where += ` AND t.assignee_id IN (${filters.assigneeIds.map((_, i) => `@as${i}`).join(',')})`
             filters.assigneeIds.forEach((id, i) => req.input(`as${i}`, sql.UniqueIdentifier, id))
+        }
+        if (filters?.milestoneConfigIds?.length) {
+            // Join via project_milestones → milestone_configs to match the entry's milestone
+            where += ` AND pmm.milestone_config_id IN (${filters.milestoneConfigIds.map((_, i) => `@mcg${i}`).join(',')})`
+            filters.milestoneConfigIds.forEach((id, i) => req.input(`mcg${i}`, sql.UniqueIdentifier, id))
         }
         if (!filters?.includeUnassigned) {
             where += ` AND t.assignee_id IS NOT NULL`

@@ -223,9 +223,37 @@ export function TrackingCellDialog({
     }
 
     const isNewEntry = !activeForm.id
+    const drawerRef = useRef<HTMLDivElement | null>(null)
+
+    // Click-outside-to-close — but EXCLUDE the tracking-grid table so the user
+    // can click a different cell to switch the drawer's context without it
+    // collapsing first. Also exclude Esc keypress.
+    useEffect(() => {
+        if (!open) return
+        const onMouseDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement
+            if (!target) return
+            // Inside the drawer itself? leave it alone.
+            if (drawerRef.current?.contains(target)) return
+            // Click on a tracking-grid cell (or anywhere inside the grid table) — keep open.
+            if (target.closest('[data-tracking-grid]')) return
+            // Click on another popover (color picker / dropdown the drawer mounts in portal-style) — leave it.
+            if (target.closest('[data-tracking-dialog-popover]')) return
+            onClose()
+        }
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+        // mousedown so we react before any focus/click handler on the cell fires
+        document.addEventListener('mousedown', onMouseDown)
+        document.addEventListener('keydown', onKey)
+        return () => {
+            document.removeEventListener('mousedown', onMouseDown)
+            document.removeEventListener('keydown', onKey)
+        }
+    }, [open, onClose])
 
     return (
         <div
+            ref={drawerRef}
             aria-hidden={!open}
             className={`fixed top-0 right-0 bottom-0 z-50 w-[600px] max-w-[95vw] bg-white border-l border-slate-200 shadow-2xl flex flex-col transition-transform duration-200 ease-out ${
                 open ? 'translate-x-0' : 'translate-x-full pointer-events-none'

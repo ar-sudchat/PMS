@@ -32,16 +32,19 @@ export function thShortDate(iso: string | null): string {
 }
 
 export function getWeeksForMonth(monthStart: Date): { start: Date; days: number }[] {
-    const monthEnd = lastOfMonth(monthStart)
+    return getWeeksForRange(monthStart, lastOfMonth(monthStart))
+}
+
+/** Generate week segments between two dates (inclusive). Week boundary = Sunday. */
+export function getWeeksForRange(rangeStart: Date, rangeEnd: Date): { start: Date; days: number }[] {
     const weeks: { start: Date; days: number }[] = []
-    let cursor = new Date(monthStart)
-    while (cursor <= monthEnd) {
-        const dayOfWeek = cursor.getDay() // 0=Sun..6=Sat
-        // distance to end of THIS calendar week (Sunday). Sunday→7 days
+    let cursor = new Date(rangeStart)
+    while (cursor <= rangeEnd) {
+        const dayOfWeek = cursor.getDay()
         const daysToWeekEnd = (7 - dayOfWeek) % 7 || 7
         const weekEndCandidate = new Date(cursor)
         weekEndCandidate.setDate(cursor.getDate() + daysToWeekEnd - 1)
-        const segmentEnd = weekEndCandidate > monthEnd ? monthEnd : weekEndCandidate
+        const segmentEnd = weekEndCandidate > rangeEnd ? rangeEnd : weekEndCandidate
         const days = daysBetween(cursor, segmentEnd) + 1
         weeks.push({ start: new Date(cursor), days })
         cursor = new Date(segmentEnd)

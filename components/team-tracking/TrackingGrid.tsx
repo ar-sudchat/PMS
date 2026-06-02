@@ -316,7 +316,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
     }
 
     return (
-        <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-inner">
+        <div data-tracking-grid className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-inner">
             <div className="overflow-auto max-h-[calc(100vh-170px)] scrollbar-thin scrollbar-thumb-slate-200">
                 <table className="min-w-full border-collapse text-xs">
                     <thead className="bg-slate-50/95 backdrop-blur-sm sticky top-0 z-20 border-b border-slate-200 shadow-sm">

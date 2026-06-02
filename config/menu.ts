@@ -167,6 +167,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'บันทึกเวลา',
         children: [
           { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
+          { id: 'my-todos', label: 'My ToDos', labelTh: 'ToDo ของฉัน', path: '/my-todos', icon: ListTodo },
           { id: 'kanban', label: 'Kanban Board', labelTh: 'บอร์ดบริหารงาน', path: '/kanban', icon: Layers },
           { id: 'my-calendar', label: 'My Calendar', labelTh: 'ปฏิทินของฉัน', path: '/my-calendar', icon: Calendar },
         ]
