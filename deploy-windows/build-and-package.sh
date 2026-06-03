@@ -89,6 +89,29 @@ fi
 rm -rf "${APP_DIR}/node_modules/@next/swc-darwin-"* 2>/dev/null || true
 rm -rf "${APP_DIR}/node_modules/@next/swc-linux-"* 2>/dev/null || true
 
+# Next.js 16 Turbopack sometimes emits chunk file names with ':' in them
+# (e.g. "lib_actions_data:3b55bf_0876070b._.js"). Colons are reserved on
+# NTFS, so the zip blows up when extracted on Windows. Walk the bundle,
+# rename any such files, and patch every manifest reference.
+echo "    Patching colon-named Turbopack chunks for NTFS compatibility ..."
+COLON_COUNT=0
+# Use find -print0 / while-read to handle weird names without arrays (works on bash 3.2)
+while IFS= read -r -d '' f; do
+    COLON_COUNT=$((COLON_COUNT + 1))
+    dir="$(dirname "$f")"
+    old="$(basename "$f")"
+    new="${old//:/__}"
+    mv "$f" "$dir/$new"
+    echo "      renamed $old -> $new"
+    # Rewrite manifests / chunk maps that reference the old name
+    grep -rl --include='*.json' --include='*.js' "$old" "${APP_DIR}" 2>/dev/null | while read -r mf; do
+        LC_ALL=C sed -i '' "s|${old}|${new}|g" "$mf"
+    done
+done < <(find "${APP_DIR}" -name '*:*' -type f -print0 2>/dev/null)
+if [ "$COLON_COUNT" -eq 0 ]; then
+    echo "      no colon-named chunks (build is clean)"
+fi
+
 echo "==> [5/6] Downloading Node.js portable (${NODE_DIST})"
 NODE_ZIP="${CACHE_DIR}/${NODE_DIST}.zip"
 if [ ! -f "${NODE_ZIP}" ]; then
