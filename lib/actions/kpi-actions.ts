@@ -330,6 +330,29 @@ export async function updateMilestoneProgress(
 }
 
 // ============================================
+// UPDATE MILESTONE PLANNED START
+// (เริ่ม column — overrides the derived "prev milestone's due_date")
+// ============================================
+export async function updateMilestonePlannedStart(
+    milestoneId: string,
+    plannedStartDate: string | null
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, milestoneId)
+            .input('psd', sql.Date, plannedStartDate || null)
+            .query(`UPDATE pms.project_milestones SET planned_start_date = @psd, updated_at = GETDATE() WHERE id = @id`)
+        return { success: true }
+    } catch (error) {
+        console.error('Error updating milestone planned_start:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to update' }
+    }
+}
+
+// ============================================
 // UPDATE MILESTONE ACTUAL FIELDS
 // (เริ่มจริง / เวลาจริง columns in the project Gantt popup)
 // ============================================

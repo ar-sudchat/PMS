@@ -141,6 +141,8 @@ export interface GanttMilestoneNode {
     /** Actual fields used by the planned-vs-actual table (migration 83) */
     actual_start_date: string | null
     actual_duration_days: number | null
+    /** Planned start override (migration 84). Null = derive from prev milestone's due_date. */
+    planned_start_date: string | null
 }
 
 export interface GanttStoryNode {
@@ -414,6 +416,7 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
                 SELECT vm.id, vm.milestone_code, vm.milestone_name, vm.color, vm.sort_order,
                        vm.due_date, vm.status, vm.story_count,
                        CAST(ISNULL(pm.progress_percent, 0) AS INT) AS progress,
+                       pm.planned_start_date,
                        pm.actual_start_date,
                        pm.actual_duration_days
                 FROM pms.vw_gantt_milestones vm
@@ -473,6 +476,7 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
             status: m.status, progress: Math.round(m.progress || 0), story_count: m.story_count || 0,
             actual_start_date: toISODate(m.actual_start_date),
             actual_duration_days: m.actual_duration_days != null ? Number(m.actual_duration_days) : null,
+            planned_start_date: toISODate(m.planned_start_date),
         }))
         const stories: GanttStoryNode[] = sRes.recordset.map((s: any) => ({
             id: s.id, milestone_id: s.milestone_id, story_code: s.story_code, title: s.title,

@@ -942,20 +942,29 @@ interface GridHeaderProps {
 
 // Sortable header cell helper — adds arrow indicator + click handler
 function SortHeader({
-    label, sortKey, sort, compact,
+    label, sortKey, sort, compact, stickyLeft,
 }: {
     label: string
     sortKey: 'code' | 'name' | 'due' | 'milestone'
     sort?: GridHeaderProps['sort']
     compact: boolean
+    /** When set, the header cell becomes `position: sticky` with this left offset (px).
+     *  Keeps the label visible while the timeline scrolls horizontally. */
+    stickyLeft?: number
 }) {
-    const base = cn("px-3 text-xs font-semibold text-slate-700 border-r border-slate-200", compact ? "py-1.5" : "py-2")
-    if (!sort) return <div className={base}>{label}</div>
+    const base = cn(
+        "px-3 text-xs font-semibold text-slate-700 border-r border-slate-200 bg-slate-50",
+        compact ? "py-1.5" : "py-2",
+        stickyLeft != null && "sticky z-20",
+    )
+    const style = stickyLeft != null ? { left: `${stickyLeft}px` } : undefined
+    if (!sort) return <div className={base} style={style}>{label}</div>
     const isActive = sort.activeKey === sortKey
     return (
         <button
             type="button"
             onClick={() => sort.onToggle(sortKey)}
+            style={style}
             className={cn(base, "text-left inline-flex items-center gap-1 hover:bg-slate-100 transition-colors cursor-pointer select-none", isActive && "text-indigo-700")}
         >
             {label}
@@ -977,13 +986,18 @@ export function GridHeader({
         : ''
     return (
         <>
+            {/* MONTH header — uses the same week-based grid as the W row below it.
+                Each month spans `weeksPerMonth[i].length` columns so the boundaries
+                line up exactly with W column boundaries. */}
             <div className="grid sticky top-0 z-20 bg-slate-50 border-b border-slate-200"
-                style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}${extraPart}repeat(${months.length}, minmax(220px, 1fr))` }}>
+                style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}${extraPart}repeat(${totalWeekCells}, minmax(32px, 1fr))` }}>
+                {/* Pin the first two/three label columns so they stay visible while the
+                    timeline scrolls horizontally. Offsets accumulate from the left. */}
                 {codeCol && (
-                    <SortHeader label={codeCol.label} sortKey="code" sort={sort} compact={compact} />
+                    <SortHeader label={codeCol.label} sortKey="code" sort={sort} compact={compact} stickyLeft={0} />
                 )}
-                <SortHeader label={compact ? 'กิจกรรม' : 'โครงการ'} sortKey="name" sort={sort} compact={compact} />
-                <SortHeader label="กำหนดส่ง" sortKey="due" sort={sort} compact={compact} />
+                <SortHeader label={compact ? 'กิจกรรม' : 'โครงการ'} sortKey="name" sort={sort} compact={compact} stickyLeft={codeCol ? codeCol.width : 0} />
+                <SortHeader label="กำหนดส่ง" sortKey="due" sort={sort} compact={compact} stickyLeft={(codeCol ? codeCol.width : 0) + leftWidth} />
                 {thirdCol && (
                     <SortHeader label={thirdCol.label} sortKey="milestone" sort={sort} compact={compact} />
                 )}
@@ -993,7 +1007,11 @@ export function GridHeader({
                     </div>
                 ))}
                 {months.map((m, i) => (
-                    <div key={i} className={cn("px-2 text-center text-xs font-semibold text-slate-700 border-r border-slate-200 tracking-tight", compact ? "py-1.5" : "py-2")}>
+                    <div
+                        key={i}
+                        className={cn("px-2 text-center text-xs font-semibold text-slate-700 border-r border-slate-200 tracking-tight", compact ? "py-1.5" : "py-2")}
+                        style={{ gridColumn: `span ${weeksPerMonth[i]?.length || 1}` }}
+                    >
                         {thMonthShort(m)}
                     </div>
                 ))}

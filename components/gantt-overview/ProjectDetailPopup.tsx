@@ -147,6 +147,15 @@ export function ProjectDetailPopup({
         const r = await updateMilestoneActual(msId, { actual_start_date: date })
         if (!r.success) { alert('บันทึกเริ่มจริงไม่สำเร็จ: ' + (r.error || '')); loadDetail() }
     }
+    const handleEditMilestonePlannedStart = async (msId: string, date: string | null) => {
+        setData(prev => prev ? {
+            ...prev,
+            milestones: prev.milestones.map(m => m.id === msId ? { ...m, planned_start_date: date } : m),
+        } : prev)
+        const { updateMilestonePlannedStart } = await import('@/lib/actions/kpi-actions')
+        const r = await updateMilestonePlannedStart(msId, date)
+        if (!r.success) { alert('บันทึกเริ่มไม่สำเร็จ: ' + (r.error || '')); loadDetail() }
+    }
     const handleEditMilestoneActualDuration = async (msId: string, days: number | null) => {
         setData(prev => prev ? {
             ...prev,
@@ -483,6 +492,7 @@ export function ProjectDetailPopup({
                                         onEditProgress={(percent) => handleEditMilestoneProgress(m.id, percent)}
                                         onEditActualStart={(date) => handleEditMilestoneActualStart(m.id, date)}
                                         onEditActualDuration={(days) => handleEditMilestoneActualDuration(m.id, days)}
+                                        onEditPlannedStart={(date) => handleEditMilestonePlannedStart(m.id, date)}
                                         showExtraCols={showExtraCols}
                                         weekBoundaryPcts={weekBoundaryPcts}
                                         totalWeekCells={totalWeekCells}
@@ -585,6 +595,7 @@ interface MilestoneRowProps {
     onEditProgress?: (percent: number) => void
     onEditActualStart?: (date: string | null) => void
     onEditActualDuration?: (days: number | null) => void
+    onEditPlannedStart?: (date: string | null) => void
     /** Show the extra "เริ่ม/ระยะเวลา/เริ่มจริง/เวลาจริง/% กราฟ" columns */
     showExtraCols?: boolean
     /** Boundary % positions used to draw vertical grid lines aligned with the W header. */
@@ -600,9 +611,11 @@ interface MilestoneRowProps {
 function MilestoneRow({
     milestone, prevDueDate, stories, tasks, rangeStart, totalDays,
     expandedStory, isExpanded, onToggle, onToggleStory, onEditDate, onEditProgress,
-    onEditActualStart, onEditActualDuration,
+    onEditActualStart, onEditActualDuration, onEditPlannedStart,
     showExtraCols, weekBoundaryPcts, totalWeekCells, weeksPerMonth,
 }: MilestoneRowProps) {
+    const [editPlanStart, setEditPlanStart] = React.useState(false)
+    const [psDraft, setPsDraft] = React.useState<string>('')
 
     // Convert an ISO date to a column-index in [0..totalWeekCells]. Each column has equal
     // CSS width (minmax(32px, 1fr)), but its date span can be partial (e.g., 3 days at a
@@ -693,7 +706,9 @@ function MilestoneRow({
     // Derived "Excel-style" columns — computed from existing data.
     // เริ่ม / เริ่มจริง are surfaced as week-of-year numbers (W1 = first week of Jan)
     // so a Gantt planner can think in W units instead of calendar dates.
-    const planStartIso = prevDueDate
+    // Prefer the milestone's own planned_start_date override; else fall back to the
+    // previous milestone's due_date (sequential auto-layout).
+    const planStartIso = milestone.planned_start_date || prevDueDate
     // Convert ISO date → week-of-year (1-53). W1 = the week containing Jan 1 of that year.
     const weekOfYear = (iso: string | null): number | null => {
         if (!iso) return null
@@ -792,7 +807,7 @@ function MilestoneRow({
                 }}
                 onClick={hasChildren ? onToggle : undefined}
             >
-                <div className="px-2 py-1.5 border-r border-slate-200 flex items-center gap-1.5">
+                <div className="px-2 py-1.5 border-r border-slate-200 flex items-center gap-1.5 sticky left-0 bg-white z-10">
                     {hasChildren ? (
                         isExpanded
                             ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -804,7 +819,8 @@ function MilestoneRow({
                     </span>
                 </div>
                 <div
-                    className="px-2 py-1.5 border-r border-slate-200 flex items-center text-xs font-mono text-slate-700 cursor-pointer hover:bg-indigo-50/40"
+                    className="px-2 py-1.5 border-r border-slate-200 flex items-center text-xs font-mono text-slate-700 cursor-pointer hover:bg-indigo-50/40 sticky bg-white z-10"
+                    style={{ left: `${LEFT_W}px` }}
                     onClick={(e) => { e.stopPropagation(); if (onEditDate) setEditingDate(true) }}
                     title={onEditDate ? "คลิกเพื่อแก้วันที่" : ""}
                 >
@@ -830,10 +846,41 @@ function MilestoneRow({
                 </div>
                 {showExtraCols && (
                     <>
-                        {/* เริ่ม (W of year — derived from prev milestone) */}
-                        <div className="px-1.5 py-1.5 border-r border-slate-200 flex items-center justify-center text-[11px] font-mono text-slate-600">
-                            {planStartWeek != null ? (
-                                <span className="tabular-nums" title={planStartIso ? thShortDate(planStartIso) : ''}>{planStartWeek}</span>
+                        {/* เริ่ม (W of year — editable, falls back to prev milestone's due_date) */}
+                        <div
+                            className="px-1.5 py-1.5 border-r border-slate-200 flex items-center justify-center text-[11px] font-mono cursor-pointer hover:bg-indigo-50/40"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (onEditPlannedStart) {
+                                    setPsDraft(planStartWeek != null ? String(planStartWeek) : '')
+                                    setEditPlanStart(true)
+                                }
+                            }}
+                            title={onEditPlannedStart ? `คลิกเพื่อแก้เริ่ม (W) — อ้างอิงปี ${refYear}` : ''}
+                        >
+                            {editPlanStart ? (
+                                <input
+                                    type="number" min={1} max={53} step={1} value={psDraft} autoFocus
+                                    onChange={(e) => setPsDraft(e.target.value)}
+                                    onBlur={() => {
+                                        const v = psDraft.trim()
+                                        const n = v === '' ? null : Math.max(1, Math.min(53, Math.round(Number(v) || 0)))
+                                        if (n == null) {
+                                            if (milestone.planned_start_date && onEditPlannedStart) onEditPlannedStart(null)
+                                        } else if (onEditPlannedStart) {
+                                            onEditPlannedStart(weekToDateIso(n, refYear))
+                                        }
+                                        setEditPlanStart(false)
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                                        if (e.key === 'Escape') setEditPlanStart(false)
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-full text-[11px] font-mono outline-none border-0 bg-transparent text-center"
+                                />
+                            ) : planStartWeek != null ? (
+                                <span className="text-slate-700 tabular-nums" title={planStartIso ? thShortDate(planStartIso) : ''}>{planStartWeek}</span>
                             ) : <span className="text-slate-300">—</span>}
                         </div>
                         {/* ระยะเวลา (editable — drives due_date) */}

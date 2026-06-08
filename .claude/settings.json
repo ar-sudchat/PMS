@@ -27,7 +27,8 @@
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/ -m 5)",
       "Bash(node scripts/run_81_migration.js)",
       "Bash(node /Users/artit/PMS/scripts/check-top5.js)",
-      "Bash(node scripts/run_83_migration.js)"
+      "Bash(node scripts/run_83_migration.js)",
+      "Bash(node scripts/run_84_migration.js)"
     ]
   }
 }
