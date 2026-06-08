@@ -47,6 +47,8 @@ interface Props {
     entries: TrackingEntry[]
     employees: AssignableEmployee[]
     milestones?: { id: string; name: string; color: string | null }[]
+    /** When set, the dialog opens focused on this specific entry instead of the first one. */
+    initialEntryId?: string
 }
 
 interface FormState {
@@ -113,26 +115,36 @@ export function TrackingCellDialog({
     entries,
     employees,
     milestones = [],
+    initialEntryId,
 }: Props) {
     // Snapshots of saved entries (immutable view of server state).
     const savedForms = useMemo(() => entries.map(fromEntry), [entries])
 
     // Active form = the entry currently being edited / created.
-    const [activeForm, setActiveForm] = useState<FormState>(() =>
-        savedForms[0] ?? emptyForm()
-    )
+    // If `initialEntryId` is provided (task-mode click), focus that entry; else default to first.
+    const [activeForm, setActiveForm] = useState<FormState>(() => {
+        if (initialEntryId) {
+            const found = savedForms.find(f => f._key === initialEntryId)
+            if (found) return found
+        }
+        return savedForms[0] ?? emptyForm()
+    })
     const [saving, setSaving] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
     // Reset whenever drawer opens or the cell context (project/date) changes.
     // Unsaved edits are dropped silently — user requested no confirm prompts.
+    // If `initialEntryId` is set (task-mode click), focus that entry on open.
     useEffect(() => {
         if (!open) return
-        setActiveForm(savedForms[0] ?? emptyForm())
+        const target = initialEntryId
+            ? savedForms.find(f => f._key === initialEntryId)
+            : null
+        setActiveForm(target ?? savedForms[0] ?? emptyForm())
         setErrorMsg(null)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, projectId, entryDate, savedForms])
+    }, [open, projectId, entryDate, savedForms, initialEntryId])
 
     const dateLabel = useMemo(() => {
         const d = new Date(entryDate)

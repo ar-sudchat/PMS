@@ -193,17 +193,24 @@ export function ProjectDetailPopup({
                 }
             }
         }
-        // Auto-fit from milestone/story dates
+        // Auto-fit from milestone dates ONLY (Marketing/MKT excluded per user policy).
+        // Stories are deliberately ignored — they often have start_dates inherited from
+        // an earlier phase (e.g., a Mapping Data story starting at Feb during the
+        // Marketing window) which would drag the window's start back into Marketing's
+        // territory. Milestone due dates / planned_start / actual_start are the source
+        // of truth for the timeline.
         const dates: number[] = []
         const pushIso = (iso: string | null | undefined) => {
             if (!iso) return
             const t = new Date(iso).getTime()
             if (!isNaN(t)) dates.push(t)
         }
-        pushIso(data.project.start_date)
-        pushIso(data.project.end_date)
-        data.milestones.forEach(m => { pushIso(m.due_date); pushIso(m.actual_start_date) })
-        data.stories.forEach(s => { pushIso(s.start_date); pushIso(s.end_date) })
+        const nonMktMilestones = data.milestones.filter(m => m.milestone_code !== 'MKT')
+        nonMktMilestones.forEach(m => {
+            pushIso(m.due_date)
+            pushIso(m.actual_start_date)
+            pushIso(m.planned_start_date)
+        })
         if (dates.length === 0) return null
         const minT = Math.min(...dates)
         const maxT = Math.max(...dates)
@@ -223,20 +230,20 @@ export function ProjectDetailPopup({
         return { months: fitMonths, rangeStart: start, totalDays: fitTotalDays, weeksPerMonth: fitWeeks, totalWeekCells: fitTotalWeekCells }
     }, [data, userStartMonth, userEndMonth])
 
-    // Auto-populate the month range pickers ONCE with the fit range when data first loads.
-    // Tracked via a ref so the user can later clear the inputs without us re-filling them.
-    const didAutoPopulateRange = React.useRef(false)
+    // Force-clear the month-range overrides whenever the user opens a different project.
     React.useEffect(() => {
-        if (didAutoPopulateRange.current) return
-        if (!fit || !fit.months.length) return
-        const first = fit.months[0]
-        const last = fit.months[fit.months.length - 1]
-        const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        setUserStartMonth(fmt(first))
-        setUserEndMonth(fmt(last))
-        didAutoPopulateRange.current = true
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fit])
+        setUserStartMonth('')
+        setUserEndMonth('')
+    }, [projectId])
+
+    // Derived picker display values — always reflect what the timeline is ACTUALLY using.
+    //   - When the user has typed override values, show those.
+    //   - Otherwise fall back to the auto-fit's first/last month.
+    // This avoids the bug where stale auto-populated state would force the manual branch
+    // of `fit` and the auto-fit (which skips MKT) never re-takes hold.
+    const monthFmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const pickerStartValue = userStartMonth || (fit?.months[0] ? monthFmt(fit.months[0]) : '')
+    const pickerEndValue = userEndMonth || (fit?.months[fit.months.length - 1] ? monthFmt(fit.months[fit.months.length - 1]) : '')
 
     // Final values used by the grid — auto-fit when available, otherwise fall back to props.
     const renderMonths = fit?.months ?? months
@@ -416,7 +423,7 @@ export function ProjectDetailPopup({
                                     <span className="text-slate-400">ช่วงเดือน:</span>
                                     <input
                                         type="month"
-                                        value={userStartMonth}
+                                        value={pickerStartValue}
                                         onChange={(e) => setUserStartMonth(e.target.value)}
                                         className="px-1.5 py-0.5 border border-slate-200 rounded text-[10px] font-mono"
                                         title="เดือนเริ่มต้น"
@@ -424,7 +431,7 @@ export function ProjectDetailPopup({
                                     <span className="text-slate-400">→</span>
                                     <input
                                         type="month"
-                                        value={userEndMonth}
+                                        value={pickerEndValue}
                                         onChange={(e) => setUserEndMonth(e.target.value)}
                                         className="px-1.5 py-0.5 border border-slate-200 rounded text-[10px] font-mono"
                                         title="เดือนสิ้นสุด"
@@ -455,15 +462,22 @@ export function ProjectDetailPopup({
                                     โครงการนี้ยังไม่มี milestone
                                 </div>
                             ) : (
-                                data.milestones.map((m, idx, arr) => (
+                                // Hide Marketing row — it's a pre-delivery sales phase per user policy.
+                                // We still walk the full milestone list to derive each visible row's
+                                // prevDueDate (sequential start dates), so Mapping Data's "เริ่ม"
+                                // continues to anchor at Marketing's due_date.
+                                data.milestones
+                                    .filter(m => m.milestone_code !== 'MKT')
+                                    .map((m) => {
+                                        const origIdx = data.milestones.findIndex(x => x.id === m.id)
+                                        const origPrev = origIdx > 0 ? data.milestones[origIdx - 1] : null
+                                        return (
                                     <MilestoneRow
                                         key={m.id}
                                         milestone={m}
                                         /* Previous milestone's due date is where THIS milestone starts.
-                                           First milestone has no predecessor → uses project start as fallback. */
-                                        prevDueDate={idx === 0
-                                            ? data.project.start_date
-                                            : arr[idx - 1].due_date}
+                                           First milestone (incl. Marketing-hidden case) falls back to project.start_date. */
+                                        prevDueDate={origPrev?.due_date || data.project.start_date}
                                         stories={data.stories.filter(s => s.milestone_id === m.id)}
                                         tasks={data.tasks}
                                         rangeStart={renderRangeStart}
@@ -498,7 +512,8 @@ export function ProjectDetailPopup({
                                         totalWeekCells={totalWeekCells}
                                         weeksPerMonth={renderWeeksPerMonth}
                                     />
-                                ))
+                                        )
+                                    })
                             )}
                         </div>
                     ) : null}

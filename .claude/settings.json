@@ -28,7 +28,10 @@
       "Bash(node scripts/run_81_migration.js)",
       "Bash(node /Users/artit/PMS/scripts/check-top5.js)",
       "Bash(node scripts/run_83_migration.js)",
-      "Bash(node scripts/run_84_migration.js)"
+      "Bash(node scripts/run_84_migration.js)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(curl -fsS http://localhost:3000/ -m 3 -o /dev/null)",
+      "Bash(grep -n \"^                                        \\)\\)$\\\\|^                                    \\)\\)$\" /Users/artit/PMS/components/team-tracking/TrackingGrid.tsx)"
     ]
   }
 }
