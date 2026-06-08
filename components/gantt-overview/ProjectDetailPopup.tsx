@@ -1014,6 +1014,21 @@ function MilestoneRow({
                             style={{ left: `${pct}%` }}
                         />
                     ))}
+                    {/* "Today" marker — thin red line at the current week's column */}
+                    {(() => {
+                        const todayIsoStr = todayIso()
+                        const idx = dateToColIdx(todayIsoStr)
+                        if (idx == null || !totalWeekCells) return null
+                        const pct = (idx / totalWeekCells) * 100
+                        if (pct < 0 || pct > 100) return null
+                        return (
+                            <div
+                                className="absolute top-0 bottom-0 pointer-events-none z-10"
+                                style={{ left: `${pct}%`, width: '1px', background: '#dc2626' }}
+                                title="วันนี้"
+                            />
+                        )
+                    })()}
                     {/* Layer 1 — PLANNED outline: เริ่ม → เริ่ม + ระยะเวลา */}
                     {bar && (
                         <div
