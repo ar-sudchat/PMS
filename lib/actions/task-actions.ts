@@ -7,6 +7,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { isMilestoneLocked } from './milestone-actions'
 import { generateTaskCode } from '@/lib/utils/task-code-generator'
 import { moveFile, deleteFile } from '@/lib/services/file-service'
+import { getWorkingDaysBetween, addWorkingDays, subtractWorkingDays } from '@/lib/utils/date-math'
+
 
 // ============================================
 // ATTACHMENT HELPERS
@@ -742,3 +744,201 @@ export async function getTaskTypes() {
         ]
     }
 }
+
+// ============================================
+// CASCADE RESCHEDULING ENGINE
+// ============================================
+
+/**
+ * Update task start and due dates and cascade the rescheduling to all downstream successor tasks in a single database transaction.
+ */
+export async function updateTaskDateWithCascade(
+    taskId: string,
+    newDueDateStr: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+
+        // 1. Check if the task's milestone is locked
+        const taskMilestoneResult = await pool.request()
+            .input('taskId', sql.UniqueIdentifier, taskId)
+            .query(`
+                SELECT s.milestone_id, s.project_id
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                WHERE t.id = @taskId
+            `)
+
+        if (taskMilestoneResult.recordset.length > 0 && taskMilestoneResult.recordset[0].milestone_id) {
+            const milestoneId = taskMilestoneResult.recordset[0].milestone_id
+            const isLocked = await isMilestoneLocked(milestoneId)
+            if (isLocked) {
+                return { success: false, error: 'Milestone ถูก Lock แล้ว ไม่สามารถแก้ไข Task ได้' }
+            }
+        }
+
+        const projectId = taskMilestoneResult.recordset[0]?.project_id
+        if (!projectId) {
+            return { success: false, error: 'Task or project not found' }
+        }
+
+        // 2. Fetch all project active tasks and dependencies for simulation
+        const tasksRes = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT t.id, t.title, t.start_date, t.due_date, t.status, s.milestone_id
+                FROM pms.tasks t
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                WHERE s.project_id = @projectId AND t.is_active = 1 AND t.status <> 'cancelled'
+            `)
+
+        const depsRes = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT td.predecessor_task_id, td.successor_task_id, td.dependency_type, td.lag_days
+                FROM pms.task_dependencies td
+                INNER JOIN pms.tasks pt ON td.predecessor_task_id = pt.id
+                INNER JOIN pms.stories s ON pt.story_id = s.id
+                WHERE s.project_id = @projectId
+            `)
+
+        const allTasks = tasksRes.recordset
+        const allDeps = depsRes.recordset
+
+        const taskMap = new Map<string, any>()
+        const successorsMap = new Map<string, any[]>()
+
+        for (const t of allTasks) {
+            taskMap.set(t.id, {
+                ...t,
+                orig_start: t.start_date ? new Date(t.start_date) : null,
+                orig_due: t.due_date ? new Date(t.due_date) : null,
+                sim_start: t.start_date ? new Date(t.start_date) : null,
+                sim_due: t.due_date ? new Date(t.due_date) : null,
+            })
+        }
+
+        for (const d of allDeps) {
+            const predId = d.predecessor_task_id
+            if (!successorsMap.has(predId)) {
+                successorsMap.set(predId, [])
+            }
+            successorsMap.get(predId)!.push(d)
+        }
+
+        const targetTask = taskMap.get(taskId)
+        if (!targetTask) {
+            return { success: false, error: 'Target task not found in project' }
+        }
+
+        const simDueDate = new Date(newDueDateStr)
+        simDueDate.setHours(0, 0, 0, 0)
+        
+        if (targetTask.orig_start && targetTask.orig_due) {
+            const duration = getWorkingDaysBetween(targetTask.orig_start, targetTask.orig_due)
+            targetTask.sim_due = simDueDate
+            if (duration > 0) {
+                targetTask.sim_start = subtractWorkingDays(simDueDate, duration - 1)
+            } else {
+                targetTask.sim_start = simDueDate
+            }
+        } else {
+            targetTask.sim_due = simDueDate
+            targetTask.sim_start = simDueDate
+        }
+
+        // Cascade simulation Queue
+        const queue: string[] = [taskId]
+        const visitedCount = new Map<string, number>()
+
+        while (queue.length > 0) {
+            const currId = queue.shift()!
+            visitedCount.set(currId, (visitedCount.get(currId) || 0) + 1)
+            if (visitedCount.get(currId)! > allTasks.length) {
+                throw new Error('ตรวจพบความสัมพันธ์วงกลมในฐานข้อมูลระหว่างคำนวณ')
+            }
+
+            const currTask = taskMap.get(currId)
+            if (!currTask || !currTask.sim_due) continue
+
+            const depLinks = successorsMap.get(currId) || []
+            for (const link of depLinks) {
+                const succId = link.successor_task_id
+                const succTask = taskMap.get(succId)
+                if (!succTask) continue
+
+                // FS: Successor Start Date = Predecessor Due Date + 1 working day + lag_days
+                const reqStartDate = addWorkingDays(currTask.sim_due, 1 + link.lag_days)
+                
+                const currSimStart = succTask.sim_start || succTask.sim_due
+                if (!currSimStart || reqStartDate > currSimStart) {
+                    // Rule: Do not shift successor tasks that are already completed
+                    if (succTask.status === 'done' || succTask.status === 'closed') {
+                        continue
+                    }
+
+                    succTask.sim_start = reqStartDate
+                    if (succTask.orig_start && succTask.orig_due) {
+                        const duration = getWorkingDaysBetween(succTask.orig_start, succTask.orig_due)
+                        if (duration > 0) {
+                            succTask.sim_due = addWorkingDays(reqStartDate, duration - 1)
+                        } else {
+                            succTask.sim_due = reqStartDate
+                        }
+                    } else {
+                        succTask.sim_due = reqStartDate
+                    }
+                    
+                    if (!queue.includes(succId)) {
+                        queue.push(succId)
+                    }
+                }
+            }
+        }
+
+        // 3. Update all shifted tasks in a single database transaction
+        const transaction = new sql.Transaction(pool)
+        try {
+            await transaction.begin()
+
+            for (const [id, t] of taskMap.entries()) {
+                const origDue = t.orig_due ? t.orig_due.getTime() : null
+                const simDue = t.sim_due ? t.sim_due.getTime() : null
+                const origStart = t.orig_start ? t.orig_start.getTime() : null
+                const simStart = t.sim_start ? t.sim_start.getTime() : null
+
+                // Check if dates actually changed
+                if (id === taskId || (simDue && origDue && simDue !== origDue) || (simStart && origStart && simStart !== origStart)) {
+                    const req = new sql.Request(transaction)
+                        .input('id', sql.UniqueIdentifier, id)
+                        .input('startDate', sql.Date, t.sim_start)
+                        .input('dueDate', sql.Date, t.sim_due)
+
+                    await req.query(`
+                        UPDATE pms.tasks 
+                        SET start_date = @startDate, due_date = @dueDate, updated_at = GETDATE() 
+                        WHERE id = @id
+                    `)
+                }
+            }
+
+            await transaction.commit()
+        } catch (txErr: any) {
+            try { await transaction.rollback() } catch { /* noop */ }
+            throw txErr
+        }
+
+        // 4. Revalidate project path
+        revalidatePath(`/projects/${projectId}`)
+        revalidatePath(`/resource-planning`)
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('updateTaskDateWithCascade error:', error)
+        return { success: false, error: error.message }
+    }
+}
+

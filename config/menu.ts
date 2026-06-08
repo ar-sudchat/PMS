@@ -42,6 +42,8 @@ import {
   Sticker,
   DollarSign,
   Receipt,
+  CalendarCheck,
+  GanttChart,
   type LucideIcon
 } from 'lucide-react'
 
@@ -106,9 +108,9 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'จัดการโครงการ',
         children: [
           { id: 'project-list', label: 'All Projects', labelTh: 'โครงการทั้งหมด', path: '/projects', icon: FolderKanban },
+          { id: 'gantt-overview', label: 'Gantt Overview', labelTh: 'แผนภาพไทม์ไลน์', path: '/projects/gantt-overview', icon: GanttChart },
           { id: 'my-projects', label: 'My Projects', labelTh: 'โครงการของฉัน', path: '/my-projects', icon: FolderGit2 },
           { id: 'resource-planning-old', label: 'Resource Planning', labelTh: 'วางแผนทรัพยากร', path: '/projects/resource-planning', icon: Users },
-          { id: 'resource-planning-board', label: 'Resource Planning Board', labelTh: 'บอร์ดวางแผนทรัพยากร', path: '/resource-planning', icon: Users },
         ]
       },
       {
@@ -165,6 +167,7 @@ export const MENU_CONFIG: MenuModule[] = [
         titleTh: 'บันทึกเวลา',
         children: [
           { id: 'tasks', label: 'My Tasks', labelTh: 'งานของฉัน', path: '/my-tasks', icon: CheckSquare },
+          { id: 'my-todos', label: 'My ToDos', labelTh: 'ToDo ของฉัน', path: '/my-todos', icon: ListTodo },
           { id: 'kanban', label: 'Kanban Board', labelTh: 'บอร์ดบริหารงาน', path: '/kanban', icon: Layers },
           { id: 'my-calendar', label: 'My Calendar', labelTh: 'ปฏิทินของฉัน', path: '/my-calendar', icon: Calendar },
         ]

@@ -225,7 +225,7 @@ export interface FilterOptions {
 // GET FILTER OPTIONS
 // ============================================
 
-export async function getProjectFilterOptions() {
+export async function getProjectFilterOptions(opts?: { year?: number }) {
     try {
         const pool = await getConnection()
 
@@ -238,12 +238,21 @@ export async function getProjectFilterOptions() {
         `)
         const hasNameTh = (table: string) => columnCheck.recordset.some((r: any) => r.TABLE_NAME === table)
 
-        // Customers
-        const customers = await pool.request().query(`
-      SELECT id, code, name
-      FROM pms.customers
-      WHERE is_active = 1
-      ORDER BY name
+        // Customers — sort by active-project count desc so frequent customers float to the top.
+        // When `year` is provided, only count projects from that year (drives the top-5 quick-picks).
+        const customerReq = pool.request()
+        let yearClause = ''
+        if (opts?.year != null) {
+            customerReq.input('year', sql.Int, opts.year)
+            yearClause = ' AND p.project_year = @year'
+        }
+        const customers = await customerReq.query(`
+      SELECT c.id, c.code, c.name,
+             (SELECT COUNT(*) FROM pms.projects p
+              WHERE p.customer_id = c.id AND p.is_active = 1${yearClause}) AS project_count
+      FROM pms.customers c
+      WHERE c.is_active = 1
+      ORDER BY project_count DESC, c.name
     `)
 
         // Project Managers (role = 'manager')

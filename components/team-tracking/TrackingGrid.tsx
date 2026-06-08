@@ -1,0 +1,629 @@
+'use client'
+
+import { Fragment, useMemo, useState } from 'react'
+import { ChevronRight, ChevronDown, Building, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, CalendarClock, CornerDownRight, ArrowRight } from 'lucide-react'
+import { TrackingEntry } from '@/lib/actions/team-tracking-actions'
+import { ICON_MAP } from './icons'
+
+// A view-level entry tied to a date in the grid.
+//   - 'own'      : entry lives at this date (its current/active home)
+//   - 'incoming' : was postponed here from another date
+//   - 'departed' : originally planned here but moved (postponed or done elsewhere)
+type CellEntryKind = 'own' | 'incoming' | 'departed'
+interface CellEntry {
+    entry: TrackingEntry
+    kind: CellEntryKind
+}
+
+type SortKey = 'project_code' | 'name' | 'customer_name' | 'project_type_code' | 'owner_name'
+type SortDir = 'asc' | 'desc' | null
+
+interface Project {
+    id: string
+    project_code: string
+    name: string
+    customer_name: string | null
+    project_type_code: string | null
+    project_type_color: string | null
+    owner_name: string | null
+    pm_name: string | null
+}
+
+interface Props {
+    projects: Project[]
+    entries: TrackingEntry[]
+    year: number
+    month: number   // 1-based
+    onCellClick: (projectId: string, date: string) => void
+    isLoading?: boolean
+    highlightFilter?: string | null
+    /** Optional date range override (yyyy-mm-dd). If both provided, render exactly
+     *  those days instead of the full year/month. Useful for "last week + current month"
+     *  rolling windows. */
+    startDate?: string
+    endDate?: string
+    /** Hide customer column (default true for backward compat with /team-tracking). */
+    showCustomer?: boolean
+    /** When provided, รหัส (project_code) becomes clickable and invokes this callback
+     *  with the project's id — used to open a project popup from a host page. */
+    onProjectClick?: (projectId: string) => void
+}
+
+const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+function daysInMonth(year: number, month: number): number {
+    return new Date(year, month, 0).getDate()
+}
+
+function pad2(n: number): string {
+    return n < 10 ? `0${n}` : String(n)
+}
+
+function isWeekend(year: number, month: number, day: number): boolean {
+    const d = new Date(year, month - 1, day).getDay()
+    return d === 0 || d === 6
+}
+
+// Render a single entry mark inside a cell. Used by both main rows and
+// expanded sub-rows so they look consistent.
+function EntryMark({ cell, size = 'sm' }: { cell: CellEntry; size?: 'sm' | 'md' }) {
+    const { entry, kind } = cell
+    const sz = size === 'md' ? 'w-3.5 h-3.5' : 'w-3 h-3'
+    const dotSz = size === 'md' ? 'w-2.5 h-2.5' : 'w-2 h-2'
+    
+    // Smooth fade & bounce entry animations
+    const wrapperClass = `flex items-center justify-center p-0.5 rounded-md border shadow-sm transition-all duration-300 hover:scale-110`
+
+    if (kind === 'incoming') {
+        return (
+            <span className={`${wrapperClass} bg-amber-50 border-amber-200/50 text-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.15)]`} title="เลื่อนเข้ามา">
+                <CornerDownRight className={sz} />
+            </span>
+        )
+    }
+    if (kind === 'departed') {
+        return (
+            <span className={`${wrapperClass} bg-slate-50 border-slate-200/40 text-slate-400 opacity-60`} title="ย้ายแผนออก">
+                <ArrowRight className={sz} />
+            </span>
+        )
+    }
+    if (entry.status === 'DONE') {
+        return (
+            <span className={`${wrapperClass} bg-emerald-50 border-emerald-200/50 text-emerald-500 shadow-[0_1px_4px_rgba(16,185,129,0.15)]`} title="เสร็จสิ้น">
+                <CheckCircle2 className={sz} />
+            </span>
+        )
+    }
+    if (entry.status === 'POSTPONED') {
+        return (
+            <span className={`${wrapperClass} bg-amber-50 border-amber-200/50 text-amber-500 shadow-[0_1px_4px_rgba(245,158,11,0.15)]`} title="เลื่อนแผน">
+                <CalendarClock className={sz} />
+            </span>
+        )
+    }
+    const color =
+        (entry.color_source === 'MILESTONE' && entry.milestone_color) ||
+        entry.color ||
+        '#94a3b8'
+    const Icon = entry.icon ? ICON_MAP[entry.icon] : null
+    
+    if (Icon) {
+        return (
+            <span 
+                className={`${wrapperClass} bg-white border-slate-100`} 
+                style={{ 
+                    color, 
+                    boxShadow: `0 1px 4px ${color}15`,
+                    borderColor: `${color}20`
+                }}
+            >
+                <Icon className={sz} />
+            </span>
+        )
+    }
+    return (
+        <span 
+            className={`${wrapperClass} bg-white border-slate-100`}
+            style={{ 
+                boxShadow: `0 1px 4px ${color}15`,
+                borderColor: `${color}20`
+            }}
+        >
+            <div className={`${dotSz} rounded-full`} style={{ backgroundColor: color }} />
+        </span>
+    )
+}
+
+function cellTooltip(cell: CellEntry): string {
+    const { entry, kind } = cell
+    const who = entry.assignee_name || 'ไม่ระบุ'
+    if (kind === 'incoming') {
+        return `${who}: เลื่อนมาจากวันที่ ${entry.entry_date}${entry.note ? ` — ${entry.note}` : ''}`
+    }
+    if (kind === 'departed') {
+        if (entry.status === 'DONE' && entry.completed_date) {
+            return `${who}: แผนเดิม — เลื่อนและเสร็จในวันที่ ${entry.completed_date}`
+        }
+        if (entry.status === 'POSTPONED' && entry.postponed_date) {
+            return `${who}: แผนเดิม — เลื่อนไปวันที่ ${entry.postponed_date}`
+        }
+        return `${who}: แผนเดิม`
+    }
+    if (entry.status === 'DONE') {
+        return `${who}: เสร็จแล้ว${entry.completed_date ? ` (${entry.completed_date})` : ''}${entry.note ? ` — ${entry.note}` : ''}`
+    }
+    if (entry.status === 'POSTPONED' && entry.postponed_date) {
+        return `${who}: เลื่อนไปวันที่ ${entry.postponed_date}${entry.note ? ` — ${entry.note}` : ''}`
+    }
+    return `${who}${entry.note ? `: ${entry.note}` : ''}`
+}
+
+function isCellMatched(cellEntries: CellEntry[], filter: string | null | undefined): boolean {
+    if (!filter) return true
+    return cellEntries.some((c) => {
+        if (filter === 'DONE' || filter === 'POSTPONED') {
+            return c.entry.status === filter
+        }
+        if (filter === 'incoming' || filter === 'departed') {
+            return c.kind === filter
+        }
+        return c.entry.icon === filter
+    })
+}
+
+export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading, highlightFilter, startDate, endDate, showCustomer = true, onProjectClick }: Props) {
+    const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+    const todayStr = useMemo(() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    }, [])
+    const [sortKey, setSortKey] = useState<SortKey | null>(null)
+    const [sortDir, setSortDir] = useState<SortDir>(null)
+
+    const toggleSort = (key: SortKey) => {
+        if (sortKey !== key) {
+            setSortKey(key)
+            setSortDir('asc')
+        } else if (sortDir === 'asc') {
+            setSortDir('desc')
+        } else if (sortDir === 'desc') {
+            setSortKey(null)
+            setSortDir(null)
+        } else {
+            setSortDir('asc')
+        }
+    }
+
+    const sortedProjects = useMemo(() => {
+        if (!sortKey || !sortDir) return projects
+        const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+        const sorted = [...projects].sort((a, b) => {
+            const va = (a[sortKey] || '') as string
+            const vb = (b[sortKey] || '') as string
+            return collator.compare(va, vb)
+        })
+        if (sortDir === 'desc') sorted.reverse()
+        return sorted
+    }, [projects, sortKey, sortDir])
+
+    const getSortIcon = (k: SortKey) => {
+        if (sortKey !== k) return <ArrowUpDown className="w-3 h-3 text-slate-300" />
+        return sortDir === 'asc' ? (
+            <ArrowUp className="w-3 h-3 text-blue-600" />
+        ) : (
+            <ArrowDown className="w-3 h-3 text-blue-600" />
+        )
+    }
+
+    const days = useMemo(() => {
+        const arr: { day: number; date: string; weekend: boolean; monthShort?: string }[] = []
+        // If a date range is provided, iterate from startDate to endDate (inclusive).
+        // Otherwise fall back to the entire calendar month.
+        if (startDate && endDate) {
+            const s = new Date(startDate)
+            const e = new Date(endDate)
+            const cur = new Date(s)
+            while (cur <= e) {
+                arr.push({
+                    day: cur.getDate(),
+                    date: `${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}-${pad2(cur.getDate())}`,
+                    weekend: cur.getDay() === 0 || cur.getDay() === 6,
+                    monthShort: THAI_MONTHS_SHORT[cur.getMonth()],
+                })
+                cur.setDate(cur.getDate() + 1)
+            }
+            return arr
+        }
+        const total = daysInMonth(year, month)
+        for (let d = 1; d <= total; d++) {
+            arr.push({
+                day: d,
+                date: `${year}-${pad2(month)}-${pad2(d)}`,
+                weekend: isWeekend(year, month, d),
+                monthShort: THAI_MONTHS_SHORT[month - 1],
+            })
+        }
+        return arr
+    }, [year, month, startDate, endDate])
+
+    // Group entries: projectId -> date -> CellEntry[]
+    //
+    // Placement rules — each entry can appear at up to two days:
+    //   1) DONE + completed_date ≠ entry_date
+    //      - completed_date  : kind='own'      (✓ green at the day work finished)
+    //      - entry_date      : kind='departed' (faded → at the original plan day)
+    //   2) POSTPONED + postponed_date ≠ entry_date
+    //      - entry_date      : kind='own'      (🕒 at the original day)
+    //      - postponed_date  : kind='incoming' (↳ orange at the new day)
+    //   3) Otherwise
+    //      - entry_date only : kind='own'
+    const entriesByProjectAndDate = useMemo(() => {
+        const map = new Map<string, Map<string, CellEntry[]>>()
+        const push = (projectId: string, date: string, cellEntry: CellEntry) => {
+            if (!map.has(projectId)) map.set(projectId, new Map())
+            const inner = map.get(projectId)!
+            if (!inner.has(date)) inner.set(date, [])
+            inner.get(date)!.push(cellEntry)
+        }
+        for (const e of entries) {
+            if (e.status === 'DONE' && e.completed_date) {
+                push(e.project_id, e.completed_date, { entry: e, kind: 'own' })
+                if (e.completed_date !== e.entry_date) {
+                    push(e.project_id, e.entry_date, { entry: e, kind: 'departed' })
+                }
+                continue
+            }
+            push(e.project_id, e.entry_date, { entry: e, kind: 'own' })
+            if (e.status === 'POSTPONED' && e.postponed_date && e.postponed_date !== e.entry_date) {
+                push(e.project_id, e.postponed_date, { entry: e, kind: 'incoming' })
+            }
+        }
+        return map
+    }, [entries])
+
+    // Group by assignee per project (for sub-rows when expanded)
+    const assigneesByProject = useMemo(() => {
+        const map = new Map<string, Map<string, { id: string | null; name: string }>>()
+        for (const e of entries) {
+            if (!map.has(e.project_id)) map.set(e.project_id, new Map())
+            const inner = map.get(e.project_id)!
+            const key = e.assignee_id || '__unassigned__'
+            if (!inner.has(key)) {
+                inner.set(key, { id: e.assignee_id, name: e.assignee_name || 'ไม่ระบุ' })
+            }
+        }
+        return map
+    }, [entries])
+
+    const toggleExpand = (projectId: string) => {
+        setExpandedProjects((prev) => {
+            const next = new Set(prev)
+            if (next.has(projectId)) next.delete(projectId)
+            else next.add(projectId)
+            return next
+        })
+    }
+
+    const monthLabel = `${THAI_MONTHS_SHORT[month - 1]} ${year + 543}`
+
+    if (isLoading) {
+        return (
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-xs text-slate-500 shadow-inner">
+                กำลังโหลดข้อมูล...
+            </div>
+        )
+    }
+
+    return (
+        <div data-tracking-grid className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-inner">
+            <div className="overflow-auto max-h-[calc(100vh-170px)] scrollbar-thin scrollbar-thumb-slate-200">
+                <table className="min-w-full border-collapse text-xs">
+                    <thead className="bg-slate-50/95 backdrop-blur-sm sticky top-0 z-20 border-b border-slate-200 shadow-sm">
+                        <tr>
+                            <th className="sticky left-0 top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-2 py-2 text-center font-bold text-slate-700 w-[40px] min-w-[40px] shadow-[1px_0_0_rgba(0,0,0,0.05)]">
+                                No.
+                            </th>
+                            <th
+                                onClick={() => toggleSort('project_code')}
+                                className="sticky left-[40px] top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-2.5 py-2 text-left font-bold text-slate-700 min-w-[80px] cursor-pointer hover:bg-slate-200/80 transition-colors select-none shadow-[1px_0_0_rgba(0,0,0,0.05)]"
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    รหัส {getSortIcon('project_code')}
+                                </span>
+                            </th>
+                            <th
+                                onClick={() => toggleSort('name')}
+                                className="sticky left-[120px] top-0 z-30 bg-slate-100 border-b border-r border-slate-200 px-3 py-2 text-left font-bold text-slate-700 min-w-[180px] cursor-pointer hover:bg-slate-200/80 transition-colors select-none shadow-[2px_0_4px_rgba(0,0,0,0.05)]"
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    ชื่อโครงการ {getSortIcon('name')}
+                                </span>
+                            </th>
+                            {showCustomer && (
+                                <th
+                                    onClick={() => toggleSort('customer_name')}
+                                    className="border-b border-r border-slate-200 px-3 py-2 text-left font-bold text-slate-600 min-w-[140px] cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                                >
+                                    <span className="inline-flex items-center gap-1">
+                                        ลูกค้า {getSortIcon('customer_name')}
+                                    </span>
+                                </th>
+                            )}
+                            <th
+                                onClick={() => toggleSort('project_type_code')}
+                                className="border-b border-r border-slate-200 px-2 py-2 text-center font-bold text-slate-600 min-w-[50px] cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                            >
+                                <span className="inline-flex items-center justify-center gap-1">
+                                    ประเภท {getSortIcon('project_type_code')}
+                                </span>
+                            </th>
+                            <th
+                                onClick={() => toggleSort('owner_name')}
+                                className="border-b border-r border-slate-200 px-3 py-2 text-left font-bold text-slate-600 min-w-[140px] cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    พนักงาน {getSortIcon('owner_name')}
+                                </span>
+                            </th>
+                            {days.map((d) => {
+                                const isToday = d.date === todayStr
+                                return (
+                                    <th
+                                        key={d.date}
+                                        className={`border-b border-r border-slate-200 px-1 py-1.5 text-center font-bold min-w-[38px] transition-all relative ${
+                                            isToday
+                                                ? 'bg-gradient-to-b from-indigo-600 to-blue-600 text-white ring-2 ring-indigo-500 ring-offset-0 z-30 shadow-[0_4px_12px_rgba(79,70,229,0.25)]'
+                                                : d.weekend
+                                                ? 'bg-slate-100/85 text-slate-400'
+                                                : 'bg-slate-50/90 text-slate-600'
+                                        }`}
+                                        title={`${d.day} ${monthLabel}${isToday ? ' (วันนี้)' : ''}`}
+                                    >
+                                        <div className="text-[10px] leading-tight whitespace-nowrap flex flex-col items-center justify-center">
+                                            <span className={isToday ? 'text-xs font-extrabold text-amber-300' : 'font-semibold text-slate-700'}>{d.day}</span>
+                                            <span className={isToday ? 'text-[8px] font-extrabold tracking-widest text-indigo-100 uppercase' : 'text-[8px] font-normal opacity-75'}>
+                                                {isToday ? 'วันนี้' : (d.monthShort ?? THAI_MONTHS_SHORT[month - 1])}
+                                            </span>
+                                        </div>
+                                        {isToday && (
+                                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 animate-pulse" />
+                                        )}
+                                    </th>
+                                )
+                            })}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sortedProjects.map((p, idx) => {
+                            const isExpanded = expandedProjects.has(p.id)
+                            const projectEntries = entriesByProjectAndDate.get(p.id)
+                            const assignees = assigneesByProject.get(p.id)
+                            const assigneeList = assignees ? Array.from(assignees.values()) : []
+ 
+                            return (
+                                <Fragment key={p.id}>
+                                    {/* Main project row */}
+                                    <tr className="hover:bg-slate-50/70 transition-colors duration-150 group">
+                                        <td className="sticky left-0 z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle text-center text-slate-400 w-[40px] min-w-[40px] font-medium group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
+                                            {idx + 1}
+                                        </td>
+                                        <td className="sticky left-[40px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
+                                            <div className="flex items-center gap-1.5">
+                                                {assigneeList.length > 0 ? (
+                                                    <button
+                                                        onClick={() => toggleExpand(p.id)}
+                                                        className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
+                                                    >
+                                                        {isExpanded ? (
+                                                            <ChevronDown className="w-3 h-3" />
+                                                        ) : (
+                                                            <ChevronRight className="w-3 h-3" />
+                                                        )}
+                                                    </button>
+                                                ) : (
+                                                    // Placeholder keeps the project code column aligned across rows
+                                                    <span className="inline-block p-1" aria-hidden>
+                                                        <span className="block w-3 h-3" />
+                                                    </span>
+                                                )}
+                                                {onProjectClick ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); onProjectClick(p.id) }}
+                                                        className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+                                                        title="แก้ไขโครงการ"
+                                                    >
+                                                        {p.project_code}
+                                                    </button>
+                                                ) : (
+                                                    <a
+                                                        href={`/projects/${p.id}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+                                                        title="เปิดหน้าโครงการ (edit)"
+                                                    >
+                                                        {p.project_code}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="sticky left-[120px] z-10 bg-white border-b border-r border-slate-200 px-2.5 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
+                                            <div className="text-slate-900 font-semibold truncate max-w-[200px]" title={p.name}>
+                                                {p.name}
+                                            </div>
+                                        </td>
+                                        {showCustomer && (
+                                            <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle">
+                                                <div className="flex items-center gap-1.5 text-slate-600">
+                                                    <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    <span className="truncate max-w-[130px] font-medium" title={p.customer_name || ''}>
+                                                        {p.customer_name || '-'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        )}
+                                        <td className="border-b border-r border-slate-200 px-1.5 py-2.5 text-center align-middle">
+                                            {p.project_type_code && (
+                                                <span
+                                                    className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm border border-slate-200/50"
+                                                    style={{
+                                                        backgroundColor: p.project_type_color ? `${p.project_type_color}15` : '#f1f5f9',
+                                                        color: p.project_type_color || '#64748b',
+                                                        borderColor: p.project_type_color ? `${p.project_type_color}30` : 'transparent'
+                                                    }}
+                                                >
+                                                    {p.project_type_code}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle text-slate-700">
+                                            <span className="block truncate font-semibold text-slate-700 whitespace-nowrap max-w-[130px]" title={p.owner_name || ''}>
+                                                {p.owner_name || '-'}
+                                            </span>
+                                        </td>
+                                        {days.map((d) => {
+                                            const cellEntries = projectEntries?.get(d.date) || []
+                                            const isToday = d.date === todayStr
+                                            const matched = !highlightFilter || isCellMatched(cellEntries, highlightFilter)
+                                            const tooltip = cellEntries.length
+                                                ? cellEntries.map(cellTooltip).join(' • ')
+                                                : 'คลิกเพื่อเพิ่ม'
+ 
+                                            // Determine background styles
+                                            let bgClass = 'bg-white'
+                                            if (isToday) {
+                                                bgClass = 'bg-blue-50/30 border-l border-r border-blue-500/20'
+                                            } else if (d.weekend) {
+                                                bgClass = 'bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,rgba(241,245,249,0.3)_4px,rgba(241,245,249,0.3)_8px)] bg-slate-50/30 text-slate-400'
+                                            }
+ 
+                                            // Hover effects
+                                            const hoverClass = 'hover:bg-indigo-50/60 hover:ring-1 hover:ring-indigo-400 hover:scale-[1.08] hover:shadow-md hover:rounded-sm z-10'
+ 
+                                            // Highlight filter styling
+                                            let filterClass = 'transition-all duration-300'
+                                            if (highlightFilter) {
+                                                if (!matched) {
+                                                    filterClass += ' opacity-15 blur-[0.4px] scale-95 pointer-events-none'
+                                                } else {
+                                                    filterClass += ' ring-2 ring-indigo-500 ring-offset-1 scale-110 z-10 bg-indigo-50/50 shadow-md font-bold'
+                                                }
+                                            }
+ 
+                                            return (
+                                                <td
+                                                    key={d.date}
+                                                    onClick={() => onCellClick(p.id, d.date)}
+                                                    className={`border-b border-r border-slate-200 px-0.5 py-2 text-center cursor-pointer transition-all ${bgClass} ${hoverClass} ${filterClass}`}
+                                                    title={tooltip}
+                                                >
+                                                    {cellEntries.length > 0 && (
+                                                        <div className="flex items-center justify-center">
+                                                            {cellEntries.length === 1 ? (
+                                                                <EntryMark cell={cellEntries[0]} size="md" />
+                                                            ) : (
+                                                                // 2+ entries: show single count badge instead of multiple marks
+                                                                // so the column doesn't need to stretch
+                                                                <span
+                                                                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-md text-[10px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
+                                                                    title={`${cellEntries.length} รายการ`}
+                                                                >
+                                                                    {cellEntries.length}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            )
+                                        })}
+                                    </tr>
+ 
+                                    {/* Sub-rows (assignees) */}
+                                    {isExpanded &&
+                                        assigneeList.map((a) => (
+                                            <tr key={`${p.id}-${a.id || 'none'}`} className="bg-slate-50/20 hover:bg-slate-100/40 transition-colors duration-150">
+                                                <td className="sticky left-0 z-10 bg-slate-50/40 border-b border-r border-slate-200 w-[40px] min-w-[40px] shadow-[1px_0_0_rgba(0,0,0,0.02)]" />
+                                                <td className="sticky left-[40px] z-10 bg-slate-50/40 border-b border-r border-slate-200 shadow-[1px_0_0_rgba(0,0,0,0.02)]" />
+                                                <td
+                                                    colSpan={showCustomer ? 3 : 2}
+                                                    className="sticky left-[120px] z-10 bg-slate-50/40 border-b border-r border-slate-200 px-2 py-1 text-slate-400 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"
+                                                >
+                                                    <div className="pl-4 flex items-center gap-2">
+                                                        <CornerDownRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                        <span className="inline-flex items-center bg-slate-100/80 text-slate-500 rounded-full px-2 py-0.5 text-[9px] font-bold border border-slate-200/50">
+                                                            ผู้ปฏิบัติงาน
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="border-b border-r border-slate-200 px-2.5 py-1.5 align-middle text-slate-700 bg-slate-50/10">
+                                                    <span className="font-semibold text-slate-700">{a.name}</span>
+                                                </td>
+                                                {days.map((d) => {
+                                                    const cellEntries = (projectEntries?.get(d.date) || []).filter(
+                                                        (c) =>
+                                                            (c.entry.assignee_id || '__unassigned__') ===
+                                                            (a.id || '__unassigned__')
+                                                    )
+                                                    const isToday = d.date === todayStr
+                                                    const matched = !highlightFilter || isCellMatched(cellEntries, highlightFilter)
+                                                    const tooltip = cellEntries.length
+                                                        ? cellEntries.map(cellTooltip).join(' • ')
+                                                        : ''
+ 
+                                                    // Determine background styles for expanded sub-row cells
+                                                    let bgClass = 'bg-slate-50/10'
+                                                    if (isToday) {
+                                                        bgClass = 'bg-blue-50/20 border-l border-r border-blue-500/10'
+                                                    } else if (d.weekend) {
+                                                        bgClass = 'bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,rgba(241,245,249,0.25)_4px,rgba(241,245,249,0.25)_8px)] bg-slate-100/20 text-slate-400'
+                                                    }
+ 
+                                                    // Hover effects
+                                                    const hoverClass = 'hover:bg-indigo-50/50 hover:ring-1 hover:ring-indigo-400 hover:scale-[1.06] hover:shadow-sm z-10'
+ 
+                                                    // Highlight filter styling
+                                                    let filterClass = 'transition-all duration-300'
+                                                    if (highlightFilter) {
+                                                        if (!matched) {
+                                                            filterClass += ' opacity-15 blur-[0.4px] scale-95 pointer-events-none'
+                                                        } else {
+                                                            filterClass += ' ring-2 ring-indigo-500 ring-offset-1 scale-110 z-10 bg-indigo-50/40 shadow-md font-bold'
+                                                        }
+                                                    }
+ 
+                                                    return (
+                                                        <td
+                                                            key={d.date}
+                                                            onClick={() => onCellClick(p.id, d.date)}
+                                                            className={`border-b border-r border-slate-200 px-0.5 py-1.5 text-center cursor-pointer transition-all ${bgClass} ${hoverClass} ${filterClass}`}
+                                                            title={tooltip}
+                                                        >
+                                                            {cellEntries.length > 0 && (
+                                                                <div className="flex items-center justify-center">
+                                                                    {cellEntries.length === 1 ? (
+                                                                        <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                    ) : (
+                                                                        <span
+                                                                            className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-md text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
+                                                                            title={`${cellEntries.length} รายการ`}
+                                                                        >
+                                                                            {cellEntries.length}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    )
+                                                })}
+                                            </tr>
+                                        ))}
+                                </Fragment>
+                            )
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+}

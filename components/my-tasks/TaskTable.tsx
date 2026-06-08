@@ -2,12 +2,24 @@
 
 import { useMemo } from 'react'
 import { MyTask } from '@/lib/actions/my-tasks-actions'
-import { Calendar, Clock, AlertCircle, ListChecks, Eye, Timer, ChevronDown, ChevronRight } from 'lucide-react'
+import { Calendar, Clock, AlertCircle, ListChecks, Eye, Timer, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TaskStatusSelect } from '@/components/tasks/TaskStatusSelect'
 import { format, isToday, isTomorrow, isYesterday, isPast, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useState } from 'react'
+
+type SortField = 'task_code' | 'task_title' | 'project_name' | 'priority' | 'progress_percent' | 'actual_hours' | 'status'
+type SortDirection = 'asc' | 'desc'
+
+// Priority weight for ordering (higher = more important)
+const PRIORITY_WEIGHT: Record<string, number> = {
+    critical: 4,
+    high: 3,
+    medium: 2,
+    low: 1,
+    normal: 0,
+}
 
 interface TaskTableProps {
     tasks: MyTask[]
@@ -29,6 +41,46 @@ interface GroupedTasks {
 
 export function TaskTable({ tasks, onViewDetail, onLogTime, onStatusChange, canLogTime = true }: TaskTableProps) {
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+    const [sortField, setSortField] = useState<SortField | null>(null)
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            // toggle direction; on desc, click third time to clear
+            if (sortDirection === 'asc') setSortDirection('desc')
+            else { setSortField(null); setSortDirection('asc') }
+        } else {
+            setSortField(field)
+            setSortDirection('asc')
+        }
+    }
+
+    const compareTasks = (a: MyTask, b: MyTask): number => {
+        if (!sortField) return 0
+        const dir = sortDirection === 'asc' ? 1 : -1
+        let av: any
+        let bv: any
+        switch (sortField) {
+            case 'priority':
+                av = PRIORITY_WEIGHT[(a.priority || '').toLowerCase()] ?? 0
+                bv = PRIORITY_WEIGHT[(b.priority || '').toLowerCase()] ?? 0
+                break
+            case 'progress_percent':
+                av = a.progress_percent ?? 0
+                bv = b.progress_percent ?? 0
+                break
+            case 'actual_hours':
+                av = a.actual_hours ?? 0
+                bv = b.actual_hours ?? 0
+                break
+            default:
+                av = String((a as any)[sortField] ?? '').toLowerCase()
+                bv = String((b as any)[sortField] ?? '').toLowerCase()
+        }
+        if (av < bv) return -1 * dir
+        if (av > bv) return 1 * dir
+        return 0
+    }
 
     // Helper to parse date (handles both string and Date)
     const parseDate = (value: string | Date | null): Date | null => {
@@ -209,34 +261,20 @@ export function TaskTable({ tasks, onViewDetail, onLogTime, onStatusChange, canL
                                 <table className="w-full">
                                     <thead className="bg-slate-50 border-y border-slate-100">
                                         <tr>
-                                            <th className="text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-24">
-                                                Code
-                                            </th>
-                                            <th className="text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                                                Task
-                                            </th>
-                                            <th className="text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-48">
-                                                Project / Story
-                                            </th>
-                                            <th className="text-center px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-20">
-                                                Priority
-                                            </th>
-                                            <th className="text-center px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-32">
-                                                Progress
-                                            </th>
-                                            <th className="text-center px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-24">
-                                                Hours
-                                            </th>
-                                            <th className="text-center px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-32">
-                                                Status
-                                            </th>
+                                            <SortableTH align="left" width="w-24" field="task_code" current={sortField} direction={sortDirection} onSort={handleSort}>Code</SortableTH>
+                                            <SortableTH align="left" field="task_title" current={sortField} direction={sortDirection} onSort={handleSort}>Task</SortableTH>
+                                            <SortableTH align="left" width="w-48" field="project_name" current={sortField} direction={sortDirection} onSort={handleSort}>Project / Story</SortableTH>
+                                            <SortableTH align="center" width="w-20" field="priority" current={sortField} direction={sortDirection} onSort={handleSort}>Priority</SortableTH>
+                                            <SortableTH align="center" width="w-32" field="progress_percent" current={sortField} direction={sortDirection} onSort={handleSort}>Progress</SortableTH>
+                                            <SortableTH align="center" width="w-24" field="actual_hours" current={sortField} direction={sortDirection} onSort={handleSort}>Hours</SortableTH>
+                                            <SortableTH align="center" width="w-32" field="status" current={sortField} direction={sortDirection} onSort={handleSort}>Status</SortableTH>
                                             <th className="text-center px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider w-24">
                                                 Actions
                                             </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {group.tasks.map(task => (
+                                        {[...group.tasks].sort(compareTasks).map(task => (
                                             <tr
                                                 key={task.task_id}
                                                 className="hover:bg-slate-50 transition-colors cursor-pointer"
@@ -365,5 +403,59 @@ export function TaskTable({ tasks, onViewDetail, onLogTime, onStatusChange, canL
                 )
             })}
         </div>
+    )
+}
+
+// ============================================
+// SortableTH — clickable table header with sort indicator
+// ============================================
+
+function SortableTH({
+    children,
+    field,
+    current,
+    direction,
+    onSort,
+    align = 'left',
+    width,
+}: {
+    children: React.ReactNode
+    field: SortField
+    current: SortField | null
+    direction: SortDirection
+    onSort: (field: SortField) => void
+    align?: 'left' | 'center' | 'right'
+    width?: string
+}) {
+    const isActive = current === field
+    const alignClass = align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'
+    const textAlignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
+    return (
+        <th
+            className={cn(
+                'px-4 py-2 text-xs font-medium uppercase tracking-wider select-none',
+                textAlignClass,
+                width,
+                isActive ? 'text-indigo-600' : 'text-slate-500'
+            )}
+        >
+            <button
+                type="button"
+                onClick={() => onSort(field)}
+                className={cn(
+                    'inline-flex items-center gap-1 hover:text-indigo-600 transition-colors',
+                    alignClass
+                )}
+            >
+                <span>{children}</span>
+                {isActive ? (
+                    direction === 'asc'
+                        ? <ArrowUp className="w-3 h-3" />
+                        : <ArrowDown className="w-3 h-3" />
+                ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30" />
+                )}
+            </button>
+        </th>
     )
 }

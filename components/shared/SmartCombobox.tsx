@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo, useRef, useCallback, ReactNode, CSSProperties } from 'react'
+import { Fragment, useState, useMemo, useRef, ReactNode } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -39,30 +39,6 @@ export function SmartCombobox({
     const [query, setQuery] = useState('')
     const [showAll, setShowAll] = useState(false)
     const buttonRef = useRef<HTMLButtonElement>(null)
-    const [panelStyle, setPanelStyle] = useState<CSSProperties>({})
-
-    // Calculate fixed position from button bounding rect
-    const calcPosition = useCallback(() => {
-        if (!buttonRef.current) return
-        const rect = buttonRef.current.getBoundingClientRect()
-        const spaceBelow = window.innerHeight - rect.bottom
-        const panelMaxH = 340
-
-        const style: CSSProperties = {
-            position: 'fixed',
-            left: rect.left,
-            width: rect.width,
-            zIndex: 200,
-        }
-
-        if (spaceBelow >= panelMaxH || spaceBelow >= rect.top) {
-            style.top = rect.bottom + 4
-        } else {
-            style.bottom = window.innerHeight - rect.top + 4
-        }
-
-        setPanelStyle(style)
-    }, [])
 
     // Filter options based on search query
     const filteredOptions = useMemo(() => {
@@ -86,10 +62,6 @@ export function SmartCombobox({
 
     const hasMore = filteredOptions.length > maxDisplayItems
 
-    // Reset showAll when query changes
-    useEffect(() => {
-        setShowAll(false)
-    }, [query])
 
     const handleChange = (newValue: Option | null, close: () => void) => {
         onChange(newValue)
@@ -116,7 +88,6 @@ export function SmartCombobox({
                         <PopoverButton
                             ref={buttonRef}
                             disabled={disabled}
-                            onClick={calcPosition}
                             className={cn(
                                 "w-full px-3 py-2 text-left border rounded-md bg-white text-gray-900",
                                 "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
@@ -142,18 +113,21 @@ export function SmartCombobox({
                         </PopoverButton>
 
                         <PopoverPanel
-                            style={panelStyle}
-                            className="rounded-md bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 focus:outline-none"
+                            anchor="bottom start"
+                            className="z-[200] mt-1 rounded-md bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 focus:outline-none w-[var(--button-width)] min-w-[180px]"
                         >
                             {/* Search Input */}
                             {searchable && (
-                                <div className="p-2 border-b">
+                                <div className="p-1.5 border-b">
                                     <input
                                         type="text"
-                                        className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                                        className="w-full px-3 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                                         placeholder="ค้นหา..."
                                         value={query}
-                                        onChange={(e) => setQuery(e.target.value)}
+                                        onChange={(e) => {
+                                            setQuery(e.target.value)
+                                            setShowAll(false)
+                                        }}
                                         // Prevent Popover from closing when clicking input
                                         onClick={(e) => e.stopPropagation()}
                                         autoFocus
@@ -163,7 +137,7 @@ export function SmartCombobox({
 
                             {/* Header with count */}
                             {!query && (
-                                <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30 border-b">
+                                <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/30 border-b">
                                     <span className="font-medium">
                                         {hasMore && !showAll
                                             ? `แสดง ${displayOptions.length}/${options.length} รายการ`
@@ -175,7 +149,7 @@ export function SmartCombobox({
 
                             {
                                 query && (
-                                    <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/50 border-b">
+                                    <div className="px-3 py-1 text-xs text-muted-foreground bg-muted/50 border-b">
                                         <div className="flex items-center gap-2">
                                             <Search className="w-3 h-3" />
                                             <span>
@@ -209,7 +183,7 @@ export function SmartCombobox({
                                                     key={option.value}
                                                     type="button"
                                                     className={cn(
-                                                        "w-full text-left px-3 py-2 text-sm cursor-pointer text-gray-900",
+                                                        "w-full text-left px-3 py-1 text-sm cursor-pointer text-gray-900",
                                                         "hover:bg-accent hover:text-accent-foreground",
                                                         "flex items-center gap-2",
                                                         isSelected && "bg-accent/50"
@@ -243,7 +217,7 @@ export function SmartCombobox({
                                                     e.stopPropagation()
                                                     setShowAll(true)
                                                 }}
-                                                className="w-full py-2.5 px-4 text-sm font-medium text-primary hover:text-primary/80 hover:bg-accent border-t transition-colors"
+                                                className="w-full py-1 px-4 text-sm font-medium text-primary hover:text-primary/80 hover:bg-accent border-t transition-colors"
                                             >
                                                 แสดงทั้งหมด ({filteredOptions.length - maxDisplayItems} รายการเพิ่มเติม)
                                             </button>

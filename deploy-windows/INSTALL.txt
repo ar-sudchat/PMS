@@ -1,0 +1,136 @@
+============================================================
+ PMS Console - คู่มือติดตั้งบน Windows Server (ภายในองค์กร)
+============================================================
+
+ระบบ: Next.js + Node.js portable + MSSQL (เครื่องเดิม 10.8.8.88)
+Target server : Windows Server 192.168.88.98
+ติดตั้งที่    : C:\PMS\
+URL หลังติดตั้ง: http://192.168.88.98:3000/
+
+============================================================
+ สิ่งที่ต้องเตรียม
+============================================================
+
+1. RDP เข้า 192.168.88.98 ในฐานะ Administrator
+   (user: admin / pass: movebetter — credentials เดียวกับ Beside)
+
+2. โฟลเดอร์ deploy-windows ทั้งชุดนี้ copy ขึ้นไปไว้ที่ desktop
+   ของเครื่อง server (หรือ shared folder ใดก็ได้)
+
+3. ตรวจสอบว่า SQL Server (10.8.8.88) เข้าถึงได้จาก 192.168.88.98
+   (เครื่องอยู่ subnet เดียวกัน ปกติเข้าถึงได้อยู่แล้ว)
+
+============================================================
+ ขั้นตอนติดตั้ง (5 นาที)
+============================================================
+
+STEP 1 — Copy folder ขึ้น server
+   - RDP เข้า 192.168.88.98
+   - Copy โฟลเดอร์ deploy-windows ทั้งชุดไปวางบน Desktop
+
+STEP 2 — แก้ไข config.env
+   - เข้าโฟลเดอร์ deploy-windows
+   - Copy ไฟล์ "config.env.example" เป็น "config.env"
+   - เปิดด้วย Notepad แล้วแก้ค่า:
+       set DB_PASSWORD=<รหัส sa ตัวจริง>
+       set JWT_SECRET=<random 48 chars>
+       set NEXTAUTH_SECRET=<random 48 chars>
+   - บันทึก
+
+   วิธีสร้าง random string (รันบน PowerShell):
+       -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | % {[char]$_})
+
+STEP 3 — รัน install.bat แบบ Administrator
+   - คลิกขวาที่ install.bat → "Run as administrator"
+   - รอ ~30 วินาที สังเกตข้อความ:
+       [1/6] Copying files ...      → copy ไป C:\PMS\
+       [2/6] Verifying Node.js ...  → ทดสอบ node.exe
+       [3/6] Verifying app ...      → ทดสอบ app bundle
+       [4/6] Configuring Firewall   → เปิด port 3000
+       [5/6] Registering autostart  → schtasks /Create PMSConsole
+       [6/6] Pre-flight + start ... → ยิง HTTP ทดสอบ
+   - ถ้าเห็นข้อความ:
+       "PMS Console is running. URL: http://192.168.88.98:3000/"
+     แปลว่าสำเร็จ
+
+STEP 4 — เปิดบราวเซอร์ทดสอบ
+   - บนเครื่องในเน็ตเวิร์กเดียวกัน: เปิด http://192.168.88.98:3000/
+   - ควรเห็นหน้า login ของ PMS
+
+============================================================
+ การจัดการระบบ
+============================================================
+
+เริ่ม service          : รัน C:\PMS\start.bat  (หรือ schtasks /Run /TN PMSConsole)
+หยุด service           : รัน C:\PMS\stop.bat
+ดู log                 : เปิด C:\PMS\pms.log
+อัปเดต code ใหม่       : ดู "การอัปเดต" ข้างล่าง
+ถอนการติดตั้ง          : รัน C:\PMS\uninstall.bat แบบ admin
+
+ดู task ใน Task Scheduler:
+   Task Scheduler Library → หาชื่อ "PMSConsole"
+
+============================================================
+ การอัปเดต (deploy version ใหม่)
+============================================================
+
+1. บนเครื่อง dev (Mac):
+       cd /Users/artit/PMS
+       ./deploy-windows/build-and-package.sh
+   → จะได้ไฟล์ deploy-windows-<วันที่>.zip
+
+2. Copy zip ขึ้น server, แตกที่ใดก็ได้
+
+3. เข้าโฟลเดอร์ที่แตกแล้ว → คลิกขวา update.bat → Run as admin
+   - หยุด service เดิม
+   - backup app เดิมไว้เป็น app.bak (กู้ได้ถ้ามีปัญหา)
+   - copy app ใหม่ทับ
+   - restart service
+   - config.env ของเดิมไม่ถูกแตะ
+
+ถ้า version ใหม่มีปัญหา ต้องการ rollback:
+   - รัน C:\PMS\stop.bat
+   - rename C:\PMS\app → C:\PMS\app.broken
+   - rename C:\PMS\app.bak → C:\PMS\app
+   - รัน C:\PMS\start.bat
+
+============================================================
+ Troubleshooting
+============================================================
+
+ปัญหา: เปิด http://192.168.88.98:3000/ ไม่ขึ้น
+   → ตรวจ C:\PMS\pms.log มี error อะไรไหม
+   → ตรวจ firewall: netsh advfirewall firewall show rule name="PMS Console"
+   → ตรวจ port: netstat -ano | findstr :3000
+   → ตรวจว่า node.exe ยังรันอยู่: tasklist | findstr node.exe
+
+ปัญหา: เชื่อมต่อ database ไม่ได้
+   → ตรวจ DB_SERVER, DB_USER, DB_PASSWORD ใน config.env
+   → ทดสอบจาก server: telnet 10.8.8.88 1433
+   → ตรวจ SQL Server ที่ 10.8.8.88 ว่า service ทำงานอยู่
+   → ตรวจ SQL Server Authentication เปิด mixed mode
+
+ปัญหา: อัปโหลดไฟล์ไม่ได้
+   → ตรวจ Settings → File Storage Settings ใน UI
+   → ตรวจสิทธิ์เข้าถึง \\10.8.8.88\ftp\pms\ จาก server
+   → ถ้าใช้ network share ต้องให้ service account
+     (ปกติคือ SYSTEM) มีสิทธิ์เข้า share
+
+ปัญหา: หลัง reboot service ไม่ start
+   → schtasks /Query /TN PMSConsole /V  ดูสถานะ
+   → ถ้าเป็น user autostart (ไม่ได้รันด้วย admin ตอน install)
+     ต้อง login เป็น user เดิมก่อนระบบจะ start
+
+============================================================
+ สรุปไฟล์ในโฟลเดอร์นี้
+============================================================
+
+node\              Node.js 20 portable (~30MB) — ไม่ต้องลง Node.js บน server
+app\               Next.js standalone build + node_modules + .next/
+config.env.example ตัวอย่าง environment variables
+install.bat        ติดตั้งครั้งแรก (admin)
+start.bat          เริ่ม service
+stop.bat           หยุด service
+update.bat         อัปเดต version ใหม่
+uninstall.bat      ถอนการติดตั้ง
+INSTALL.txt        ไฟล์นี้

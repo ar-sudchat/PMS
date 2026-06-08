@@ -255,16 +255,20 @@ export async function getDocsOntimeMonthlyTrend(year: number, ownerId?: string) 
 
         const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
         const data = result.recordset.map((r: any) => {
-            const submitted = (r.on_time || 0) + (r.late || 0)
+            // Fold overdue into late so the trend matches the project/milestone table.
+            // (Manual-fail flag isn't on the view, so it's only applied in the
+            // project-milestone breakdown — trend is best-effort.)
+            const effLate = (r.late || 0) + (r.overdue || 0)
+            const submitted = (r.on_time || 0) + effLate
             const rate = submitted > 0 ? Math.round(((r.on_time || 0) / submitted) * 100) : 100
             return {
                 month: r.month,
                 month_name: monthNames[r.month - 1],
                 total: r.total || 0,
                 on_time: r.on_time || 0,
-                late: r.late || 0,
+                late: effLate,
                 pending: r.pending || 0,
-                overdue: r.overdue || 0,
+                overdue: 0,
                 on_time_rate: rate,
                 is_pass: rate >= 95
             }
@@ -387,26 +391,46 @@ export async function getDocsOntimeByProjectMilestone(params: {
             }
 
             const proj = projectMap.get(key)!
-            const submitted = (row.on_time_docs || 0) + (row.late_docs || 0)
-            const rate = submitted > 0 ? Math.round(((row.on_time_docs || 0) / submitted) * 100) : 100
-
             const isManualFail = row.kpi_docs_manual_fail === 1
+
+            // Effective counts: collapse overdue + manual-fail into "Late" so the user
+            // sees a single failure bucket. Pending stays as the truly unsubmitted but
+            // not-yet-due docs only.
+            //
+            // - manual_fail=1 → milestone is force-failed: all non-on-time docs become Late
+            // - manual_fail=0 → Late = submitted-late + overdue (past due, unsubmitted)
+            const rawOnTime = row.on_time_docs || 0
+            const rawLate = row.late_docs || 0
+            const rawPending = row.pending_docs || 0
+            const rawOverdue = row.overdue_docs || 0
+            const total = row.total_docs || 0
+
+            const effLate = isManualFail
+                ? total - rawOnTime              // everything not on-time fails
+                : rawLate + rawOverdue
+            const effPending = isManualFail ? 0 : rawPending
+            // overdue is now folded into Late everywhere, so always zero in the
+            // returned shape — UI's msPending math (pending + overdue) keeps working.
+            const effOverdue = 0
+
+            const submitted = rawOnTime + effLate
+            const rate = submitted > 0 ? Math.round((rawOnTime / submitted) * 100) : 100
 
             proj.milestones.push({
                 milestone_name: row.milestone_name,
                 due_date: row.due_date ? new Date(row.due_date).toISOString().split('T')[0] : null,
-                total_docs: row.total_docs || 0,
-                on_time_docs: row.on_time_docs || 0,
-                late_docs: row.late_docs || 0,
-                pending_docs: row.pending_docs || 0,
-                overdue_docs: row.overdue_docs || 0,
+                total_docs: total,
+                on_time_docs: rawOnTime,
+                late_docs: effLate,
+                pending_docs: effPending,
+                overdue_docs: effOverdue,
                 on_time_rate: isManualFail ? 0 : rate,
                 kpi_docs_manual_fail: isManualFail
             })
 
-            proj.total_docs += (row.total_docs || 0)
-            proj.on_time_docs += (row.on_time_docs || 0)
-            proj.late_docs += (row.late_docs || 0)
+            proj.total_docs += total
+            proj.on_time_docs += rawOnTime
+            proj.late_docs += effLate
         }
 
         // Calculate project-level on-time rate
