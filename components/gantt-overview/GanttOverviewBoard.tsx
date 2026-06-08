@@ -98,7 +98,8 @@ export function GanttOverviewBoard() {
     // or "task" (one row per task note). Toggle is shown only while view === 'daily'.
     const [dailySubRowMode, setDailySubRowMode] = React.useState<'assignee' | 'task'>('assignee')
     // In task mode, optionally hide tasks where every entry has status === 'DONE'.
-    const [dailyHideDone, setDailyHideDone] = React.useState(false)
+    // Default: hidden — completed tasks rarely need a follow-up; user can uncheck to see them.
+    const [dailyHideDone, setDailyHideDone] = React.useState(true)
 
     // Data
     const [rows, setRows] = React.useState<GanttProjectRow[]>([])
