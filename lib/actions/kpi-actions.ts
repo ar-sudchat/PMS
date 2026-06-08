@@ -330,6 +330,68 @@ export async function updateMilestoneProgress(
 }
 
 // ============================================
+// UPDATE MILESTONE ACTUAL FIELDS
+// (เริ่มจริง / เวลาจริง columns in the project Gantt popup)
+// ============================================
+export async function updateMilestoneActual(
+    milestoneId: string,
+    patch: { actual_start_date?: string | null; actual_duration_days?: number | null }
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+        const sets: string[] = ['updated_at = GETDATE()']
+        const req = pool.request().input('id', sql.UniqueIdentifier, milestoneId)
+        if (patch.actual_start_date !== undefined) {
+            req.input('asd', sql.Date, patch.actual_start_date || null)
+            sets.push('actual_start_date = @asd')
+        }
+        if (patch.actual_duration_days !== undefined) {
+            req.input('add', sql.Int, patch.actual_duration_days == null ? null : Math.max(0, Math.round(patch.actual_duration_days)))
+            sets.push('actual_duration_days = @add')
+        }
+        await req.query(`UPDATE pms.project_milestones SET ${sets.join(', ')} WHERE id = @id`)
+        return { success: true }
+    } catch (error) {
+        console.error('Error updating milestone actual:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to update' }
+    }
+}
+
+// ============================================
+// UPDATE MILESTONE DUE DATE
+// (used by the project Gantt popup for inline editing)
+// ============================================
+export async function updateMilestoneDueDate(
+    milestoneId: string,
+    dueDate: string | null
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, milestoneId)
+            .input('due', sql.Date, dueDate || null)
+            .query(`
+                UPDATE pms.project_milestones
+                SET due_date = @due, updated_at = GETDATE()
+                WHERE id = @id
+            `)
+        return { success: true }
+    } catch (error) {
+        console.error('Error updating milestone due_date:', error)
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to update milestone due date'
+        }
+    }
+}
+
+// ============================================
 // GET ALL KPI DATA (Combined for Dashboard)
 // ============================================
 

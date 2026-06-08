@@ -111,6 +111,21 @@ export interface GanttProjectRow {
     current_milestone_id: string | null
     current_milestone_name: string | null
     current_milestone_color: string | null
+    /** sort_order from milestone_configs — drives logical (lifecycle) sort,
+     *  not the alphabetical sort that comparing names would give. */
+    current_milestone_sort_order: number | null
+    /** Key milestone dates / progress — UAT, Go-Live, Close Go-Live.
+     *  Joined from project_milestones via milestone_configs.code matching.
+     *  *_milestone_id is needed for inline progress edits. */
+    uat_milestone_id: string | null
+    uat_due_date: string | null
+    uat_progress: number | null
+    golive_milestone_id: string | null
+    golive_due_date: string | null
+    golive_progress: number | null
+    close_milestone_id: string | null
+    close_due_date: string | null
+    close_progress: number | null
 }
 
 export interface GanttMilestoneNode {
@@ -123,6 +138,9 @@ export interface GanttMilestoneNode {
     status: string | null
     progress: number
     story_count: number
+    /** Actual fields used by the planned-vs-actual table (migration 83) */
+    actual_start_date: string | null
+    actual_duration_days: number | null
 }
 
 export interface GanttStoryNode {
@@ -265,6 +283,16 @@ export async function getProjectsForGantt(
                 cpm.id  AS current_milestone_id,
                 cm.name AS current_milestone_name,
                 cm.color AS current_milestone_color,
+                cm.sort_order AS current_milestone_sort_order,
+                pm_uat.id          AS uat_milestone_id,
+                pm_uat.due_date    AS uat_due_date,
+                pm_uat.progress_percent AS uat_progress,
+                pm_gl.id           AS golive_milestone_id,
+                pm_gl.due_date     AS golive_due_date,
+                pm_gl.progress_percent  AS golive_progress,
+                pm_cl.id           AS close_milestone_id,
+                pm_cl.due_date     AS close_due_date,
+                pm_cl.progress_percent  AS close_progress,
                 ma.earliest_ms_due,
                 ma.latest_ms_due,
                 ma.avg_progress,
@@ -278,6 +306,15 @@ export async function getProjectsForGantt(
             LEFT JOIN pms.project_status_configs sc ON sc.id = p.status_id
             LEFT JOIN pms.project_milestones cpm ON cpm.id = p.current_milestone_id
             LEFT JOIN pms.milestone_configs cm ON cm.id = cpm.milestone_config_id
+            -- Per-project key milestones (UAT / Go-Live / Close Go-Live).
+            -- Joined via milestone_configs.code so it works regardless of which milestone_id
+            -- a project picked. NULL when the project doesn't have that milestone.
+            LEFT JOIN pms.milestone_configs   mc_uat ON mc_uat.code = 'UAT'
+            LEFT JOIN pms.project_milestones  pm_uat ON pm_uat.project_id = p.id AND pm_uat.milestone_config_id = mc_uat.id
+            LEFT JOIN pms.milestone_configs   mc_gl  ON mc_gl.code  = 'GOLIVE'
+            LEFT JOIN pms.project_milestones  pm_gl  ON pm_gl.project_id  = p.id AND pm_gl.milestone_config_id  = mc_gl.id
+            LEFT JOIN pms.milestone_configs   mc_cl  ON mc_cl.code  = 'CLOSEGOLIVE'
+            LEFT JOIN pms.project_milestones  pm_cl  ON pm_cl.project_id  = p.id AND pm_cl.milestone_config_id  = mc_cl.id
             LEFT JOIN ms_agg ma ON ma.project_id = p.id
             WHERE ${where.join(' AND ')}
             ORDER BY ma.earliest_ms_due ASC, p.project_code ASC
@@ -309,6 +346,16 @@ export async function getProjectsForGantt(
                 current_milestone_id: row.current_milestone_id,
                 current_milestone_name: row.current_milestone_name,
                 current_milestone_color: row.current_milestone_color,
+                current_milestone_sort_order: row.current_milestone_sort_order ?? null,
+                uat_milestone_id:    row.uat_milestone_id || null,
+                uat_due_date:        toISODate(row.uat_due_date),
+                uat_progress:        row.uat_progress == null ? null : Math.round(Number(row.uat_progress)),
+                golive_milestone_id: row.golive_milestone_id || null,
+                golive_due_date:     toISODate(row.golive_due_date),
+                golive_progress:     row.golive_progress == null ? null : Math.round(Number(row.golive_progress)),
+                close_milestone_id:  row.close_milestone_id || null,
+                close_due_date:      toISODate(row.close_due_date),
+                close_progress:      row.close_progress == null ? null : Math.round(Number(row.close_progress)),
             }
         })
         // Compute overall span from returned rows (auto-fit window)
@@ -345,6 +392,7 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
                        cpm.id AS current_milestone_id,
                        cm.name AS current_milestone_name,
                        cm.color AS current_milestone_color,
+                       cm.sort_order AS current_milestone_sort_order,
                        (SELECT MIN(due_date) FROM pms.project_milestones WHERE project_id = p.id) AS earliest_ms_due,
                        (SELECT MAX(due_date) FROM pms.project_milestones WHERE project_id = p.id) AS latest_ms_due,
                        (SELECT AVG(CAST(ISNULL(progress_percent,0) AS FLOAT))
@@ -360,11 +408,18 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
                 WHERE p.id = @id
             `),
             pool.request().input('id', sql.UniqueIdentifier, projectId).query(`
-                SELECT id, milestone_code, milestone_name, color, sort_order,
-                       due_date, status, progress, story_count
-                FROM pms.vw_gantt_milestones
-                WHERE project_id = @id
-                ORDER BY sort_order ASC, due_date ASC
+                -- Read progress directly from project_milestones.progress_percent (the field
+                -- updateMilestoneProgress writes to). The shared vw_gantt_milestones VIEW
+                -- derives progress from story completion counts and would ignore our save.
+                SELECT vm.id, vm.milestone_code, vm.milestone_name, vm.color, vm.sort_order,
+                       vm.due_date, vm.status, vm.story_count,
+                       CAST(ISNULL(pm.progress_percent, 0) AS INT) AS progress,
+                       pm.actual_start_date,
+                       pm.actual_duration_days
+                FROM pms.vw_gantt_milestones vm
+                LEFT JOIN pms.project_milestones pm ON pm.id = vm.id
+                WHERE vm.project_id = @id
+                ORDER BY vm.sort_order ASC, vm.due_date ASC
             `),
             pool.request().input('id', sql.UniqueIdentifier, projectId).query(`
                 SELECT id, milestone_id, story_code, title, status, priority,
@@ -405,12 +460,19 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
             current_milestone_id: p.current_milestone_id || null,
             current_milestone_name: p.current_milestone_name || null,
             current_milestone_color: p.current_milestone_color || null,
+            current_milestone_sort_order: p.current_milestone_sort_order ?? null,
+            // ProjectDetailPopup doesn't render the per-milestone columns; default to null
+            uat_milestone_id: null, uat_due_date: null, uat_progress: null,
+            golive_milestone_id: null, golive_due_date: null, golive_progress: null,
+            close_milestone_id: null, close_due_date: null, close_progress: null,
         }
 
         const milestones: GanttMilestoneNode[] = mRes.recordset.map((m: any) => ({
             id: m.id, milestone_code: m.milestone_code, milestone_name: m.milestone_name,
             color: m.color, sort_order: m.sort_order, due_date: toISODate(m.due_date),
             status: m.status, progress: Math.round(m.progress || 0), story_count: m.story_count || 0,
+            actual_start_date: toISODate(m.actual_start_date),
+            actual_duration_days: m.actual_duration_days != null ? Number(m.actual_duration_days) : null,
         }))
         const stories: GanttStoryNode[] = sRes.recordset.map((s: any) => ({
             id: s.id, milestone_id: s.milestone_id, story_code: s.story_code, title: s.title,

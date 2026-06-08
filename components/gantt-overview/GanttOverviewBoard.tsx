@@ -59,7 +59,7 @@ interface DailyTrackingProject {
 }
 
 interface FilterOptions {
-    customers: { id: string; code: string; name: string }[]
+    customers: { id: string; code: string; name: string; project_count?: number }[]
     managers: { id: string; name: string; name_th: string }[]  // kept (used by project queries) but not surfaced in UI
     statuses: { id: string; code: string; name: string; color: string }[]
     projectTypes: { id: string; code: string; name: string; color: string }[]
@@ -71,8 +71,8 @@ interface UIFilters {
     customerId: string
     employeeId: string
     statusId: string
-    projectTypeId: string
-    milestoneIds: string[]   // multi-select; [] = ทั้งหมด
+    projectTypeIds: string[]   // multi-select; [] = ทุกประเภท
+    milestoneIds: string[]     // multi-select; [] = ทั้งหมด
     search: string
 }
 
@@ -82,7 +82,7 @@ export function GanttOverviewBoard() {
     // Filters
     const [opts, setOpts] = React.useState<FilterOptions>(EMPTY_OPTS)
     const [filters, setFilters] = React.useState<UIFilters>({
-        customerId: '', employeeId: '', statusId: '', projectTypeId: '', milestoneIds: [], search: '',
+        customerId: '', employeeId: '', statusId: '', projectTypeIds: [], milestoneIds: [], search: '',
     })
 
     // View mode: gantt = 3-month timeline / daily = 1-month day-grid with icons
@@ -128,7 +128,7 @@ export function GanttOverviewBoard() {
     // Load filter options + employees list once + apply default DEV / Active filters.
     // setFiltersReady at the END so the data-loading effect only fires AFTER defaults are in.
     React.useEffect(() => {
-        Promise.all([getProjectFilterOptions(), getAssignableEmployees()]).then(([res, empRes]) => {
+        Promise.all([getProjectFilterOptions({ year: windowStart.getFullYear() }), getAssignableEmployees()]).then(([res, empRes]) => {
             if (res.success && res.data) {
                 const data = res.data as FilterOptions
                 setOpts(data)
@@ -139,7 +139,7 @@ export function GanttOverviewBoard() {
                 setFilters(prev => ({
                     ...prev,
                     statusId: prev.statusId || activeStatus?.id || '',
-                    projectTypeId: prev.projectTypeId || devType?.id || '',
+                    projectTypeIds: prev.projectTypeIds.length ? prev.projectTypeIds : (devType ? [devType.id] : []),
                 }))
             }
             if (empRes.success && empRes.data) {
@@ -150,6 +150,21 @@ export function GanttOverviewBoard() {
             setFiltersReady(true)
         })
     }, [])
+
+    // Re-fetch customer list (with year-scoped project_count) whenever the year changes.
+    // Skip the first run — the initial mount-effect above already loaded with the correct year.
+    const yearRef = React.useRef(windowStart.getFullYear())
+    React.useEffect(() => {
+        const y = windowStart.getFullYear()
+        if (y === yearRef.current) return
+        yearRef.current = y
+        getProjectFilterOptions({ year: y }).then(r => {
+            if (r.success && r.data) {
+                // Only swap the customer list — keep other options stable
+                setOpts(prev => ({ ...prev, customers: (r.data as FilterOptions).customers }))
+            }
+        })
+    }, [windowStart])
 
     // Load projects whenever filters OR window OR view change
     const reqIdRef = React.useRef(0)
@@ -168,7 +183,7 @@ export function GanttOverviewBoard() {
             const res = await getOpenTasksByAssignee({
                 search: filters.search || undefined,
                 statusIds: filters.statusId ? [filters.statusId] : undefined,
-                typeIds: filters.projectTypeId ? [filters.projectTypeId] : undefined,
+                typeIds: filters.projectTypeIds.length ? filters.projectTypeIds : undefined,
                 assigneeIds: filters.employeeId ? [filters.employeeId] : undefined,
                 milestoneConfigIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
                 dateFilter: todoDate || undefined,
@@ -191,7 +206,9 @@ export function GanttOverviewBoard() {
                 // employeeId is interpreted as project_manager_id here (Gantt/Daily list projects by PM)
                 managerId: filters.employeeId || undefined,
                 statusId: filters.statusId || undefined,
-                projectTypeId: filters.projectTypeId || undefined,
+                // ProjectFilters.projectTypeId is single — pass only the first selected (or undefined).
+                // Server-side multi-type filter for Daily mode would need a separate enhancement.
+                projectTypeId: filters.projectTypeIds[0] || undefined,
                 milestoneIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
                 search: filters.search || undefined,
             }
@@ -206,15 +223,19 @@ export function GanttOverviewBoard() {
             }
         } else {
             // Gantt mode: fetch via gantt-overview API (returns project bars).
+            // NB: we deliberately pass empty start/end so the SQL date-range filter
+            // is skipped — the user wants every project matching the other filters
+            // to appear as a ROW, even if its timeline is fully outside the window
+            // (the bar just won't render then, via computeBarPosition returning null).
             const payload: GanttListFilters = {
                 search: filters.search || undefined,
                 statusIds: filters.statusId ? [filters.statusId] : undefined,
-                typeIds: filters.projectTypeId ? [filters.projectTypeId] : undefined,
+                typeIds: filters.projectTypeIds.length ? filters.projectTypeIds : undefined,
                 // employeeId interpreted as project_manager_id here
                 projectManagerIds: filters.employeeId ? [filters.employeeId] : undefined,
                 milestoneConfigIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
             }
-            const res = await getProjectsForGantt(startIso, endIso, payload)
+            const res = await getProjectsForGantt('', '', payload)
             if (reqId !== reqIdRef.current) return
             if (res.success) setRows(res.data)
         }
@@ -269,8 +290,10 @@ export function GanttOverviewBoard() {
     }, [rows, filters.customerId, opts.customers])
 
     // Sort by clicked column header. 3-state: asc → desc → none.
+    // Default = milestone ASC (Marketing → Mapping Data → ... → Close Go-Live) per user's
+    // preferred lifecycle ordering.
     type SortKey = 'code' | 'name' | 'due' | 'milestone'
-    const [sortKey, setSortKey] = React.useState<SortKey | null>(null)
+    const [sortKey, setSortKey] = React.useState<SortKey | null>('milestone')
     const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc')
     const toggleSort = (k: SortKey) => {
         if (sortKey !== k) { setSortKey(k); setSortDir('asc'); return }
@@ -282,14 +305,19 @@ export function GanttOverviewBoard() {
         const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
         const arr = [...filteredRows]
         arr.sort((a, b) => {
+            // Milestone column sorts by lifecycle (Marketing → Mapping Data → System Test → UAT → Go-Live → Close)
+            // via milestone_configs.sort_order — NOT by alphabetical name.
+            if (sortKey === 'milestone') {
+                const so = (x: GanttProjectRow) => x.current_milestone_sort_order ?? Number.MAX_SAFE_INTEGER
+                return so(a) - so(b)
+            }
             let va: string, vb: string
             switch (sortKey) {
-                case 'code':      va = a.project_code || ''; vb = b.project_code || ''; break
-                case 'name':      va = a.name_th || a.name || ''; vb = b.name_th || b.name || ''; break
-                case 'due':       va = a.end_date || '9999-12-31'; vb = b.end_date || '9999-12-31'; break
-                case 'milestone': va = a.current_milestone_name || ''; vb = b.current_milestone_name || ''; break
+                case 'code': va = a.project_code || ''; vb = b.project_code || ''; break
+                case 'name': va = a.name_th || a.name || ''; vb = b.name_th || b.name || ''; break
+                case 'due':  va = a.end_date || '9999-12-31'; vb = b.end_date || '9999-12-31'; break
             }
-            return collator.compare(va, vb)
+            return collator.compare(va!, vb!)
         })
         if (sortDir === 'desc') arr.reverse()
         return arr
@@ -328,18 +356,17 @@ export function GanttOverviewBoard() {
     }, [months, trail, monthsInWindow, rangeEnd])
     const totalWeekCells = weeksPerMonth.reduce((a, ws) => a + ws.length, 0)
 
-    // Week boundary % positions (excluding 0% and 100%) for the timeline column —
-    // used to render thin vertical grid lines in each row.
+    // Week boundary % positions (excluding 0% and 100%) for the timeline column.
+    // Use even-spacing so the lines align with the GridHeader's equal-width W columns
+    // (`repeat(N, minmax(32px, 1fr))`). The row's timeline cell uses the same `repeat`,
+    // so lines at `i/N * 100%` of the timeline width sit exactly on column boundaries.
     const weekBoundaryPcts = React.useMemo(() => {
         const out: number[] = []
-        let acc = 0
-        const flat = weeksPerMonth.flat()
-        for (let i = 0; i < flat.length - 1; i++) {
-            acc += flat[i].days
-            out.push((acc / totalDays) * 100)
+        for (let i = 1; i < totalWeekCells; i++) {
+            out.push((i / totalWeekCells) * 100)
         }
         return out
-    }, [weeksPerMonth, totalDays])
+    }, [totalWeekCells])
 
     const setFilter = <K extends keyof UIFilters>(k: K, v: UIFilters[K]) =>
         setFilters(prev => ({ ...prev, [k]: v }))
@@ -453,15 +480,56 @@ export function GanttOverviewBoard() {
                         </select>
                     </div>
 
-                    {/* Customer */}
-                    <div className="flex flex-col gap-1 min-w-[170px]">
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">ลูกค้า</span>
+                    {/* Customer — top-5 quick-picks + searchable combobox for the long tail */}
+                    <div className="flex flex-col gap-1 min-w-[260px]">
+                        {opts.customers.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                                {opts.customers
+                                    .filter(c => (c.project_count ?? 0) > 0)
+                                    .slice(0, 5)
+                                    .map(c => {
+                                    const active = filters.customerId === c.id
+                                    // Short label — drop the corporate prefix "บริษัท" so the chip stays compact
+                                    const shortName = c.name
+                                        .replace(/^บริษัท\s*/, '')
+                                        .replace(/\s*จำกัด(\s*\(มหาชน\))?$/, '')
+                                        .replace(/\s*จํากัด(\s*\(มหาชน\))?$/, '')
+                                    return (
+                                        <button
+                                            key={c.id}
+                                            type="button"
+                                            onClick={() => setFilter('customerId', active ? '' : c.id)}
+                                            className={cn(
+                                                "px-1.5 py-0.5 rounded-full text-[10px] font-medium border transition-colors max-w-[90px] inline-flex items-center gap-1",
+                                                active
+                                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                            )}
+                                            title={c.name + (c.project_count ? ` · ${c.project_count} โครงการ` : '')}
+                                        >
+                                            <span className="truncate">{shortName}</span>
+                                            {c.project_count != null && (
+                                                <span className={cn(
+                                                    "text-[8px] font-bold px-1 rounded-full shrink-0",
+                                                    active ? "bg-white/30 text-white" : "bg-slate-100 text-slate-500"
+                                                )}>
+                                                    {c.project_count}
+                                                </span>
+                                            )}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
                         <div className="[&_button]:!py-1.5 [&_button]:!px-2.5 [&_button]:!text-xs [&_button]:!rounded-lg [&_button]:bg-slate-50/50 [&_button]:border-slate-200 [&_button]:hover:bg-slate-50">
                             <SmartCombobox
-                                placeholder="ลูกค้าทั้งหมด"
+                                placeholder="ค้นหาลูกค้าทั้งหมด..."
                                 options={[
                                     { value: '', label: 'ลูกค้าทั้งหมด' },
-                                    ...opts.customers.map((c) => ({ value: c.id, label: c.name })),
+                                    ...opts.customers.map((c) => ({
+                                        value: c.id,
+                                        label: c.project_count ? `${c.name}  (${c.project_count})` : c.name,
+                                    })),
                                 ]}
                                 value={
                                     filters.customerId
@@ -471,7 +539,7 @@ export function GanttOverviewBoard() {
                                         : { value: '', label: 'ลูกค้าทั้งหมด' }
                                 }
                                 onChange={(opt) => setFilter('customerId', String(opt?.value || ''))}
-                                maxDisplayItems={10}
+                                maxDisplayItems={15}
                             />
                         </div>
                     </div>
@@ -505,19 +573,19 @@ export function GanttOverviewBoard() {
                         </div>
                     </div>
 
-                    {/* Type */}
+                    {/* Type — multi-select */}
                     <div className="flex flex-col gap-1">
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">ประเภทงาน</span>
-                        <select
-                            value={filters.projectTypeId}
-                            onChange={(e) => setFilter('projectTypeId', e.target.value)}
-                            className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs min-w-[95px] bg-slate-50/50 hover:bg-slate-50 focus:border-indigo-500 focus:bg-white transition-all outline-none shadow-sm font-medium"
-                        >
-                            <option value="">ทุกประเภท</option>
-                            {opts.projectTypes.map(t => (
-                                <option key={t.id} value={t.id}>{t.code}</option>
-                            ))}
-                        </select>
+                        <ChipMultiSelect
+                            placeholderAll="ทุกประเภท"
+                            options={opts.projectTypes.map(t => ({
+                                id: t.id,
+                                label: t.code,
+                                color: t.color,
+                            }))}
+                            value={filters.projectTypeIds}
+                            onChange={(ids) => setFilter('projectTypeIds', ids)}
+                        />
                     </div>
 
                     {/* Status */}
@@ -538,8 +606,15 @@ export function GanttOverviewBoard() {
                     {/* Milestone — multi-select */}
                     <div className="flex flex-col gap-1">
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Milestone</span>
-                        <MilestoneMultiSelect
-                            options={opts.milestones}
+                        <ChipMultiSelect
+                            placeholderAll="ทั้งหมด"
+                            options={opts.milestones.map(m => ({
+                                id: m.id,
+                                // User wants English names (Marketing / Mapping Data / ...)
+                                // matching the milestone_configs settings page.
+                                label: m.name || m.name_th || m.code,
+                                color: m.color,
+                            }))}
                             value={filters.milestoneIds}
                             onChange={(ids) => setFilter('milestoneIds', ids)}
                         />
@@ -681,6 +756,7 @@ export function GanttOverviewBoard() {
                                     rangeStart={rangeStart}
                                     totalDays={totalDays}
                                     gridPcts={weekBoundaryPcts}
+                                    totalWeekCells={totalWeekCells}
                                     onClick={() => setOpenProjectId(row.id)}
                                     onCodeClick={() => handleEditProject(row.id)}
                                     onUpdateProgress={async (milestoneId, percent) => {
@@ -739,28 +815,26 @@ export function GanttOverviewBoard() {
 }
 
 // ============================================================
-// Milestone multi-select — chips popover
+// Generic checkbox-popover multi-select. Used by Milestone + Project Type filters.
 // ============================================================
 
-interface MilestoneOpt {
+interface ChipOpt {
     id: string
-    code: string
-    name: string
-    name_th?: string
-    color: string
+    label: string
+    color?: string
 }
 
-function MilestoneMultiSelect({
-    options, value, onChange,
+function ChipMultiSelect({
+    options, value, onChange, placeholderAll = 'ทั้งหมด',
 }: {
-    options: MilestoneOpt[]
+    options: ChipOpt[]
     value: string[]
     onChange: (ids: string[]) => void
+    placeholderAll?: string
 }) {
     const [open, setOpen] = React.useState(false)
     const wrapRef = React.useRef<HTMLDivElement | null>(null)
 
-    // Close on click-outside
     React.useEffect(() => {
         if (!open) return
         const onDoc = (e: MouseEvent) => {
@@ -776,9 +850,9 @@ function MilestoneMultiSelect({
     }
 
     const label = value.length === 0
-        ? 'ทั้งหมด'
+        ? placeholderAll
         : value.length === 1
-            ? (options.find(o => o.id === value[0])?.name_th || options.find(o => o.id === value[0])?.name || '1 รายการ')
+            ? (options.find(o => o.id === value[0])?.label || '1 รายการ')
             : `${value.length} รายการ`
 
     return (
@@ -796,8 +870,7 @@ function MilestoneMultiSelect({
             </button>
             {open && (
                 <div className="absolute z-30 mt-1 w-64 max-h-72 overflow-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">มายสโตน</span>
+                    <div className="flex items-center justify-end px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">
                         <button
                             type="button"
                             onClick={() => onChange([])}
@@ -825,11 +898,13 @@ function MilestoneMultiSelect({
                                     onChange={() => toggle(opt.id)}
                                     className="w-3.5 h-3.5 rounded accent-indigo-600"
                                 />
-                                <span
-                                    className="w-2 h-2 rounded-sm shrink-0"
-                                    style={{ background: opt.color || '#94a3b8' }}
-                                />
-                                <span className="text-xs text-slate-700 truncate">{opt.name_th || opt.name}</span>
+                                {opt.color && (
+                                    <span
+                                        className="w-2 h-2 rounded-sm shrink-0"
+                                        style={{ background: opt.color }}
+                                    />
+                                )}
+                                <span className="text-xs text-slate-700 truncate">{opt.label}</span>
                             </label>
                         )
                     })}
@@ -853,6 +928,9 @@ interface GridHeaderProps {
     codeCol?: { width: number; label: string }
     /** Optional third fixed column (e.g. "มายสโตนปัจจุบัน") rendered between midWidth and the timeline. */
     thirdCol?: { width: number; label: string }
+    /** Optional extra fixed columns rendered after thirdCol, before the month timeline.
+     *  Used by the main Gantt Overview to surface key milestone dates (UAT / Go-Live / Close). */
+    extraCols?: { width: number; label: string }[]
     compact?: boolean
     /** When provided, the fixed column headers become clickable sort triggers. */
     sort?: {
@@ -890,14 +968,17 @@ function SortHeader({
 
 export function GridHeader({
     months, weeksPerMonth, totalWeekCells,
-    leftWidth = 260, midWidth = 100, codeCol, thirdCol, compact = false, sort,
+    leftWidth = 260, midWidth = 100, codeCol, thirdCol, extraCols, compact = false, sort,
 }: GridHeaderProps) {
     const codePart = codeCol ? `${codeCol.width}px ` : ''
     const thirdPart = thirdCol ? `${thirdCol.width}px ` : ''
+    const extraPart = (extraCols && extraCols.length)
+        ? extraCols.map(c => `${c.width}px`).join(' ') + ' '
+        : ''
     return (
         <>
             <div className="grid sticky top-0 z-20 bg-slate-50 border-b border-slate-200"
-                style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}repeat(${months.length}, minmax(220px, 1fr))` }}>
+                style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}${extraPart}repeat(${months.length}, minmax(220px, 1fr))` }}>
                 {codeCol && (
                     <SortHeader label={codeCol.label} sortKey="code" sort={sort} compact={compact} />
                 )}
@@ -906,6 +987,11 @@ export function GridHeader({
                 {thirdCol && (
                     <SortHeader label={thirdCol.label} sortKey="milestone" sort={sort} compact={compact} />
                 )}
+                {extraCols?.map((c, i) => (
+                    <div key={i} className={cn("px-2 text-[10px] font-semibold text-slate-600 border-r border-slate-200 tracking-tight text-center", compact ? "py-1.5" : "py-2")}>
+                        {c.label}
+                    </div>
+                ))}
                 {months.map((m, i) => (
                     <div key={i} className={cn("px-2 text-center text-xs font-semibold text-slate-700 border-r border-slate-200 tracking-tight", compact ? "py-1.5" : "py-2")}>
                         {thMonthShort(m)}
@@ -914,17 +1000,27 @@ export function GridHeader({
             </div>
 
             <div className={cn("grid sticky z-20 bg-slate-50/80 border-b border-slate-200 text-xs text-slate-700", compact ? "top-[30px]" : "top-[36px]")}
-                style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}repeat(${totalWeekCells}, minmax(48px, 1fr))` }}>
+                style={{ gridTemplateColumns: `${codePart}${leftWidth}px ${midWidth}px ${thirdPart}${extraPart}repeat(${totalWeekCells}, minmax(32px, 1fr))` }}>
                 {codeCol && <div className="border-r border-slate-200" />}
                 <div className="border-r border-slate-200" />
                 <div className="border-r border-slate-200" />
                 {thirdCol && <div className="border-r border-slate-200" />}
+                {extraCols?.map((_, i) => (
+                    <div key={i} className="border-r border-slate-200" />
+                ))}
                 {weeksPerMonth.flatMap((weeks, monthIdx) =>
-                    weeks.map((w, wIdx) => (
-                        <div key={`${monthIdx}-${wIdx}`} className="text-center py-1 border-r border-slate-100 font-medium">
-                            W{wIdx + 1}
-                        </div>
-                    ))
+                    weeks.map((w, wIdx) => {
+                        // Absolute week-of-year — W1 == first week containing Jan 1 of THIS week's year.
+                        // Counted in calendar weeks from Jan 1 (not ISO weeks) for predictability.
+                        const jan1 = new Date(w.start.getFullYear(), 0, 1)
+                        const daysFromJan1 = Math.floor((w.start.getTime() - jan1.getTime()) / 86400000)
+                        const absWeek = Math.floor(daysFromJan1 / 7) + 1
+                        return (
+                            <div key={`${monthIdx}-${wIdx}`} className="text-center py-1 border-r border-slate-100 text-[9px] font-normal text-slate-400 tabular-nums">
+                                W{absWeek}
+                            </div>
+                        )
+                    })
                 )}
             </div>
         </>
@@ -940,6 +1036,9 @@ interface ProjectRowProps {
     rangeStart: Date
     totalDays: number
     gridPcts: number[]
+    /** Number of W columns — used to mirror the header's `repeat(N, minmax(32px, 1fr))` so
+     *  vertical grid lines and the bar both line up with the W column dividers. */
+    totalWeekCells: number
     onClick: () => void
     onCodeClick: () => void
     /** Inline edit handler — called when the user types a new % on the bar chip.
@@ -952,7 +1051,7 @@ interface ProjectRowProps {
 // "มายสโตนปัจจุบัน" column (which keeps its own per-phase color marker).
 const BAR_COLOR = '#6366f1'   // indigo-500
 
-function ProjectRow({ row, rangeStart, totalDays, gridPcts, onClick, onCodeClick, onUpdateProgress }: ProjectRowProps) {
+function ProjectRow({ row, rangeStart, totalDays, gridPcts, totalWeekCells, onClick, onCodeClick, onUpdateProgress }: ProjectRowProps) {
     const bar = computeBarPosition(row.start_date, row.end_date, rangeStart, totalDays)
     const color = BAR_COLOR
     const msColor = row.current_milestone_color || '#64748b'
@@ -982,7 +1081,7 @@ function ProjectRow({ row, rangeStart, totalDays, gridPcts, onClick, onCodeClick
     return (
         <div
             className="group grid border-b border-slate-100 hover:bg-indigo-50/40 transition-colors relative cursor-pointer"
-            style={{ gridTemplateColumns: '90px 260px 100px 150px 1fr', minHeight: 48 }}
+            style={{ gridTemplateColumns: `90px 260px 100px 150px repeat(${totalWeekCells}, minmax(32px, 1fr))`, minHeight: 48 }}
             onClick={onClick}
         >
             {/* Project code — opens Edit Project modal in-place (not the activity popup). */}
@@ -1016,7 +1115,7 @@ function ProjectRow({ row, rangeStart, totalDays, gridPcts, onClick, onCodeClick
                     <span className="text-xs text-slate-400">—</span>
                 )}
             </div>
-            <div className="relative">
+            <div className="relative" style={{ gridColumn: `span ${totalWeekCells}` }}>
                 {/* Vertical grid lines at week boundaries */}
                 {gridPcts.map((pct, i) => (
                     <div
