@@ -207,6 +207,7 @@ export interface ProjectFilters {
     ownerId?: string
     statusId?: string
     projectTypeId?: string
+    projectTypeIds?: string[]   // Multi-select; takes precedence over `projectTypeId` if both set
     milestoneIds?: string[]  // Multi-select
     search?: string
 }
@@ -440,7 +441,13 @@ export async function getProjects(filters?: ProjectFilters) {
             request.input('statusId', sql.UniqueIdentifier, filters.statusId)
         }
 
-        if (filters?.projectTypeId) {
+        if (filters?.projectTypeIds && filters.projectTypeIds.length > 0) {
+            // Multi-select takes precedence — daily view sends every selected type so all
+            // matching projects appear (e.g. customer with MA + CLE types).
+            const placeholders = filters.projectTypeIds.map((_, i) => `@pt${i}`).join(', ')
+            query += ` AND p.project_type_id IN (${placeholders})`
+            filters.projectTypeIds.forEach((id, i) => request.input(`pt${i}`, sql.UniqueIdentifier, id))
+        } else if (filters?.projectTypeId) {
             query += ` AND p.project_type_id = @projectTypeId`
             request.input('projectTypeId', sql.UniqueIdentifier, filters.projectTypeId)
         }

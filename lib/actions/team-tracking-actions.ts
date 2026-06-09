@@ -32,7 +32,7 @@ export type TrackingStatus = 'PLANNED' | 'DONE' | 'POSTPONED'
 export interface TrackingEntry {
     id: string
     project_id: string
-    entry_date: string          // ISO yyyy-MM-dd
+    entry_date: string | null   // ISO yyyy-MM-dd; null = unscheduled (action-plan template)
     assignee_id: string | null
     assignee_name: string | null
     assignee_role: string | null
@@ -46,6 +46,8 @@ export interface TrackingEntry {
     milestone_id: string | null
     milestone_name: string | null
     milestone_color: string | null
+    /** When set, this tracking entry has been promoted to a full Task in pms.tasks. */
+    task_id?: string | null
     created_by: string
     created_at: string
     updated_at: string
@@ -53,7 +55,7 @@ export interface TrackingEntry {
 
 export interface CreateTrackingEntryInput {
     project_id: string
-    entry_date: string
+    entry_date: string | null   // null = create as "unscheduled"
     assignee_id?: string | null
     assignee_role?: string | null
     note?: string | null
@@ -208,6 +210,7 @@ export async function getTeamTrackingData(
                         t.milestone_id,
                         mc.name AS milestone_name,
                         mc.color AS milestone_color,
+                        t.task_id,
                         t.created_by,
                         CONVERT(varchar(19), t.created_at, 126) AS created_at,
                         CONVERT(varchar(19), t.updated_at, 126) AS updated_at
@@ -315,7 +318,7 @@ export async function createTrackingEntry(input: CreateTrackingEntryInput) {
 
         const request = pool.request()
         request.input('project_id', sql.UniqueIdentifier, input.project_id)
-        request.input('entry_date', sql.Date, input.entry_date)
+        request.input('entry_date', sql.Date, input.entry_date || null)
         request.input('assignee_id', sql.UniqueIdentifier, input.assignee_id || null)
         request.input('assignee_role', sql.NVarChar(20), input.assignee_role || null)
         request.input('note', sql.NVarChar(sql.MAX), input.note || null)
@@ -446,6 +449,324 @@ export async function markTrackingEntryDone(id: string, completedDate?: string) 
     } catch (error) {
         console.error('markTrackingEntryDone error:', error)
         return { success: false, error: 'Failed to mark entry as done' }
+    }
+}
+
+// ============================================
+// UNSCHEDULED ENTRIES — list tracking entries with entry_date IS NULL.
+// These are action-plan templates the user hasn't pinned to a date yet.
+// ============================================
+export interface UnscheduledEntry {
+    id: string
+    project_id: string
+    project_code: string
+    project_name: string
+    assignee_id: string | null
+    assignee_name: string | null
+    note: string
+    color: string | null
+    icon: string | null
+    milestone_id: string | null
+    milestone_name: string | null
+    milestone_color: string | null
+    task_id: string | null
+}
+
+export async function getUnscheduledTrackingEntries(projectId?: string): Promise<{ success: true; data: UnscheduledEntry[] } | { success: false; error: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+
+        const result = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId || null)
+            .query(`
+                SELECT
+                    t.id, t.project_id,
+                    p.project_code, ISNULL(p.name_th, p.name) AS project_name,
+                    t.assignee_id,
+                    CONCAT(e.first_name_th, ' ', e.last_name_th) AS assignee_name,
+                    t.note, t.color, t.icon,
+                    t.milestone_id,
+                    mc.name AS milestone_name,
+                    mc.color AS milestone_color,
+                    t.task_id
+                FROM pms.team_tracking_entries t
+                INNER JOIN pms.projects p ON p.id = t.project_id
+                LEFT JOIN pms.employees e ON e.id = t.assignee_id
+                LEFT JOIN pms.project_milestones pm ON pm.id = t.milestone_id
+                LEFT JOIN pms.milestone_configs mc ON mc.id = pm.milestone_config_id
+                WHERE t.is_active = 1
+                  AND t.entry_date IS NULL
+                  AND (@projectId IS NULL OR t.project_id = @projectId)
+                ORDER BY p.project_code, t.created_at
+            `)
+
+        const data: UnscheduledEntry[] = result.recordset.map((r: any) => ({
+            id: r.id,
+            project_id: r.project_id,
+            project_code: r.project_code,
+            project_name: r.project_name,
+            assignee_id: r.assignee_id,
+            assignee_name: r.assignee_name || null,
+            note: r.note || '',
+            color: r.color,
+            icon: r.icon,
+            milestone_id: r.milestone_id,
+            milestone_name: r.milestone_name,
+            milestone_color: r.milestone_color,
+            task_id: r.task_id,
+        }))
+        return { success: true, data }
+    } catch (error) {
+        console.error('getUnscheduledTrackingEntries error:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to load' }
+    }
+}
+
+// Set an entry's date (used by the unscheduled pane to assign a date).
+export async function setTrackingEntryDate(id: string, entryDate: string | null) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .input('d', sql.Date, entryDate || null)
+            .input('uid', sql.UniqueIdentifier, user.id)
+            .query(`UPDATE pms.team_tracking_entries SET entry_date = @d, updated_by = @uid, updated_at = GETDATE() WHERE id = @id`)
+        return { success: true }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
+// ============================================
+// BULK COPY — duplicate a tracking entry across N target dates.
+// Each new copy carries over note/color/icon/milestone/assignee from the source,
+// resets status to PLANNED, and clears completed/postponed dates.
+// ============================================
+export async function copyTrackingEntryToDates(
+    sourceId: string,
+    targetDates: string[],          // ISO yyyy-MM-dd
+): Promise<{ success: true; created: number } | { success: false; error: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        if (!targetDates.length) return { success: false, error: 'ไม่มีวันที่ปลายทาง' }
+        const pool = await getConnection()
+
+        // 1) Load the source entry
+        const src = await pool.request()
+            .input('id', sql.UniqueIdentifier, sourceId)
+            .query(`
+                SELECT project_id, assignee_id, assignee_role, note, color, color_source,
+                       icon, milestone_id
+                FROM pms.team_tracking_entries
+                WHERE id = @id AND is_active = 1
+            `)
+        if (src.recordset.length === 0) return { success: false, error: 'ไม่พบรายการต้นทาง' }
+        const s = src.recordset[0]
+
+        // 2) Insert one row per target date — INSERT...SELECT loop in one round-trip
+        let created = 0
+        for (const d of targetDates) {
+            const newId = require('crypto').randomUUID()
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, newId)
+                .input('project_id', sql.UniqueIdentifier, s.project_id)
+                .input('entry_date', sql.Date, d)
+                .input('assignee_id', sql.UniqueIdentifier, s.assignee_id || null)
+                .input('assignee_role', sql.NVarChar(20), s.assignee_role || null)
+                .input('note', sql.NVarChar(sql.MAX), s.note || null)
+                .input('color', sql.NVarChar(20), s.color || '#6366f1')
+                .input('color_source', sql.NVarChar(20), s.color_source || 'MANUAL')
+                .input('icon', sql.NVarChar(50), s.icon || null)
+                .input('milestone_id', sql.UniqueIdentifier, s.milestone_id || null)
+                .input('created_by', sql.UniqueIdentifier, user.id)
+                .query(`
+                    INSERT INTO pms.team_tracking_entries (
+                        id, project_id, entry_date, assignee_id, assignee_role,
+                        note, color, color_source, icon, status, milestone_id,
+                        is_active, created_by, created_at, updated_at
+                    ) VALUES (
+                        @id, @project_id, @entry_date, @assignee_id, @assignee_role,
+                        @note, @color, @color_source, @icon, 'PLANNED', @milestone_id,
+                        1, @created_by, GETDATE(), GETDATE()
+                    )
+                `)
+            created++
+        }
+        return { success: true, created }
+    } catch (error) {
+        console.error('copyTrackingEntryToDates error:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to copy' }
+    }
+}
+
+// ============================================
+// CONVERT TRACKING ENTRY → TASK
+// Promotes a daily tracking entry into a proper Task in pms.tasks so it can be
+// time-tracked in the timesheet system. Links back via team_tracking_entries.task_id.
+// ============================================
+export interface ConvertToTaskInput {
+    trackingEntryId: string
+    story_id: string             // required — task must belong to a story
+    task_type: string            // task_type_configs.code (DEVELOPMENT, BUG_FIX, ...)
+    priority: 'critical' | 'high' | 'medium' | 'low'
+    estimated_hours?: number | null
+    is_count_for_kpi?: boolean
+}
+
+export async function createTaskFromTrackingEntry(input: ConvertToTaskInput) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+
+        // 1) Fetch the tracking entry — need its note, assignee, date, project for the new task
+        const trk = await pool.request()
+            .input('id', sql.UniqueIdentifier, input.trackingEntryId)
+            .query(`
+                SELECT id, project_id, entry_date, assignee_id, note, task_id
+                FROM pms.team_tracking_entries
+                WHERE id = @id AND is_active = 1
+            `)
+        if (trk.recordset.length === 0) return { success: false, error: 'ไม่พบรายการ tracking' }
+        const t = trk.recordset[0]
+        if (t.task_id) return { success: false, error: 'รายการนี้ผูกกับ task อยู่แล้ว' }
+
+        // 2) Strip HTML from the note → use as task title (default to "งานจาก tracking" if empty)
+        const titleRaw = (t.note || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+        const title = titleRaw.slice(0, 250) || 'งานจาก tracking'
+
+        // 3) Generate a unique task_code
+        const { generateTaskCode } = await import('@/lib/utils/task-code-generator')
+        const taskCode = await generateTaskCode(pool.request())
+
+        // 4) Insert task — minimal fields. status = 'todo' so it appears in the assignee's backlog.
+        const newId = require('crypto').randomUUID()
+        const dueDate = t.entry_date instanceof Date
+            ? `${t.entry_date.getFullYear()}-${String(t.entry_date.getMonth() + 1).padStart(2, '0')}-${String(t.entry_date.getDate()).padStart(2, '0')}`
+            : t.entry_date
+
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, newId)
+            .input('taskCode', sql.NVarChar, taskCode)
+            .input('storyId', sql.UniqueIdentifier, input.story_id)
+            .input('title', sql.NVarChar, title)
+            .input('taskType', sql.NVarChar, input.task_type)
+            .input('assigneeId', sql.UniqueIdentifier, t.assignee_id || null)
+            .input('reviewerId', sql.UniqueIdentifier, user.id)
+            .input('priority', sql.NVarChar, input.priority)
+            .input('estimatedHours', sql.Decimal(10, 2), input.estimated_hours ?? null)
+            .input('dueDate', sql.Date, dueDate ? new Date(dueDate) : null)
+            .input('createdBy', sql.UniqueIdentifier, user.id)
+            .input('isCountForKpi', sql.Bit, input.is_count_for_kpi !== false ? 1 : 0)
+            .query(`
+                INSERT INTO pms.tasks (
+                    id, task_code, story_id, title, description, task_type,
+                    assignee_id, reviewer_id, priority, estimated_hours, due_date,
+                    created_by, status, is_active, is_count_for_kpi, created_at, updated_at
+                )
+                VALUES (
+                    @id, @taskCode, @storyId, @title, NULL, @taskType,
+                    @assigneeId, @reviewerId, @priority, @estimatedHours, @dueDate,
+                    @createdBy, 'todo', 1, @isCountForKpi, GETDATE(), GETDATE()
+                )
+            `)
+
+        // 5) Link back: set tracking_entry.task_id so the UI shows a "linked" badge
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, input.trackingEntryId)
+            .input('taskId', sql.UniqueIdentifier, newId)
+            .query(`
+                UPDATE pms.team_tracking_entries
+                SET task_id = @taskId, updated_at = GETDATE()
+                WHERE id = @id
+            `)
+
+        return { success: true, data: { task_id: newId, task_code: taskCode } }
+    } catch (error) {
+        console.error('createTaskFromTrackingEntry error:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to convert' }
+    }
+}
+
+// ============================================
+// OVERDUE WORK — entries from earlier days that aren't marked DONE.
+// Surfaces "งานค้าง" so PMs can chase up assignees before today's plan begins.
+// ============================================
+export interface OverdueEntry {
+    id: string
+    project_id: string
+    project_code: string
+    project_name: string
+    entry_date: string
+    assignee_id: string | null
+    assignee_name: string
+    note: string
+    status: TrackingStatus
+    milestone_name: string | null
+    milestone_color: string | null
+    days_overdue: number
+}
+
+export async function getOverdueTrackingEntries(): Promise<{ success: true; data: OverdueEntry[] } | { success: false; error: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+        // Today's local date as ISO yyyy-MM-dd (server time).
+        const today = new Date()
+        const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+        const result = await pool.request()
+            .input('today', sql.Date, todayIso)
+            .query(`
+                SELECT
+                    t.id, t.project_id,
+                    p.project_code, ISNULL(p.name_th, p.name) AS project_name,
+                    t.entry_date,
+                    t.assignee_id,
+                    ISNULL(CONCAT(e.first_name_th, ' ', e.last_name_th), 'ไม่ระบุ') AS assignee_name,
+                    t.note,
+                    t.status,
+                    mc.name AS milestone_name,
+                    mc.color AS milestone_color,
+                    DATEDIFF(day, t.entry_date, @today) AS days_overdue
+                FROM pms.team_tracking_entries t
+                INNER JOIN pms.projects p ON p.id = t.project_id
+                LEFT JOIN pms.employees e ON e.id = t.assignee_id
+                LEFT JOIN pms.project_milestones pm ON pm.id = t.milestone_id
+                LEFT JOIN pms.milestone_configs mc ON mc.id = pm.milestone_config_id
+                WHERE t.is_active = 1
+                  AND t.entry_date < @today
+                  AND t.status <> 'DONE'
+                  AND NOT (t.status = 'POSTPONED' AND t.postponed_date >= @today)
+                ORDER BY t.entry_date ASC, p.project_code, t.created_at
+            `)
+
+        const data: OverdueEntry[] = result.recordset.map((r: any) => ({
+            id: r.id,
+            project_id: r.project_id,
+            project_code: r.project_code,
+            project_name: r.project_name,
+            entry_date: r.entry_date instanceof Date
+                ? `${r.entry_date.getFullYear()}-${String(r.entry_date.getMonth() + 1).padStart(2, '0')}-${String(r.entry_date.getDate()).padStart(2, '0')}`
+                : String(r.entry_date),
+            assignee_id: r.assignee_id,
+            assignee_name: r.assignee_name,
+            note: r.note || '',
+            status: r.status,
+            milestone_name: r.milestone_name,
+            milestone_color: r.milestone_color,
+            days_overdue: r.days_overdue,
+        }))
+        return { success: true, data }
+    } catch (error) {
+        console.error('getOverdueTrackingEntries error:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to load overdue entries' }
     }
 }
 
