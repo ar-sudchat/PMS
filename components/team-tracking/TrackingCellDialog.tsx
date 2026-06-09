@@ -75,7 +75,7 @@ function fromEntry(entry: TrackingEntry): FormState {
     return {
         id: entry.id,
         _key: entry.id,
-        origin_date: entry.entry_date,
+        origin_date: entry.entry_date || undefined,
         assignee_id: entry.assignee_id,
         assignee_role: entry.assignee_role,
         note: entry.note || '',
@@ -376,6 +376,25 @@ export function TrackingCellDialog({
                         entryDate={entryDate}
                         onPatch={patchActiveForm}
                     />
+
+                    {/* Copy to other dates — only for SAVED entries */}
+                    {activeForm.id && (
+                        <CopyToDatesSection
+                            sourceId={activeForm.id}
+                            sourceDate={entryDate}
+                            onCopied={onSaved}
+                        />
+                    )}
+
+                    {/* Convert-to-Task section — only for SAVED entries that aren't already linked */}
+                    {activeForm.id && (
+                        <ConvertToTaskSection
+                            trackingEntryId={activeForm.id}
+                            projectId={projectId}
+                            existingTaskId={entries.find(e => e.id === activeForm.id)?.task_id || null}
+                            onConverted={onSaved}
+                        />
+                    )}
                 </div>
 
                 {/* Sticky footer */}
@@ -910,6 +929,309 @@ function RichNoteEditor({ valueHtml, onChange }: { valueHtml: string; onChange: 
                     pointer-events: none;
                 }
             `}</style>
+        </div>
+    )
+}
+
+// ============================================
+// CopyToDatesSection — lets the user duplicate this entry to one or more other
+// dates. Each picked date becomes a new entry with the same note/assignee/color/
+// icon/milestone — status reset to PLANNED. Used to bulk-build a multi-day plan.
+// ============================================
+function CopyToDatesSection({ sourceId, sourceDate, onCopied }: { sourceId: string; sourceDate: string; onCopied: () => void }) {
+    const [open, setOpen] = useState(false)
+    const [dates, setDates] = useState<string[]>([])
+    const [picker, setPicker] = useState('')
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [done, setDone] = useState<number | null>(null)
+
+    const addDate = () => {
+        if (!picker) return
+        if (picker === sourceDate) { setError('วันที่นี้คือต้นทาง — ข้าม'); return }
+        if (dates.includes(picker)) { setError('วันที่นี้ถูกเลือกแล้ว'); return }
+        setError(null)
+        setDates([...dates, picker].sort())
+        setPicker('')
+    }
+
+    const handleCopy = async () => {
+        if (dates.length === 0) { setError('เลือกอย่างน้อย 1 วัน'); return }
+        setBusy(true)
+        setError(null)
+        try {
+            const { copyTrackingEntryToDates } = await import('@/lib/actions/team-tracking-actions')
+            const r = await copyTrackingEntryToDates(sourceId, dates)
+            if (!r.success) { setError(r.error || 'คัดลอกไม่สำเร็จ'); return }
+            setDone(r.created)
+            setDates([])
+            onCopied()
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden bg-slate-50/40">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className="w-full px-3 py-2 flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-slate-100"
+            >
+                <span>📋 คัดลอกไปวันอื่น</span>
+                <span className="text-[10px] text-slate-500">{open ? 'ซ่อน' : 'แสดง'}</span>
+            </button>
+
+            {open && (
+                <div className="px-3 py-3 space-y-2.5 border-t border-slate-200 bg-white">
+                    {error && (
+                        <div className="px-2.5 py-1.5 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">{error}</div>
+                    )}
+                    {done != null && (
+                        <div className="px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded text-[11px] text-emerald-700">
+                            ✓ คัดลอก {done} วันสำเร็จ
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="date"
+                            value={picker}
+                            onChange={(e) => setPicker(e.target.value)}
+                            className="flex-1 px-2 py-1.5 border border-slate-300 rounded text-xs font-mono"
+                        />
+                        <button
+                            type="button"
+                            onClick={addDate}
+                            disabled={!picker}
+                            className="px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-xs font-bold hover:bg-indigo-100 disabled:opacity-40"
+                        >
+                            + เพิ่ม
+                        </button>
+                    </div>
+
+                    {dates.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                            {dates.map(d => (
+                                <span key={d} className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-semibold">
+                                    {d}
+                                    <button
+                                        type="button"
+                                        onClick={() => setDates(dates.filter(x => x !== d))}
+                                        className="ml-0.5 text-indigo-500 hover:text-indigo-900"
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        disabled={busy || dates.length === 0}
+                        className="w-full px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {busy ? 'กำลังคัดลอก...' : `คัดลอกไป ${dates.length} วัน`}
+                    </button>
+                    <p className="text-[10px] text-slate-500">
+                        จะคัดลอก note + ผู้รับผิดชอบ + สี + ไอคอน + milestone ของรายการนี้ไปยังวันที่เลือก (สถานะ = วางแผน)
+                    </p>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ============================================
+// ConvertToTaskSection — collapsible block at the bottom of the entry editor.
+// Lets the user promote this tracking entry into a real Task in the timesheet
+// system. Required fields: Story (must pick), Task Type, Priority, Est Hours, KPI.
+// Once converted, shows the task code as a static "already linked" notice.
+// ============================================
+interface ConvertSectionProps {
+    trackingEntryId: string
+    projectId: string
+    existingTaskId: string | null
+    onConverted: () => void
+}
+
+function ConvertToTaskSection({ trackingEntryId, projectId, existingTaskId, onConverted }: ConvertSectionProps) {
+    const [open, setOpen] = useState(false)
+    const [stories, setStories] = useState<{ id: string; story_code: string; title: string }[]>([])
+    const [taskTypes, setTaskTypes] = useState<{ code: string; name: string }[]>([])
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [linkedCode, setLinkedCode] = useState<string | null>(null)
+
+    // Form state
+    const [storyId, setStoryId] = useState('')
+    const [taskType, setTaskType] = useState('DEVELOPMENT')
+    const [priority, setPriority] = useState<'critical' | 'high' | 'medium' | 'low'>('medium')
+    const [estHours, setEstHours] = useState<string>('1')
+    const [isKpi, setIsKpi] = useState(true)
+
+    // Lazy-load options when the section opens
+    useEffect(() => {
+        if (!open || stories.length || taskTypes.length) return
+        let cancelled = false
+        ;(async () => {
+            try {
+                const { getStoryOptions } = await import('@/lib/actions/story-actions')
+                const { getTaskTypeConfigs } = await import('@/lib/actions/task-type-config-actions')
+                const [sRes, tRes] = await Promise.all([
+                    getStoryOptions(projectId),
+                    getTaskTypeConfigs(),
+                ])
+                if (cancelled) return
+                if (sRes.success) setStories(sRes.data)
+                setTaskTypes(tRes.map((t: any) => ({ code: t.code, name: t.name })))
+                if (sRes.success && sRes.data.length > 0) setStoryId(sRes.data[0].id)
+            } catch (e) {
+                if (!cancelled) setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
+            }
+        })()
+        return () => { cancelled = true }
+    }, [open, projectId, stories.length, taskTypes.length])
+
+    const handleConvert = async () => {
+        if (!storyId) { setError('กรุณาเลือก Story'); return }
+        setLoading(true)
+        setError(null)
+        try {
+            const { createTaskFromTrackingEntry } = await import('@/lib/actions/team-tracking-actions')
+            const r = await createTaskFromTrackingEntry({
+                trackingEntryId,
+                story_id: storyId,
+                task_type: taskType,
+                priority,
+                estimated_hours: estHours ? Number(estHours) : null,
+                is_count_for_kpi: isKpi,
+            })
+            if (!r.success) { setError(r.error || 'แปลงไม่สำเร็จ'); return }
+            setLinkedCode(r.data!.task_code)
+            onConverted()
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // Already linked — show static notice
+    if (existingTaskId || linkedCode) {
+        return (
+            <div className="mt-4 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-base">✓</div>
+                <div className="text-xs text-emerald-700">
+                    <div className="font-bold">เชื่อมกับ Task ในระบบ Timesheet แล้ว</div>
+                    {linkedCode && <div className="font-mono text-[11px] mt-0.5">{linkedCode}</div>}
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden bg-slate-50/40">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className="w-full px-3 py-2 flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-slate-100"
+            >
+                <span>+ สร้างเป็น Task ในระบบ Timesheet</span>
+                <span className="text-[10px] text-slate-500">{open ? 'ซ่อน' : 'แสดง'}</span>
+            </button>
+
+            {open && (
+                <div className="px-3 py-3 space-y-2.5 border-t border-slate-200 bg-white">
+                    {error && (
+                        <div className="px-2.5 py-1.5 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">
+                            {error}
+                        </div>
+                    )}
+
+                    {/* Story (required) */}
+                    <label className="block">
+                        <span className="block text-[11px] font-semibold text-slate-700 mb-1">Story <span className="text-red-500">*</span></span>
+                        <select
+                            value={storyId}
+                            onChange={(e) => setStoryId(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                        >
+                            <option value="">— เลือก Story —</option>
+                            {stories.map(s => (
+                                <option key={s.id} value={s.id}>{s.story_code} · {s.title}</option>
+                            ))}
+                        </select>
+                        {stories.length === 0 && (
+                            <span className="text-[10px] text-amber-600 mt-1 block">โครงการนี้ยังไม่มี Story — สร้าง Story ก่อนใน /my-projects</span>
+                        )}
+                    </label>
+
+                    {/* Task Type + Priority side-by-side */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <label className="block">
+                            <span className="block text-[11px] font-semibold text-slate-700 mb-1">ประเภท Task</span>
+                            <select
+                                value={taskType}
+                                onChange={(e) => setTaskType(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                            >
+                                {taskTypes.map(t => (
+                                    <option key={t.code} value={t.code}>{t.name}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="block">
+                            <span className="block text-[11px] font-semibold text-slate-700 mb-1">Priority</span>
+                            <select
+                                value={priority}
+                                onChange={(e) => setPriority(e.target.value as 'critical' | 'high' | 'medium' | 'low')}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                            >
+                                <option value="critical">Critical</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    {/* Est Hours + KPI side-by-side */}
+                    <div className="grid grid-cols-2 gap-2 items-end">
+                        <label className="block">
+                            <span className="block text-[11px] font-semibold text-slate-700 mb-1">ประเมินชั่วโมง</span>
+                            <input
+                                type="number" min="0" step="0.5"
+                                value={estHours}
+                                onChange={(e) => setEstHours(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                            />
+                        </label>
+                        <label className="inline-flex items-center gap-2 px-2 py-1.5 cursor-pointer select-none text-xs text-slate-700">
+                            <input
+                                type="checkbox"
+                                checked={isKpi}
+                                onChange={(e) => setIsKpi(e.target.checked)}
+                                className="w-4 h-4 accent-indigo-600"
+                            />
+                            นับใน KPI
+                        </label>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleConvert}
+                        disabled={loading || !storyId}
+                        className="w-full px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {loading ? 'กำลังสร้าง...' : 'สร้าง Task'}
+                    </button>
+                </div>
+            )}
         </div>
     )
 }

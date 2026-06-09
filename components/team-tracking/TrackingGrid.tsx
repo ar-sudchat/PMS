@@ -296,6 +296,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
             inner.get(date)!.push(cellEntry)
         }
         for (const e of entries) {
+            if (!e.entry_date) continue   // skip the per-DAY map only; tasksByProject still includes these
             if (e.status === 'DONE' && e.completed_date) {
                 push(e.project_id, e.completed_date, { entry: e, kind: 'own' })
                 if (e.completed_date !== e.entry_date) {
@@ -330,8 +331,17 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
     // text and notes that only differ in whitespace/markup merge into one row).
     // Empty notes bucket as "ไม่มีรายละเอียด".
     // `total` / `doneCount` let us hide tasks where every entry is DONE.
+    // `milestoneColor` / `milestoneName` — first non-null milestone seen for this task,
+    // used to draw the colored strip on the left of the task row.
     const tasksByProject = useMemo(() => {
-        const map = new Map<string, Map<string, { display: string; assignees: Set<string>; total: number; doneCount: number }>>()
+        const map = new Map<string, Map<string, {
+            display: string;
+            assignees: Set<string>;
+            total: number;
+            doneCount: number;
+            milestoneColor: string | null;
+            milestoneName: string | null;
+        }>>()
         for (const e of entries) {
             const clean = summariseNote(e.note || '', 9999)  // full cleaned text for the key
             const noteKey = clean || '__no_note__'
@@ -343,12 +353,18 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                     assignees: new Set(),
                     total: 0,
                     doneCount: 0,
+                    milestoneColor: null,
+                    milestoneName: null,
                 })
             }
             const slot = inner.get(noteKey)!
             slot.total += 1
             if (e.status === 'DONE') slot.doneCount += 1
             if (e.assignee_name) slot.assignees.add(e.assignee_name)
+            if (!slot.milestoneColor && e.milestone_color) {
+                slot.milestoneColor = e.milestone_color
+                slot.milestoneName = e.milestone_name
+            }
         }
         return map
     }, [entries])
@@ -458,7 +474,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                             const assignees = assigneesByProject.get(p.id)
                             const assigneeList = assignees ? Array.from(assignees.values()) : []
                             const tasks = tasksByProject.get(p.id)
-                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount })) : []
+                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount, milestoneColor: v.milestoneColor, milestoneName: v.milestoneName })) : []
                             const taskList = hideCompletedTasks
                                 ? rawTaskList.filter(t => t.doneCount < t.total)  // hide tasks where every entry is DONE
                                 : rawTaskList
@@ -527,18 +543,29 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                             </td>
                                         )}
                                         <td className="border-b border-r border-slate-200 px-1.5 py-2.5 text-center align-middle">
-                                            {p.project_type_code && (
-                                                <span
-                                                    className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm border border-slate-200/50"
-                                                    style={{
-                                                        backgroundColor: p.project_type_color ? `${p.project_type_color}15` : '#f1f5f9',
-                                                        color: p.project_type_color || '#64748b',
-                                                        borderColor: p.project_type_color ? `${p.project_type_color}30` : 'transparent'
-                                                    }}
-                                                >
-                                                    {p.project_type_code}
-                                                </span>
-                                            )}
+                                            <div className="inline-flex items-center gap-1.5">
+                                                {p.project_type_code && (
+                                                    <span
+                                                        className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm border border-slate-200/50"
+                                                        style={{
+                                                            backgroundColor: p.project_type_color ? `${p.project_type_color}15` : '#f1f5f9',
+                                                            color: p.project_type_color || '#64748b',
+                                                            borderColor: p.project_type_color ? `${p.project_type_color}30` : 'transparent'
+                                                        }}
+                                                    >
+                                                        {p.project_type_code}
+                                                    </span>
+                                                )}
+                                                {/* Task count badge — meaningful in task mode (one item per unique note) */}
+                                                {subRowMode === 'task' && taskList.length > 0 && (
+                                                    <span
+                                                        className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200"
+                                                        title={`${taskList.length} งาน`}
+                                                    >
+                                                        {taskList.length}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle text-slate-700">
                                             <span className="block truncate font-semibold text-slate-700 whitespace-nowrap max-w-[130px]" title={p.owner_name || ''}>
@@ -697,16 +724,48 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                     through the truncated text. */}
                                                 <td
                                                     colSpan={2}
-                                                    className="sticky left-[40px] z-10 bg-slate-50 border-b border-r border-slate-200 px-2 py-2.5 text-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"
+                                                    className="sticky left-[40px] z-10 bg-slate-50 border-b border-r border-slate-200 px-2 py-2.5 text-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.02)] relative"
                                                 >
-                                                    <div className="pl-2 flex items-center min-w-0">
-                                                        <span
-                                                            className="text-xs text-slate-700 truncate"
-                                                            title={t.display}
-                                                        >
+                                                    {/* Milestone color strip — shows which milestone this task belongs to. */}
+                                                    {t.milestoneColor && (
+                                                        <div
+                                                            className="absolute left-0 top-0 bottom-0 w-1"
+                                                            style={{ background: t.milestoneColor }}
+                                                            title={t.milestoneName || ''}
+                                                        />
+                                                    )}
+                                                    {/* Click the title → open the slide-bar focused on the first occurrence
+                                                        of this task across the visible window. */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            // 1) Try to focus an entry in the visible day range (normal "scheduled" path)
+                                                            for (const d of days) {
+                                                                const cellEntries = (projectEntries?.get(d.date) || []).filter(
+                                                                    (c) => (summariseNote(c.entry.note || '', 9999) || '__no_note__') === t.key
+                                                                )
+                                                                if (cellEntries.length) {
+                                                                    onCellClick(p.id, d.date, cellEntries[0].entry.id)
+                                                                    return
+                                                                }
+                                                            }
+                                                            // 2) Fallback for unscheduled tasks (entry_date IS NULL) — find ANY
+                                                            //    entry for this project+task key and open it. We pass today's
+                                                            //    date as the cell context; the user can then set the real date
+                                                            //    inside the slide.
+                                                            const orphan = entries.find(e =>
+                                                                e.project_id === p.id
+                                                                && (summariseNote(e.note || '', 9999) || '__no_note__') === t.key,
+                                                            )
+                                                            if (orphan) onCellClick(p.id, orphan.entry_date || todayStr, orphan.id)
+                                                        }}
+                                                        className="pl-2 flex items-center min-w-0 w-full text-left hover:bg-indigo-50/40 -mx-2 px-2 py-0.5 rounded transition-colors"
+                                                        title={t.display + (t.milestoneName ? ` · ${t.milestoneName}` : '') + ' — คลิกเพื่อเปิด'}
+                                                    >
+                                                        <span className="text-xs text-slate-700 truncate">
                                                             {summariseNote(t.display, 60)}
                                                         </span>
-                                                    </div>
+                                                    </button>
                                                 </td>
                                                 {showCustomer && (
                                                     <td className="border-b border-r border-slate-200 bg-slate-50" />
@@ -741,7 +800,18 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                             title={cellEntries.length ? cellEntries.map(cellTooltip).join(' • ') : ''}
                                                         >
                                                             {cellEntries.length > 0 && (
-                                                                <div className="w-2 h-2 rounded-full bg-indigo-500 mx-auto" />
+                                                                <div className="flex items-center justify-center">
+                                                                    {cellEntries.length === 1 ? (
+                                                                        <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                    ) : (
+                                                                        <span
+                                                                            className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-md text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
+                                                                            title={`${cellEntries.length} รายการ`}
+                                                                        >
+                                                                            {cellEntries.length}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </td>
                                                     )

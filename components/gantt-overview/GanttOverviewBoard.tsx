@@ -33,6 +33,9 @@ import { updateMilestoneProgress } from '@/lib/actions/kpi-actions'
 type EmployeeOpt = { id: string; name: string; name_th: string }
 import { TrackingGrid } from '@/components/team-tracking/TrackingGrid'
 import { TrackingCellDialog } from '@/components/team-tracking/TrackingCellDialog'
+import { OverdueWorkDialog } from './OverdueWorkDialog'
+import { UnscheduledPane } from './UnscheduledPane'
+import { getOverdueTrackingEntries, OverdueEntry } from '@/lib/actions/team-tracking-actions'
 import { ProjectDetailPopup } from './ProjectDetailPopup'
 import {
     addMonths, computeBarPosition, daysBetween,
@@ -86,7 +89,8 @@ export function GanttOverviewBoard() {
     })
 
     // View mode: gantt = 3-month timeline / daily = 1-month day-grid with icons
-    const [view, setView] = React.useState<ViewMode>('gantt')
+    // Default view = "รายวัน" (daily) per user preference — most users land here to triage today's work.
+    const [view, setView] = React.useState<ViewMode>('daily')
 
     // Window: Gantt=3 months, Daily=1 month
     const [windowStart, setWindowStart] = React.useState<Date>(() => {
@@ -94,9 +98,9 @@ export function GanttOverviewBoard() {
         return new Date(now.getFullYear(), now.getMonth(), 1)
     })
     const monthsInWindow = view === 'daily' ? 1 : 3
-    // Sub-row grouping mode for the daily view — "assignee" (default, current behaviour)
-    // or "task" (one row per task note). Toggle is shown only while view === 'daily'.
-    const [dailySubRowMode, setDailySubRowMode] = React.useState<'assignee' | 'task'>('assignee')
+    // Sub-row grouping mode for the daily view — "assignee" or "task". Default "task"
+    // because the per-task view is the one users land on most for daily triage.
+    const [dailySubRowMode, setDailySubRowMode] = React.useState<'assignee' | 'task'>('task')
     // In task mode, optionally hide tasks where every entry has status === 'DONE'.
     // Default: hidden — completed tasks rarely need a follow-up; user can uncheck to see them.
     const [dailyHideDone, setDailyHideDone] = React.useState(true)
@@ -130,6 +134,28 @@ export function GanttOverviewBoard() {
     const [cellOpen, setCellOpen] = React.useState(false)
     const [cellCtx, setCellCtx] = React.useState<{ projectId: string; projectName: string; date: string; focusEntryId?: string } | null>(null)
     const [cellMilestones, setCellMilestones] = React.useState<{ id: string; name: string; color: string | null }[]>([])
+    // Overdue work popup — load once on mount. Shows every page-load if any items
+    // are still overdue; the only gate is the close button (no sessionStorage cache
+    // so the alert stays visible until the data is cleared).
+    const [overdueItems, setOverdueItems] = React.useState<OverdueEntry[]>([])
+    const [overdueOpen, setOverdueOpen] = React.useState(false)
+    const [unscheduledOpen, setUnscheduledOpen] = React.useState(false)
+    // Count of unscheduled tracking entries (entry_date IS NULL) — drives the toolbar badge.
+    const [unscheduledCount, setUnscheduledCount] = React.useState(0)
+    const refreshUnscheduledCount = React.useCallback(async () => {
+        const { getUnscheduledTrackingEntries } = await import('@/lib/actions/team-tracking-actions')
+        const r = await getUnscheduledTrackingEntries()
+        if (r.success) setUnscheduledCount(r.data.length)
+    }, [])
+    React.useEffect(() => { refreshUnscheduledCount() }, [refreshUnscheduledCount])
+    React.useEffect(() => {
+        getOverdueTrackingEntries().then(r => {
+            if (r.success && r.data.length > 0) {
+                setOverdueItems(r.data)
+                setOverdueOpen(true)
+            }
+        })
+    }, [])
 
     // Load filter options + employees list once + apply default DEV / Active filters.
     // setFiltersReady at the END so the data-loading effect only fires AFTER defaults are in.
@@ -212,9 +238,8 @@ export function GanttOverviewBoard() {
                 // employeeId is interpreted as project_manager_id here (Gantt/Daily list projects by PM)
                 managerId: filters.employeeId || undefined,
                 statusId: filters.statusId || undefined,
-                // ProjectFilters.projectTypeId is single — pass only the first selected (or undefined).
-                // Server-side multi-type filter for Daily mode would need a separate enhancement.
-                projectTypeId: filters.projectTypeIds[0] || undefined,
+                // Multi-select project types — server now supports `projectTypeIds`.
+                projectTypeIds: filters.projectTypeIds.length ? filters.projectTypeIds : undefined,
                 milestoneIds: filters.milestoneIds.length ? filters.milestoneIds : undefined,
                 search: filters.search || undefined,
             }
@@ -505,6 +530,25 @@ export function GanttOverviewBoard() {
                             <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
+                    {/* "งานยังไม่ระบุวัน" — opens a pane to schedule action-plan templates.
+                        Shows a red badge with the count so it's hard to miss. */}
+                    <button
+                        onClick={() => setUnscheduledOpen(true)}
+                        className={cn(
+                            "px-2.5 py-1.5 text-[11px] font-semibold rounded-lg inline-flex items-center gap-1.5 border",
+                            unscheduledCount > 0
+                                ? "text-red-700 border-red-300 bg-red-50 hover:bg-red-100 animate-pulse"
+                                : "text-slate-500 border-slate-200 bg-white hover:bg-slate-50",
+                        )}
+                        title="งานที่ยังไม่ได้กำหนดวันที่ (action plan รอกระจาย)"
+                    >
+                        📌 งานยังไม่ระบุวัน
+                        {unscheduledCount > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold text-white bg-red-600">
+                                {unscheduledCount}
+                            </span>
+                        )}
+                    </button>
                     <button onClick={load} className="p-1.5 hover:bg-slate-100 rounded-lg border text-slate-500">
                         <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
                     </button>
@@ -860,6 +904,22 @@ export function GanttOverviewBoard() {
                 employees={dialogEmployees}
                 milestones={cellMilestones}
                 initialEntryId={cellCtx?.focusEntryId}
+            />
+
+            <OverdueWorkDialog
+                open={overdueOpen}
+                items={overdueItems}
+                onClose={() => setOverdueOpen(false)}
+                onOpenItem={(it) => {
+                    setOverdueOpen(false)
+                    handleCellClick(it.project_id, it.entry_date, it.id)
+                }}
+            />
+
+            <UnscheduledPane
+                open={unscheduledOpen}
+                onClose={() => setUnscheduledOpen(false)}
+                onChanged={() => { load(); refreshUnscheduledCount() }}
             />
         </div>
     )
