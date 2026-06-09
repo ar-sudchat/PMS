@@ -261,14 +261,18 @@ export async function getProjectsForGantt(
         // Single aggregate scan of project_milestones (vs 4 correlated subqueries per row).
         const r = await reqBuilder.query(`
             WITH ms_agg AS (
+                -- Project-level % excludes Marketing (MKT) — per user policy it's a
+                -- pre-project sales/marketing phase, not part of the delivery progress.
                 SELECT
-                    project_id,
-                    MIN(due_date) AS earliest_ms_due,
-                    MAX(due_date) AS latest_ms_due,
-                    AVG(CAST(ISNULL(progress_percent, 0) AS FLOAT)) AS avg_progress,
+                    pm.project_id,
+                    MIN(pm.due_date) AS earliest_ms_due,
+                    MAX(pm.due_date) AS latest_ms_due,
+                    AVG(CASE WHEN mc.code = 'MKT' THEN NULL
+                             ELSE CAST(ISNULL(pm.progress_percent, 0) AS FLOAT) END) AS avg_progress,
                     COUNT(*) AS milestone_count
-                FROM pms.project_milestones
-                GROUP BY project_id
+                FROM pms.project_milestones pm
+                LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                GROUP BY pm.project_id
             )
             SELECT
                 p.id,
@@ -397,8 +401,11 @@ export async function getProjectDetailForGantt(projectId: string): Promise<{
                        cm.sort_order AS current_milestone_sort_order,
                        (SELECT MIN(due_date) FROM pms.project_milestones WHERE project_id = p.id) AS earliest_ms_due,
                        (SELECT MAX(due_date) FROM pms.project_milestones WHERE project_id = p.id) AS latest_ms_due,
-                       (SELECT AVG(CAST(ISNULL(progress_percent,0) AS FLOAT))
-                          FROM pms.project_milestones WHERE project_id = p.id) AS avg_progress,
+                       (SELECT AVG(CASE WHEN mc.code = 'MKT' THEN NULL
+                                        ELSE CAST(ISNULL(pmi.progress_percent,0) AS FLOAT) END)
+                          FROM pms.project_milestones pmi
+                          LEFT JOIN pms.milestone_configs mc ON pmi.milestone_config_id = mc.id
+                          WHERE pmi.project_id = p.id) AS avg_progress,
                        (SELECT COUNT(*) FROM pms.project_milestones WHERE project_id = p.id) AS milestone_count
                 FROM pms.projects p
                 LEFT JOIN pms.customers c ON c.id = p.customer_id

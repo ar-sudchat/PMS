@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from 'react'
 import { ChevronRight, ChevronDown, Building, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, CalendarClock, CornerDownRight, ArrowRight } from 'lucide-react'
 import { TrackingEntry } from '@/lib/actions/team-tracking-actions'
 import { ICON_MAP } from './icons'
+import { cn } from '@/lib/utils'
 
 // A view-level entry tied to a date in the grid.
 //   - 'own'      : entry lives at this date (its current/active home)
@@ -34,7 +35,10 @@ interface Props {
     entries: TrackingEntry[]
     year: number
     month: number   // 1-based
-    onCellClick: (projectId: string, date: string) => void
+    /** Called when a day cell is clicked. `entryId` is set in task-mode so the
+     *  dialog can focus that specific entry (e.g. clicking เกรียงเดช's row opens
+     *  เกรียงเดช's entry, not the first one). */
+    onCellClick: (projectId: string, date: string, entryId?: string) => void
     isLoading?: boolean
     highlightFilter?: string | null
     /** Optional date range override (yyyy-mm-dd). If both provided, render exactly
@@ -47,6 +51,13 @@ interface Props {
     /** When provided, รหัส (project_code) becomes clickable and invokes this callback
      *  with the project's id — used to open a project popup from a host page. */
     onProjectClick?: (projectId: string) => void
+    /** Sub-row grouping mode (default "assignee").
+     *  - "assignee": one sub-row per person — aggregates that person's daily entries.
+     *  - "task": one sub-row per unique task `note` — shows a single task across the days
+     *    it was worked on. The sub-row label becomes the task text (truncated). */
+    subRowMode?: 'assignee' | 'task'
+    /** When true (task mode only), hide tasks whose every entry has status === 'DONE'. */
+    hideCompletedTasks?: boolean
 }
 
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -57,6 +68,24 @@ function daysInMonth(year: number, month: number): number {
 
 function pad2(n: number): string {
     return n < 10 ? `0${n}` : String(n)
+}
+
+// Strip HTML tags + entities, collapse whitespace, truncate.
+// Notes pasted from Outlook arrive as `<div data-olk-copy-source="MessageBody" style="...">…</div>`;
+// the raw markup is unreadable in a one-line cell.
+function summariseNote(raw: string, max = 60): string {
+    if (!raw) return ''
+    // 1) drop tags  2) decode common entities  3) collapse whitespace
+    const noTags = raw.replace(/<[^>]*>/g, ' ')
+    const decoded = noTags
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#(\d+);/g, (_, c) => String.fromCharCode(Number(c)))
+    const cleaned = decoded.replace(/\s+/g, ' ').trim()
+    return cleaned.length > max ? cleaned.slice(0, max).trim() + '…' : cleaned
 }
 
 function isWeekend(year: number, month: number, day: number): boolean {
@@ -172,7 +201,7 @@ function isCellMatched(cellEntries: CellEntry[], filter: string | null | undefin
     })
 }
 
-export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading, highlightFilter, startDate, endDate, showCustomer = true, onProjectClick }: Props) {
+export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading, highlightFilter, startDate, endDate, showCustomer = true, onProjectClick, subRowMode = 'assignee', hideCompletedTasks = false }: Props) {
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
     const todayStr = useMemo(() => {
         const d = new Date()
@@ -296,6 +325,34 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
         return map
     }, [entries])
 
+    // Group by task (note text) per project — used for the "task" sub-row mode.
+    // Key = HTML-stripped + collapsed note (so Outlook-pasted markup collapses to plain
+    // text and notes that only differ in whitespace/markup merge into one row).
+    // Empty notes bucket as "ไม่มีรายละเอียด".
+    // `total` / `doneCount` let us hide tasks where every entry is DONE.
+    const tasksByProject = useMemo(() => {
+        const map = new Map<string, Map<string, { display: string; assignees: Set<string>; total: number; doneCount: number }>>()
+        for (const e of entries) {
+            const clean = summariseNote(e.note || '', 9999)  // full cleaned text for the key
+            const noteKey = clean || '__no_note__'
+            if (!map.has(e.project_id)) map.set(e.project_id, new Map())
+            const inner = map.get(e.project_id)!
+            if (!inner.has(noteKey)) {
+                inner.set(noteKey, {
+                    display: clean || 'ไม่มีรายละเอียด',
+                    assignees: new Set(),
+                    total: 0,
+                    doneCount: 0,
+                })
+            }
+            const slot = inner.get(noteKey)!
+            slot.total += 1
+            if (e.status === 'DONE') slot.doneCount += 1
+            if (e.assignee_name) slot.assignees.add(e.assignee_name)
+        }
+        return map
+    }, [entries])
+
     const toggleExpand = (projectId: string) => {
         setExpandedProjects((prev) => {
             const next = new Set(prev)
@@ -400,6 +457,12 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                             const projectEntries = entriesByProjectAndDate.get(p.id)
                             const assignees = assigneesByProject.get(p.id)
                             const assigneeList = assignees ? Array.from(assignees.values()) : []
+                            const tasks = tasksByProject.get(p.id)
+                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount })) : []
+                            const taskList = hideCompletedTasks
+                                ? rawTaskList.filter(t => t.doneCount < t.total)  // hide tasks where every entry is DONE
+                                : rawTaskList
+                            const subRowCount = subRowMode === 'task' ? taskList.length : assigneeList.length
  
                             return (
                                 <Fragment key={p.id}>
@@ -410,7 +473,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                         </td>
                                         <td className="sticky left-[40px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
                                             <div className="flex items-center gap-1.5">
-                                                {assigneeList.length > 0 ? (
+                                                {subRowCount > 0 ? (
                                                     <button
                                                         onClick={() => toggleExpand(p.id)}
                                                         className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
@@ -539,8 +602,8 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                         })}
                                     </tr>
  
-                                    {/* Sub-rows (assignees) */}
-                                    {isExpanded &&
+                                    {/* Sub-rows (assignees) — only in 'assignee' mode */}
+                                    {isExpanded && subRowMode === 'assignee' &&
                                         assigneeList.map((a) => (
                                             <tr key={`${p.id}-${a.id || 'none'}`} className="bg-slate-50/20 hover:bg-slate-100/40 transition-colors duration-150">
                                                 <td className="sticky left-0 z-10 bg-slate-50/40 border-b border-r border-slate-200 w-[40px] min-w-[40px] shadow-[1px_0_0_rgba(0,0,0,0.02)]" />
@@ -612,6 +675,73 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                                         </span>
                                                                     )}
                                                                 </div>
+                                                            )}
+                                                        </td>
+                                                    )
+                                                })}
+                                            </tr>
+                                        ))}
+
+                                    {/* Sub-rows (per task) — only in 'task' mode.
+                                        Each row = a unique task note across the visible window.
+                                        Task text spans รหัส + ชื่อโครงการ + ประเภท (+ ลูกค้า) so it has
+                                        breathing room; พนักงาน keeps its own cell at the right with
+                                        the assignee names. */}
+                                    {isExpanded && subRowMode === 'task' &&
+                                        taskList.map((t) => (
+                                            <tr key={`${p.id}-task-${t.key}`} className="bg-slate-50 hover:bg-slate-100 transition-colors duration-150">
+                                                <td className="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200 w-[40px] min-w-[40px] shadow-[1px_0_0_rgba(0,0,0,0.02)]" />
+                                                {/* Task text spans only รหัส + ชื่อโครงการ — stops at the end
+                                                    of ชื่อโครงการ so ประเภท / (ลูกค้า) / พนักงาน stay their own cells.
+                                                    Solid bg-slate-50 so the assignee name behind it doesn't bleed
+                                                    through the truncated text. */}
+                                                <td
+                                                    colSpan={2}
+                                                    className="sticky left-[40px] z-10 bg-slate-50 border-b border-r border-slate-200 px-2 py-2.5 text-slate-700 shadow-[2px_0_4px_rgba(0,0,0,0.02)]"
+                                                >
+                                                    <div className="pl-2 flex items-center min-w-0">
+                                                        <span
+                                                            className="text-xs text-slate-700 truncate"
+                                                            title={t.display}
+                                                        >
+                                                            {summariseNote(t.display, 60)}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                {showCustomer && (
+                                                    <td className="border-b border-r border-slate-200 bg-slate-50" />
+                                                )}
+                                                {/* ประเภท — empty in the task row */}
+                                                <td className="border-b border-r border-slate-200 bg-slate-50" />
+                                                <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle text-slate-600 bg-slate-50">
+                                                    <span
+                                                        className="block truncate text-[11px] text-slate-500 whitespace-nowrap max-w-[130px]"
+                                                        title={t.assignees.size ? Array.from(t.assignees).join(', ') : ''}
+                                                    >
+                                                        {t.assignees.size ? Array.from(t.assignees).join(', ') : '—'}
+                                                    </span>
+                                                </td>
+                                                {days.map((d) => {
+                                                    const cellEntries = (projectEntries?.get(d.date) || []).filter(
+                                                        (c) => (summariseNote(c.entry.note || '', 9999) || '__no_note__') === t.key
+                                                    )
+                                                    const isToday = d.date === todayStr
+                                                    // First matching entry id — passed to onCellClick so the dialog
+                                                    // can focus this specific row's entry instead of the project's first.
+                                                    const focusEntryId = cellEntries[0]?.entry.id
+                                                    return (
+                                                        <td
+                                                            key={`${p.id}-task-${t.key}-${d.date}`}
+                                                            className={cn(
+                                                                "border-b border-r border-slate-200 px-1 py-1 text-center align-middle cursor-pointer relative",
+                                                                isToday ? "bg-amber-50/30" : "",
+                                                                cellEntries.length > 0 ? "hover:bg-indigo-50/60" : "hover:bg-slate-50",
+                                                            )}
+                                                            onClick={() => onCellClick(p.id, d.date, focusEntryId)}
+                                                            title={cellEntries.length ? cellEntries.map(cellTooltip).join(' • ') : ''}
+                                                        >
+                                                            {cellEntries.length > 0 && (
+                                                                <div className="w-2 h-2 rounded-full bg-indigo-500 mx-auto" />
                                                             )}
                                                         </td>
                                                     )

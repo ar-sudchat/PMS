@@ -94,6 +94,12 @@ export function GanttOverviewBoard() {
         return new Date(now.getFullYear(), now.getMonth(), 1)
     })
     const monthsInWindow = view === 'daily' ? 1 : 3
+    // Sub-row grouping mode for the daily view — "assignee" (default, current behaviour)
+    // or "task" (one row per task note). Toggle is shown only while view === 'daily'.
+    const [dailySubRowMode, setDailySubRowMode] = React.useState<'assignee' | 'task'>('assignee')
+    // In task mode, optionally hide tasks where every entry has status === 'DONE'.
+    // Default: hidden — completed tasks rarely need a follow-up; user can uncheck to see them.
+    const [dailyHideDone, setDailyHideDone] = React.useState(true)
 
     // Data
     const [rows, setRows] = React.useState<GanttProjectRow[]>([])
@@ -122,7 +128,7 @@ export function GanttOverviewBoard() {
     const [dailyEntries, setDailyEntries] = React.useState<TrackingEntry[]>([])
     const [dialogEmployees, setDialogEmployees] = React.useState<AssignableEmployee[]>([])
     const [cellOpen, setCellOpen] = React.useState(false)
-    const [cellCtx, setCellCtx] = React.useState<{ projectId: string; projectName: string; date: string } | null>(null)
+    const [cellCtx, setCellCtx] = React.useState<{ projectId: string; projectName: string; date: string; focusEntryId?: string } | null>(null)
     const [cellMilestones, setCellMilestones] = React.useState<{ id: string; name: string; color: string | null }[]>([])
 
     // Load filter options + employees list once + apply default DEV / Active filters.
@@ -255,10 +261,12 @@ export function GanttOverviewBoard() {
     }
 
     // Cell click in daily view: open TrackingCellDialog with project + date pre-filled.
-    const handleCellClick = async (projectId: string, date: string) => {
+    // `focusEntryId` lets task-mode rows tell the dialog to focus that specific entry
+    // (otherwise the dialog defaults to the first entry of the day).
+    const handleCellClick = async (projectId: string, date: string, focusEntryId?: string) => {
         const proj = dailyProjects.find(p => p.id === projectId)
         if (!proj) return
-        setCellCtx({ projectId, projectName: proj.name, date })
+        setCellCtx({ projectId, projectName: proj.name, date, focusEntryId })
         setCellOpen(true)
         // Lazy-load dialog employees + milestones on first open
         if (dialogEmployees.length === 0) {
@@ -446,6 +454,46 @@ export function GanttOverviewBoard() {
                             ToDo
                         </button>
                     </div>
+
+                    {/* Daily-only: switch between "by assignee" (aggregated) and "by task" sub-rows */}
+                    {view === 'daily' && (
+                        <div className="flex items-center border rounded-lg overflow-hidden bg-white">
+                            <button
+                                onClick={() => setDailySubRowMode('assignee')}
+                                className={cn(
+                                    "px-2.5 py-1.5 text-[11px] font-semibold",
+                                    dailySubRowMode === 'assignee' ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50",
+                                )}
+                                title="แสดงราย ผู้ปฏิบัติงาน"
+                            >
+                                ตามผู้ปฏิบัติงาน
+                            </button>
+                            <button
+                                onClick={() => setDailySubRowMode('task')}
+                                className={cn(
+                                    "px-2.5 py-1.5 text-[11px] font-semibold border-l",
+                                    dailySubRowMode === 'task' ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50",
+                                )}
+                                title="แสดงรายงาน (1 บรรทัด = 1 task)"
+                            >
+                                ตามงาน
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Hide completed tasks — only meaningful in task mode */}
+                    {view === 'daily' && dailySubRowMode === 'task' && (
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 border rounded-lg bg-white hover:bg-slate-50">
+                            <input
+                                type="checkbox"
+                                checked={dailyHideDone}
+                                onChange={(e) => setDailyHideDone(e.target.checked)}
+                                className="w-3.5 h-3.5 accent-indigo-600"
+                            />
+                            ซ่อนงานเสร็จ
+                        </label>
+                    )}
+
                     <div className="flex items-center border rounded-lg overflow-hidden bg-white">
                         <button onClick={() => shiftWindow(-1)} className="p-1.5 hover:bg-slate-50 border-r" title={view === 'daily' ? "เดือนก่อนหน้า" : "เดือนก่อนหน้า"}>
                             <ChevronLeft className="w-4 h-4" />
@@ -726,6 +774,8 @@ export function GanttOverviewBoard() {
                             isLoading={loading && dailyProjects.length === 0}
                             highlightFilter={null}
                             showCustomer={false}
+                            subRowMode={dailySubRowMode}
+                            hideCompletedTasks={dailyHideDone}
                         />
                     </div>
                 ) : (
@@ -809,6 +859,7 @@ export function GanttOverviewBoard() {
                 entries={cellEntries}
                 employees={dialogEmployees}
                 milestones={cellMilestones}
+                initialEntryId={cellCtx?.focusEntryId}
             />
         </div>
     )
