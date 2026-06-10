@@ -35,6 +35,15 @@ interface BulkTaskModalProps {
     storyTitle?: string
     currentUserId?: string
     onSuccess?: () => void
+    /** Optional pre-filled rows — when provided, the modal opens populated with these
+     *  rows instead of 10 empty ones. Used by the "Bulk Convert from Tracking" flow
+     *  in the gantt-overview daily view. */
+    initialRows?: Partial<Omit<BulkTaskRow, 'rowKey' | 'touched' | 'attachments' | 'expanded'>>[]
+    /** Optional title shown in the header (e.g. "แปลงจากกิจกรรม"). */
+    headerTitle?: string
+    /** Optional callback fired AFTER tasks are created — receives the new task ids
+     *  paired with the source identifiers passed via `initialRows[i].title` index. */
+    onTasksCreated?: (createdTaskIds: string[]) => void | Promise<void>
 }
 
 const PRIORITY_OPTIONS = [
@@ -76,8 +85,30 @@ export function BulkTaskModal({
     storyTitle,
     currentUserId,
     onSuccess,
+    initialRows,
+    headerTitle,
+    onTasksCreated,
 }: BulkTaskModalProps) {
-    const [rows, setRows] = useState<BulkTaskRow[]>(makeInitialRows)
+    // When initialRows is provided, build them; else fall back to 10 empty rows.
+    const buildInitial = (): BulkTaskRow[] => {
+        if (initialRows && initialRows.length) {
+            return initialRows.map(r => ({
+                rowKey: newRowKey(),
+                title: r.title ?? '',
+                task_type: r.task_type ?? '',
+                priority: r.priority ?? 'medium',
+                estimated_hours: r.estimated_hours ?? '',
+                due_date: r.due_date ?? '',
+                assignee_id: r.assignee_id ?? '',
+                is_count_for_kpi: r.is_count_for_kpi ?? true,
+                attachments: [],
+                expanded: false,
+                touched: new Set<string>(),
+            }))
+        }
+        return makeInitialRows()
+    }
+    const [rows, setRows] = useState<BulkTaskRow[]>(buildInitial)
     const [taskTypes, setTaskTypes] = useState<any[]>([])
     const [employees, setEmployees] = useState<any[]>([])
     const [loadingEmps, setLoadingEmps] = useState(false)
@@ -265,6 +296,9 @@ export function BulkTaskModal({
                 tempSessionRef.current = `tasks/temp-bulk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
                 setRows(makeInitialRows())
                 onSuccess?.()
+                if (onTasksCreated) {
+                    try { await onTasksCreated(result.data.tasks.map((t: any) => t.id)) } catch { /* noop */ }
+                }
                 setTimeout(() => setSuccessMsg(null), 2500)
             } else {
                 setErrorMsg(result.error || 'สร้าง Task ไม่สำเร็จ')
@@ -299,7 +333,7 @@ export function BulkTaskModal({
                 <div className="px-5 py-3 border-b flex items-center justify-between bg-gradient-to-r from-blue-50 to-white">
                     <div>
                         <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2">
-                            Bulk Create Tasks
+                            {headerTitle || 'Bulk Create Tasks'}
                             {storyCode && <span className="text-sm font-normal text-slate-500">in {storyCode}</span>}
                         </h2>
                         {storyTitle && (

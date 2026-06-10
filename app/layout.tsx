@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AlertProvider } from "@/components/ui/central-alert";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -31,6 +32,8 @@ export default function RootLayout({
         >
           <AlertProvider>
             {children}
+            {/* Sonner toaster — surfaces toast.error / toast.success notifications globally */}
+            <Toaster position="top-center" richColors closeButton />
           </AlertProvider>
         </ThemeProvider>
       </body>

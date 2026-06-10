@@ -67,6 +67,9 @@ interface FormState {
     status: TrackingStatus
     completed_date: string | null
     postponed_date: string | null
+    /** When set, this entry is linked to a Task in the Timesheet system — "DONE"
+     *  must come from Log Time on the task, not from this dialog. */
+    task_id?: string | null
     // dirty flag — only saved entries that changed
     dirty: boolean
 }
@@ -76,6 +79,7 @@ function fromEntry(entry: TrackingEntry): FormState {
         id: entry.id,
         _key: entry.id,
         origin_date: entry.entry_date || undefined,
+        task_id: entry.task_id || null,
         assignee_id: entry.assignee_id,
         assignee_role: entry.assignee_role,
         note: entry.note || '',
@@ -180,13 +184,35 @@ export function TrackingCellDialog({
             setActiveForm(savedForms[0] ?? emptyForm())
             return
         }
-        if (!confirm('ลบรายการนี้?')) return
+        // If linked to a Task, ask whether to delete the Task too.
+        // confirm returns true=OK→cascade, false=cancel→abort entirely.
+        // We use a 2-step confirm so the user can drop only the activity if they want.
+        const hasTask = !!activeForm.task_id
+        if (hasTask) {
+            const cascade = confirm(
+                'งานนี้ผูกกับ Task ในระบบ Timesheet\n\n' +
+                'กด OK = ลบทั้งกิจกรรม + Task (Task จะถูกซ่อนจาก /my-projects)\n' +
+                'กด Cancel = ยกเลิกทั้งหมด',
+            )
+            if (!cascade) return
+        } else {
+            if (!confirm('ลบรายการนี้?')) return
+        }
         setDeleting(true)
         try {
             const result = await deleteTrackingEntry(activeForm.id)
             if (!result.success) {
                 setErrorMsg(result.error || 'ลบไม่สำเร็จ')
                 return
+            }
+            // Cascade — soft-delete the linked Task too if the user opted in
+            if (hasTask && activeForm.task_id) {
+                const { deleteTask } = await import('@/lib/actions/task-actions')
+                const tr = await deleteTask(activeForm.task_id)
+                if (!tr.success) {
+                    setErrorMsg('ลบ Task ไม่สำเร็จ: ' + (tr.error || ''))
+                    // tracking entry already deleted — log and continue
+                }
             }
             const remaining = savedForms.filter((f) => f.id !== activeForm.id)
             setActiveForm(remaining[0] ?? emptyForm())
@@ -486,37 +512,49 @@ function EntryForm({
 
     return (
         <div className="space-y-3">
-            {/* Status */}
+            {/* Status — DONE disabled when linked to a Task (must use Log Time on the task) */}
             <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1.5">สถานะ</label>
                 <div className="flex gap-1.5">
                     {STATUS_OPTIONS.map((s) => {
                         const Icon = s.Icon
                         const selected = form.status === s.value
+                        const isDoneLocked = s.value === 'DONE' && !!form.task_id
                         return (
                             <button
                                 key={s.value}
                                 type="button"
+                                disabled={isDoneLocked}
                                 onClick={() => {
+                                    if (isDoneLocked) return
                                     const patch: Partial<FormState> = { status: s.value }
                                     if (s.value === 'DONE' && !form.completed_date) {
                                         patch.completed_date = entryDate
                                     }
                                     onPatch(patch)
                                 }}
+                                title={isDoneLocked ? 'งานนี้ผูกกับ Task — ต้องไปบันทึก Log Time ใน Task เพื่อปิดสถานะ' : undefined}
                                 className={`flex-1 px-2 py-2 rounded border text-xs flex items-center justify-center gap-1.5 transition-colors ${
                                     selected
                                         ? 'border-transparent text-white'
-                                        : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                                        : isDoneLocked
+                                            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                                 }`}
                                 style={selected ? { backgroundColor: s.color } : {}}
                             >
                                 <Icon className="w-3.5 h-3.5" />
                                 {s.label}
+                                {isDoneLocked && <span className="text-[9px] opacity-60">🔒</span>}
                             </button>
                         )
                     })}
                 </div>
+                {form.task_id && (
+                    <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                        🔒 งานนี้ผูกกับ Task — เปลี่ยนเป็น "เสร็จแล้ว" ต้อง <b className="text-rose-600">บันทึก Log Time</b> ใน Task เท่านั้น
+                    </p>
+                )}
             </div>
 
             {/* Date + Assignee in same row */}
@@ -1059,16 +1097,14 @@ interface ConvertSectionProps {
     onConverted: () => void
 }
 
-function ConvertToTaskSection({ trackingEntryId, projectId, existingTaskId, onConverted }: ConvertSectionProps) {
+function ConvertToTaskSection({ trackingEntryId, existingTaskId, onConverted }: ConvertSectionProps) {
     const [open, setOpen] = useState(false)
-    const [stories, setStories] = useState<{ id: string; story_code: string; title: string }[]>([])
     const [taskTypes, setTaskTypes] = useState<{ code: string; name: string }[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [linkedCode, setLinkedCode] = useState<string | null>(null)
 
-    // Form state
-    const [storyId, setStoryId] = useState('')
+    // Form state — Story removed per user policy; backend auto-picks "General" story.
     const [taskType, setTaskType] = useState('DEVELOPMENT')
     const [priority, setPriority] = useState<'critical' | 'high' | 'medium' | 'low'>('medium')
     const [estHours, setEstHours] = useState<string>('1')
@@ -1076,36 +1112,29 @@ function ConvertToTaskSection({ trackingEntryId, projectId, existingTaskId, onCo
 
     // Lazy-load options when the section opens
     useEffect(() => {
-        if (!open || stories.length || taskTypes.length) return
+        if (!open || taskTypes.length) return
         let cancelled = false
         ;(async () => {
             try {
-                const { getStoryOptions } = await import('@/lib/actions/story-actions')
                 const { getTaskTypeConfigs } = await import('@/lib/actions/task-type-config-actions')
-                const [sRes, tRes] = await Promise.all([
-                    getStoryOptions(projectId),
-                    getTaskTypeConfigs(),
-                ])
+                const tRes = await getTaskTypeConfigs()
                 if (cancelled) return
-                if (sRes.success) setStories(sRes.data)
                 setTaskTypes(tRes.map((t: any) => ({ code: t.code, name: t.name })))
-                if (sRes.success && sRes.data.length > 0) setStoryId(sRes.data[0].id)
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
             }
         })()
         return () => { cancelled = true }
-    }, [open, projectId, stories.length, taskTypes.length])
+    }, [open, taskTypes.length])
 
     const handleConvert = async () => {
-        if (!storyId) { setError('กรุณาเลือก Story'); return }
         setLoading(true)
         setError(null)
         try {
             const { createTaskFromTrackingEntry } = await import('@/lib/actions/team-tracking-actions')
             const r = await createTaskFromTrackingEntry({
                 trackingEntryId,
-                story_id: storyId,
+                // story_id omitted → backend auto-picks/creates "General" story
                 task_type: taskType,
                 priority,
                 estimated_hours: estHours ? Number(estHours) : null,
@@ -1152,24 +1181,6 @@ function ConvertToTaskSection({ trackingEntryId, projectId, existingTaskId, onCo
                             {error}
                         </div>
                     )}
-
-                    {/* Story (required) */}
-                    <label className="block">
-                        <span className="block text-[11px] font-semibold text-slate-700 mb-1">Story <span className="text-red-500">*</span></span>
-                        <select
-                            value={storyId}
-                            onChange={(e) => setStoryId(e.target.value)}
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
-                        >
-                            <option value="">— เลือก Story —</option>
-                            {stories.map(s => (
-                                <option key={s.id} value={s.id}>{s.story_code} · {s.title}</option>
-                            ))}
-                        </select>
-                        {stories.length === 0 && (
-                            <span className="text-[10px] text-amber-600 mt-1 block">โครงการนี้ยังไม่มี Story — สร้าง Story ก่อนใน /my-projects</span>
-                        )}
-                    </label>
 
                     {/* Task Type + Priority side-by-side */}
                     <div className="grid grid-cols-2 gap-2">
@@ -1225,7 +1236,7 @@ function ConvertToTaskSection({ trackingEntryId, projectId, existingTaskId, onCo
                     <button
                         type="button"
                         onClick={handleConvert}
-                        disabled={loading || !storyId}
+                        disabled={loading}
                         className="w-full px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         {loading ? 'กำลังสร้าง...' : 'สร้าง Task'}

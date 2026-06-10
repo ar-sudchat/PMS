@@ -35,7 +35,15 @@ import { TrackingGrid } from '@/components/team-tracking/TrackingGrid'
 import { TrackingCellDialog } from '@/components/team-tracking/TrackingCellDialog'
 import { OverdueWorkDialog } from './OverdueWorkDialog'
 import { UnscheduledPane } from './UnscheduledPane'
-import { getOverdueTrackingEntries, OverdueEntry } from '@/lib/actions/team-tracking-actions'
+import { BulkTaskModal } from '@/components/modals/BulkTaskModal'
+import { TaskDetailModal } from '@/components/my-tasks/TaskDetailModal'
+import { QuickLogTimeModal } from '@/components/my-tasks/QuickLogTimeModal'
+import { MyTask, getTaskDetail, updateTaskStatus as myTasksUpdateStatus } from '@/lib/actions/my-tasks-actions'
+import {
+    getOverdueTrackingEntries, OverdueEntry,
+    getConvertibleEntriesForProject, getOrCreateGeneralStory, linkTrackingEntriesToTasks,
+    createTrackingEntriesForTasks,
+} from '@/lib/actions/team-tracking-actions'
 import { ProjectDetailPopup } from './ProjectDetailPopup'
 import {
     addMonths, computeBarPosition, daysBetween,
@@ -140,6 +148,49 @@ export function GanttOverviewBoard() {
     const [overdueItems, setOverdueItems] = React.useState<OverdueEntry[]>([])
     const [overdueOpen, setOverdueOpen] = React.useState(false)
     const [unscheduledOpen, setUnscheduledOpen] = React.useState(false)
+    // Task detail / quick log time — opened from clicking a task_code badge
+    const [detailTask, setDetailTask] = React.useState<MyTask | null>(null)
+    const [detailOpen, setDetailOpen] = React.useState(false)
+    const [logTimeTask, setLogTimeTask] = React.useState<MyTask | null>(null)
+    const [logTimeOpen, setLogTimeOpen] = React.useState(false)
+    const [detailRefreshKey, setDetailRefreshKey] = React.useState(0)
+
+    const openTaskDetail = async (taskId: string) => {
+        const t = await getTaskDetail(taskId)
+        if (!t) { alert('ไม่พบ Task'); return }
+        setDetailTask(t)
+        setDetailOpen(true)
+    }
+    // Bulk Convert state — opens BulkTaskModal pre-filled with the project's convertible tracking entries
+    const [bulkConvertCtx, setBulkConvertCtx] = React.useState<{
+        storyId: string
+        storyCode: string
+        projectName: string
+        initialRows: { title: string; due_date: string; assignee_id: string }[]
+        sourceIds: string[]    // parallel to initialRows — index N = tracking entry to link
+    } | null>(null)
+
+    const handleBulkConvert = async (projectId: string) => {
+        const projName = dailyProjects.find(p => p.id === projectId)?.name || ''
+        const conv = await getConvertibleEntriesForProject(projectId)
+        if (!conv.success || conv.data.length === 0) {
+            alert(conv.success ? 'ไม่มีกิจกรรมที่ยังไม่ได้แปลงเป็น Task' : ('โหลดไม่สำเร็จ: ' + conv.error))
+            return
+        }
+        const story = await getOrCreateGeneralStory(projectId)
+        if (!story.success) { alert('สร้าง story ไม่สำเร็จ: ' + story.error); return }
+        setBulkConvertCtx({
+            storyId: story.storyId,
+            storyCode: story.storyCode,
+            projectName: projName,
+            initialRows: conv.data.map(e => ({
+                title: e.title_clean,
+                due_date: e.entry_date || '',
+                assignee_id: e.assignee_id || '',
+            })),
+            sourceIds: conv.data.map(e => e.id),
+        })
+    }
     // Count of unscheduled tracking entries (entry_date IS NULL) — drives the toolbar badge.
     const [unscheduledCount, setUnscheduledCount] = React.useState(0)
     const refreshUnscheduledCount = React.useCallback(async () => {
@@ -285,15 +336,26 @@ export function GanttOverviewBoard() {
         }
     }
 
-    // Cell click in daily view: open TrackingCellDialog with project + date pre-filled.
-    // `focusEntryId` lets task-mode rows tell the dialog to focus that specific entry
-    // (otherwise the dialog defaults to the first entry of the day).
+    // Cell click in daily view. Two paths:
+    //   - existing entry (focusEntryId set, OR there are entries on this date) → open
+    //     TrackingCellDialog so the user can edit. Toggle is ignored here.
+    //   - empty cell + toggle = "task" → open BulkTaskModal pre-filled with 1 row.
+    //   - empty cell + toggle = "activity" → open TrackingCellDialog with empty form.
     const handleCellClick = async (projectId: string, date: string, focusEntryId?: string) => {
         const proj = dailyProjects.find(p => p.id === projectId)
         if (!proj) return
+
+        const hasEntryToday = focusEntryId || dailyEntries.some(e =>
+            e.project_id === projectId && (
+                e.entry_date === date ||
+                (e.status === 'DONE' && e.completed_date === date) ||
+                (e.status === 'POSTPONED' && e.postponed_date === date)
+            ))
+
+        // Always open activity slide. Task creation is via the "+ Task" button on the row.
+        void hasEntryToday
         setCellCtx({ projectId, projectName: proj.name, date, focusEntryId })
         setCellOpen(true)
-        // Lazy-load dialog employees + milestones on first open
         if (dialogEmployees.length === 0) {
             const r = await getAssignableEmployees()
             if (r.success && r.data) setDialogEmployees(r.data)
@@ -518,6 +580,7 @@ export function GanttOverviewBoard() {
                             ซ่อนงานเสร็จ
                         </label>
                     )}
+
 
                     <div className="flex items-center border rounded-lg overflow-hidden bg-white">
                         <button onClick={() => shiftWindow(-1)} className="p-1.5 hover:bg-slate-50 border-r" title={view === 'daily' ? "เดือนก่อนหน้า" : "เดือนก่อนหน้า"}>
@@ -820,6 +883,22 @@ export function GanttOverviewBoard() {
                             showCustomer={false}
                             subRowMode={dailySubRowMode}
                             hideCompletedTasks={dailyHideDone}
+                            onBulkConvert={handleBulkConvert}
+                            onProjectNameClick={(pid) => setOpenProjectId(pid)}
+                            onTaskCodeClick={(taskId) => openTaskDetail(taskId)}
+                            onCreateTask={async (pid) => {
+                                const proj = dailyProjects.find(p => p.id === pid)
+                                if (!proj) return
+                                const story = await getOrCreateGeneralStory(pid)
+                                if (!story.success) { alert('สร้าง story ไม่สำเร็จ: ' + story.error); return }
+                                setBulkConvertCtx({
+                                    storyId: story.storyId,
+                                    storyCode: story.storyCode,
+                                    projectName: proj.name,
+                                    initialRows: [],   // empty → BulkTaskModal falls back to 10 empty rows
+                                    sourceIds: [],
+                                })
+                            }}
                         />
                     </div>
                 ) : (
@@ -921,6 +1000,74 @@ export function GanttOverviewBoard() {
                 onClose={() => setUnscheduledOpen(false)}
                 onChanged={() => { load(); refreshUnscheduledCount() }}
             />
+
+            {/* Task detail + quick log time — opened from clicking task_code badge in task rows */}
+            <TaskDetailModal
+                open={detailOpen}
+                onOpenChange={setDetailOpen}
+                task={detailTask}
+                onLogTime={(t) => { setLogTimeTask(t); setLogTimeOpen(true) }}
+                onStatusChange={async (t, newStatus, reason) => {
+                    const r = await myTasksUpdateStatus(t.task_id, newStatus, reason)
+                    if (r.success) {
+                        // refresh: pull fresh task detail + reload daily grid
+                        const fresh = await getTaskDetail(t.task_id)
+                        if (fresh) setDetailTask(fresh)
+                        load()
+                    } else {
+                        alert(r.error || 'อัพเดตสถานะไม่สำเร็จ')
+                    }
+                }}
+                onDataChange={() => load()}
+                refreshTrigger={detailRefreshKey}
+                canUnassign={false}
+            />
+
+            <QuickLogTimeModal
+                open={logTimeOpen}
+                onOpenChange={setLogTimeOpen}
+                task={logTimeTask}
+                postLogAction={async () => {
+                    // After logging time, the task's progress / hours may change → refresh
+                    if (detailTask) {
+                        const fresh = await getTaskDetail(detailTask.task_id)
+                        if (fresh) setDetailTask(fresh)
+                    }
+                    setDetailRefreshKey(k => k + 1)
+                    load()
+                }}
+            />
+
+            {/* Bulk-convert tracking entries → tasks. Reuses BulkTaskModal pre-filled. */}
+            {bulkConvertCtx && (
+                <BulkTaskModal
+                    isOpen={!!bulkConvertCtx}
+                    onClose={() => setBulkConvertCtx(null)}
+                    storyId={bulkConvertCtx.storyId}
+                    storyCode={bulkConvertCtx.storyCode}
+                    storyTitle={`${bulkConvertCtx.projectName} (auto-General)`}
+                    headerTitle="แปลงกิจกรรม → Task"
+                    initialRows={bulkConvertCtx.initialRows}
+                    onTasksCreated={async (taskIds) => {
+                        // Two flows:
+                        //  1) Bulk convert FROM tracking — link new tasks to their source entries.
+                        //  2) Pure "สร้าง Task" mode (no sources) — create tracking entries for
+                        //     each new task so they surface on the daily grid as well.
+                        if (bulkConvertCtx.sourceIds.length > 0) {
+                            const pairs = taskIds.map((tid, i) => ({
+                                trackingId: bulkConvertCtx.sourceIds[i],
+                                taskId: tid,
+                            })).filter(p => p.trackingId)
+                            await linkTrackingEntriesToTasks(pairs)
+                        } else {
+                            await createTrackingEntriesForTasks(taskIds)
+                        }
+                        load()
+                        refreshUnscheduledCount()
+                    }}
+                    onSuccess={() => setBulkConvertCtx(null)}
+                />
+            )}
         </div>
     )
 }

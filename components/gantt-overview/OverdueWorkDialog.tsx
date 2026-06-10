@@ -120,6 +120,12 @@ export function OverdueWorkDialog({ open, items, onClose, onOpenItem }: Props) {
                                                     <span className="text-slate-400">·</span>
                                                     <span>{thaiDate(it.entry_date)}</span>
                                                 </div>
+                                                {/* Line 4 — Recorder (so PM can chase the right person for context) */}
+                                                {it.created_by_name && it.created_by_name !== it.assignee_name && (
+                                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                                        บันทึกโดย: <span className="text-slate-600 font-semibold">{it.created_by_name}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                             <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" />
                                         </button>
