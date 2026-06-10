@@ -51,6 +51,9 @@ interface Props {
     /** When provided, รหัส (project_code) becomes clickable and invokes this callback
      *  with the project's id — used to open a project popup from a host page. */
     onProjectClick?: (projectId: string) => void
+    /** When provided, ชื่อโครงการ becomes clickable and invokes this callback —
+     *  used to open the gantt-chart popup (ProjectDetailPopup) on the host. */
+    onProjectNameClick?: (projectId: string) => void
     /** Sub-row grouping mode (default "assignee").
      *  - "assignee": one sub-row per person — aggregates that person's daily entries.
      *  - "task": one sub-row per unique task `note` — shows a single task across the days
@@ -58,6 +61,15 @@ interface Props {
     subRowMode?: 'assignee' | 'task'
     /** When true (task mode only), hide tasks whose every entry has status === 'DONE'. */
     hideCompletedTasks?: boolean
+    /** Optional callback — clicked on a project row's "⚡ Bulk Convert" button (task mode only). */
+    onBulkConvert?: (projectId: string) => void
+    /** Optional callback — clicked on a project row's "+ Task" button (after the No. column).
+     *  Use this to open the BulkTaskModal for that project (empty rows, ready for new task
+     *  creation in the timesheet system). */
+    onCreateTask?: (projectId: string) => void
+    /** Optional callback — clicked on the task_code badge in a task sub-row.
+     *  Host opens the Task detail modal (with Time Log / Status / Checklist tabs). */
+    onTaskCodeClick?: (taskId: string) => void
 }
 
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -201,7 +213,7 @@ function isCellMatched(cellEntries: CellEntry[], filter: string | null | undefin
     })
 }
 
-export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading, highlightFilter, startDate, endDate, showCustomer = true, onProjectClick, subRowMode = 'assignee', hideCompletedTasks = false }: Props) {
+export function TrackingGrid({ projects, entries, year, month, onCellClick, isLoading, highlightFilter, startDate, endDate, showCustomer = true, onProjectClick, onProjectNameClick, subRowMode = 'assignee', hideCompletedTasks = false, onBulkConvert, onCreateTask, onTaskCodeClick }: Props) {
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
     const todayStr = useMemo(() => {
         const d = new Date()
@@ -341,6 +353,8 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
             doneCount: number;
             milestoneColor: string | null;
             milestoneName: string | null;
+            taskCode: string | null;
+            taskId: string | null;
         }>>()
         for (const e of entries) {
             const clean = summariseNote(e.note || '', 9999)  // full cleaned text for the key
@@ -355,6 +369,8 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                     doneCount: 0,
                     milestoneColor: null,
                     milestoneName: null,
+                    taskCode: null,
+                    taskId: null,
                 })
             }
             const slot = inner.get(noteKey)!
@@ -364,6 +380,12 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
             if (!slot.milestoneColor && e.milestone_color) {
                 slot.milestoneColor = e.milestone_color
                 slot.milestoneName = e.milestone_name
+            }
+            if (!slot.taskCode && e.task_code) {
+                slot.taskCode = e.task_code
+            }
+            if (!slot.taskId && e.task_id) {
+                slot.taskId = e.task_id
             }
         }
         return map
@@ -474,7 +496,15 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                             const assignees = assigneesByProject.get(p.id)
                             const assigneeList = assignees ? Array.from(assignees.values()) : []
                             const tasks = tasksByProject.get(p.id)
-                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount, milestoneColor: v.milestoneColor, milestoneName: v.milestoneName })) : []
+                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount, milestoneColor: v.milestoneColor, milestoneName: v.milestoneName, taskCode: v.taskCode, taskId: v.taskId })) : []
+                            // Sort by first assignee name (Thai collation) so each person's
+                            // tasks group together — user requested this for scan-ability.
+                            // Tasks without an assignee sort last.
+                            rawTaskList.sort((a, b) => {
+                                const aName = a.assignees.size ? Array.from(a.assignees).sort()[0] : '~~'
+                                const bName = b.assignees.size ? Array.from(b.assignees).sort()[0] : '~~'
+                                return aName.localeCompare(bName, 'th')
+                            })
                             const taskList = hideCompletedTasks
                                 ? rawTaskList.filter(t => t.doneCount < t.total)  // hide tasks where every entry is DONE
                                 : rawTaskList
@@ -489,6 +519,17 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                         </td>
                                         <td className="sticky left-[40px] z-10 bg-white border-b border-r border-slate-200 px-2 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[1px_0_0_rgba(0,0,0,0.02)]">
                                             <div className="flex items-center gap-1.5">
+                                                {/* "+ Task" button — opens BulkTaskModal for this project */}
+                                                {onCreateTask && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); onCreateTask(p.id) }}
+                                                        className="inline-flex items-center justify-center w-5 h-5 rounded text-[11px] font-bold text-rose-400 bg-rose-50 border border-rose-200 hover:bg-rose-100 hover:text-rose-600"
+                                                        title="สร้าง Task ใหม่ในโครงการนี้"
+                                                    >
+                                                        +
+                                                    </button>
+                                                )}
                                                 {subRowCount > 0 ? (
                                                     <button
                                                         onClick={() => toggleExpand(p.id)}
@@ -528,9 +569,20 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                             </div>
                                         </td>
                                         <td className="sticky left-[120px] z-10 bg-white border-b border-r border-slate-200 px-2.5 py-2.5 align-middle group-hover:bg-slate-50 transition-colors shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
-                                            <div className="text-slate-900 font-semibold truncate max-w-[200px]" title={p.name}>
-                                                {p.name}
-                                            </div>
+                                            {onProjectNameClick ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); onProjectNameClick(p.id) }}
+                                                    className="text-slate-900 font-semibold truncate max-w-[200px] hover:text-indigo-700 hover:underline text-left"
+                                                    title={`${p.name} — คลิกเพื่อดู Gantt Chart`}
+                                                >
+                                                    {p.name}
+                                                </button>
+                                            ) : (
+                                                <div className="text-slate-900 font-semibold truncate max-w-[200px]" title={p.name}>
+                                                    {p.name}
+                                                </div>
+                                            )}
                                         </td>
                                         {showCustomer && (
                                             <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle">
@@ -770,8 +822,28 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                 {showCustomer && (
                                                     <td className="border-b border-r border-slate-200 bg-slate-50" />
                                                 )}
-                                                {/* ประเภท — empty in the task row */}
-                                                <td className="border-b border-r border-slate-200 bg-slate-50" />
+                                                {/* ประเภท cell — shows the linked task_code (clickable → opens task detail) */}
+                                                <td className="border-b border-r border-slate-200 bg-slate-50 px-1.5 py-2.5 text-center align-middle">
+                                                    {t.taskCode && (
+                                                        onTaskCodeClick && t.taskId ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => onTaskCodeClick(t.taskId!)}
+                                                                className="inline-block px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 hover:underline cursor-pointer"
+                                                                title={`Task: ${t.taskCode} — คลิกเพื่อดูรายละเอียด / ลง Time Log`}
+                                                            >
+                                                                {t.taskCode}
+                                                            </button>
+                                                        ) : (
+                                                            <span
+                                                                className="inline-block px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200"
+                                                                title={`Task: ${t.taskCode}`}
+                                                            >
+                                                                {t.taskCode}
+                                                            </span>
+                                                        )
+                                                    )}
+                                                </td>
                                                 <td className="border-b border-r border-slate-200 px-2.5 py-2.5 align-middle text-slate-600 bg-slate-50">
                                                     <span
                                                         className="block truncate text-[11px] text-slate-500 whitespace-nowrap max-w-[130px]"

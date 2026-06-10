@@ -179,8 +179,43 @@ export async function createTasksBulk(input: {
         const storyProjectResult = await pool.request()
             .input('storyId', sql.UniqueIdentifier, input.story_id)
             .query(`SELECT project_id FROM pms.stories WHERE id = @storyId`)
-        if (storyProjectResult.recordset[0]?.project_id) {
-            revalidatePath(`/projects/${storyProjectResult.recordset[0].project_id}`)
+        const projectId = storyProjectResult.recordset[0]?.project_id
+        if (projectId) {
+            revalidatePath(`/projects/${projectId}`)
+        }
+
+        // Auto-create a matching tracking entry per task so they surface on the
+        // gantt-overview daily grid. Skips silently when the column doesn't exist.
+        if (projectId) {
+            for (let i = 0; i < input.tasks.length; i++) {
+                const row = input.tasks[i]
+                const c = created[i]
+                try {
+                    const esc = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    await pool.request()
+                        .input('id', sql.UniqueIdentifier, require('crypto').randomUUID())
+                        .input('projectId', sql.UniqueIdentifier, projectId)
+                        .input('entryDate', sql.Date, row.due_date ? new Date(row.due_date) : null)
+                        .input('assigneeId', sql.UniqueIdentifier, row.assignee_id || null)
+                        .input('note', sql.NVarChar(sql.MAX), `<p><b>${esc(c.title)}</b></p>`)
+                        .input('taskId', sql.UniqueIdentifier, c.id)
+                        .input('createdBy', sql.UniqueIdentifier, user.id)
+                        .query(`
+                            INSERT INTO pms.team_tracking_entries (
+                                id, project_id, entry_date, assignee_id, assignee_role,
+                                note, color, color_source, status, is_active,
+                                task_id, created_by, created_at, updated_at
+                            ) VALUES (
+                                @id, @projectId, @entryDate, @assigneeId, 'EMPLOYEE',
+                                @note, '#dc2626', 'MANUAL', 'PLANNED', 1,
+                                @taskId, @createdBy, GETDATE(), GETDATE()
+                            )
+                        `)
+                } catch (e) {
+                    // Non-fatal — tracking entry is a convenience, not a requirement
+                    console.error('createTasksBulk: tracking-entry mirror failed for', c.task_code, e)
+                }
+            }
         }
 
         return { success: true, data: { count: created.length, tasks: created } }
@@ -651,6 +686,37 @@ export async function updateTask(taskId: string, data: Partial<{
         updates.push('updated_at = GETDATE()')
 
         await request.query(`UPDATE pms.tasks SET ${updates.join(', ')} WHERE id = @taskId`)
+
+        // ====== Sync linked tracking entries when status / due_date / assignee changes ======
+        // Tracking entries linked to this task (team_tracking_entries.task_id) mirror the task
+        // on the daily grid. Keep them in sync so the grid stays accurate.
+        if (data.status !== undefined || data.due_date !== undefined || data.assignee_id !== undefined) {
+            const syncUpdates: string[] = []
+            const syncReq = pool.request().input('taskId', sql.UniqueIdentifier, taskId)
+            if (data.status !== undefined) {
+                let trkStatus: 'PLANNED' | 'DONE' | 'POSTPONED' = 'PLANNED'
+                if (data.status === 'done' || data.status === 'done_not_planned') trkStatus = 'DONE'
+                else if (data.status === 'blocked') trkStatus = 'POSTPONED'
+                syncUpdates.push('[status] = @trkStatus')
+                syncReq.input('trkStatus', sql.NVarChar(20), trkStatus)
+                if (trkStatus === 'DONE') syncUpdates.push('completed_date = GETDATE()')
+                else syncUpdates.push('completed_date = NULL')
+            }
+            if (data.due_date !== undefined) {
+                syncUpdates.push('entry_date = @trkDue')
+                syncReq.input('trkDue', sql.Date, data.due_date ? new Date(data.due_date) : null)
+            }
+            if (data.assignee_id !== undefined) {
+                syncUpdates.push('assignee_id = @trkAssignee')
+                syncReq.input('trkAssignee', sql.UniqueIdentifier, data.assignee_id || null)
+            }
+            syncUpdates.push('updated_at = GETDATE()')
+            await syncReq.query(`
+                UPDATE pms.team_tracking_entries
+                SET ${syncUpdates.join(', ')}
+                WHERE task_id = @taskId AND is_active = 1
+            `)
+        }
 
         // Revalidate
         const taskResult = await pool.request()

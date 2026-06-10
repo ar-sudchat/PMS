@@ -48,6 +48,8 @@ export interface TrackingEntry {
     milestone_color: string | null
     /** When set, this tracking entry has been promoted to a full Task in pms.tasks. */
     task_id?: string | null
+    /** task_code of the linked task — surfaced so the daily grid can show it inline. */
+    task_code?: string | null
     created_by: string
     created_at: string
     updated_at: string
@@ -211,6 +213,7 @@ export async function getTeamTrackingData(
                         mc.name AS milestone_name,
                         mc.color AS milestone_color,
                         t.task_id,
+                        tk.task_code,
                         t.created_by,
                         CONVERT(varchar(19), t.created_at, 126) AS created_at,
                         CONVERT(varchar(19), t.updated_at, 126) AS updated_at
@@ -218,6 +221,7 @@ export async function getTeamTrackingData(
                     LEFT JOIN pms.employees e         ON t.assignee_id  = e.id
                     LEFT JOIN pms.project_milestones pm ON t.milestone_id = pm.id
                     LEFT JOIN pms.milestone_configs mc   ON pm.milestone_config_id = mc.id
+                    LEFT JOIN pms.tasks tk              ON tk.id = t.task_id
                     WHERE t.is_active = 1
                       AND t.project_id IN (${idParams})
                       AND t.entry_date BETWEEN @monthStart AND @monthEnd
@@ -605,13 +609,198 @@ export async function copyTrackingEntryToDates(
 }
 
 // ============================================
+// BULK CONVERT helpers — surface tracking entries that haven't been promoted to
+// tasks yet, plus link several tasks back to their source entries in one call.
+// Used by the "⚡ Bulk Convert" flow that reuses the BulkTaskModal UI.
+// ============================================
+export interface ConvertibleTrackingEntry {
+    id: string
+    project_id: string
+    entry_date: string | null
+    assignee_id: string | null
+    note: string             // raw HTML — caller cleans for display
+    title_clean: string      // HTML-stripped, single-line; ready to use as task title
+}
+
+export async function getConvertibleEntriesForProject(projectId: string): Promise<{ success: true; data: ConvertibleTrackingEntry[] } | { success: false; error: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+        const r = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT id, project_id,
+                       CONVERT(varchar(10), entry_date, 23) AS entry_date,
+                       assignee_id, note
+                FROM pms.team_tracking_entries
+                WHERE project_id = @projectId
+                  AND is_active = 1
+                  AND task_id IS NULL
+                ORDER BY entry_date, created_at
+            `)
+        const data: ConvertibleTrackingEntry[] = r.recordset.map((row: any) => {
+            const titleClean = ((row.note as string) || '')
+                .replace(/<[^>]*>/g, ' ')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 250)
+            return {
+                id: row.id,
+                project_id: row.project_id,
+                entry_date: row.entry_date || null,
+                assignee_id: row.assignee_id,
+                note: row.note || '',
+                title_clean: titleClean,
+            }
+        })
+        return { success: true, data }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
+// For each task id, create a tracking entry mirroring the task (title → note,
+// due_date → entry_date, assignee_id → assignee_id) and link via task_id.
+// Used when the user creates Tasks via Bulk modal WITHOUT a tracking-entry source
+// (so the new tasks still surface on the daily grid).
+export async function createTrackingEntriesForTasks(taskIds: string[]) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        if (!taskIds.length) return { success: true, created: 0 }
+        const pool = await getConnection()
+        let created = 0
+        for (const tid of taskIds) {
+            // Fetch task + story to get project_id
+            const tk = await pool.request()
+                .input('id', sql.UniqueIdentifier, tid)
+                .query(`
+                    SELECT t.id, t.title, t.due_date, t.assignee_id, s.project_id
+                    FROM pms.tasks t
+                    INNER JOIN pms.stories s ON s.id = t.story_id
+                    WHERE t.id = @id
+                `)
+            if (tk.recordset.length === 0) continue
+            const row = tk.recordset[0]
+            const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            const note = `<p><b>${esc(row.title || '')}</b></p>`
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, require('crypto').randomUUID())
+                .input('projectId', sql.UniqueIdentifier, row.project_id)
+                .input('entryDate', sql.Date, row.due_date || null)
+                .input('assigneeId', sql.UniqueIdentifier, row.assignee_id || null)
+                .input('note', sql.NVarChar(sql.MAX), note)
+                .input('taskId', sql.UniqueIdentifier, tid)
+                .input('createdBy', sql.UniqueIdentifier, user.id)
+                .query(`
+                    INSERT INTO pms.team_tracking_entries (
+                        id, project_id, entry_date, assignee_id, assignee_role,
+                        note, color, color_source, status, is_active,
+                        task_id, created_by, created_at, updated_at
+                    ) VALUES (
+                        @id, @projectId, @entryDate, @assigneeId, 'EMPLOYEE',
+                        @note, '#dc2626', 'MANUAL', 'PLANNED', 1,
+                        @taskId, @createdBy, GETDATE(), GETDATE()
+                    )
+                `)
+            created++
+        }
+        return { success: true, created }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
+// Link a list of new task ids back to a parallel list of tracking entry ids
+// (positionally matched — caller is responsible for keeping arrays aligned).
+export async function linkTrackingEntriesToTasks(pairs: { trackingId: string; taskId: string }[]) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        if (!pairs.length) return { success: true, linked: 0 }
+        const pool = await getConnection()
+        let linked = 0
+        for (const p of pairs) {
+            await pool.request()
+                .input('id', sql.UniqueIdentifier, p.trackingId)
+                .input('taskId', sql.UniqueIdentifier, p.taskId)
+                .query(`UPDATE pms.team_tracking_entries SET task_id = @taskId, updated_at = GETDATE() WHERE id = @id AND task_id IS NULL`)
+            linked++
+        }
+        return { success: true, linked }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
+// Ensure a "General" story exists for the project (auto-create if missing).
+// Returns the story id. Used as the destination for bulk-converted tasks.
+export async function getOrCreateGeneralStory(projectId: string): Promise<{ success: true; storyId: string; storyCode: string } | { success: false; error: string }> {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        const pool = await getConnection()
+        const found = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .query(`
+                SELECT TOP 1 id, story_code FROM pms.stories
+                WHERE project_id = @projectId AND is_active = 1 AND title = N'General'
+                ORDER BY sort_order
+            `)
+        if (found.recordset.length) {
+            return { success: true, storyId: found.recordset[0].id, storyCode: found.recordset[0].story_code }
+        }
+        const projRes = await pool.request()
+            .input('id', sql.UniqueIdentifier, projectId)
+            .query(`SELECT project_code FROM pms.projects WHERE id = @id`)
+        const projectCode = projRes.recordset[0]?.project_code || 'GEN'
+        const prefix = `${projectCode}-S-`
+        const codeRes = await pool.request()
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .input('prefix', sql.NVarChar, `${prefix}%`)
+            .input('prefixLen', sql.Int, prefix.length)
+            .query(`
+                SELECT ISNULL(MAX(TRY_CAST(SUBSTRING(story_code, @prefixLen + 1, LEN(story_code)) AS INT)), 0) + 1 AS n
+                FROM pms.stories
+                WHERE project_id = @projectId AND story_code LIKE @prefix
+            `)
+        const storyCode = `${prefix}${String(codeRes.recordset[0].n).padStart(3, '0')}`
+        const newId = require('crypto').randomUUID()
+        await pool.request()
+            .input('id', sql.UniqueIdentifier, newId)
+            .input('projectId', sql.UniqueIdentifier, projectId)
+            .input('storyCode', sql.NVarChar, storyCode)
+            .input('createdBy', sql.UniqueIdentifier, user.id)
+            .query(`
+                INSERT INTO pms.stories (
+                    id, project_id, story_code, title, priority, status,
+                    sort_order, created_by, is_active, created_at, updated_at
+                ) VALUES (
+                    @id, @projectId, @storyCode, N'General', 'medium', 'backlog',
+                    9999, @createdBy, 1, GETDATE(), GETDATE()
+                )
+            `)
+        return { success: true, storyId: newId, storyCode }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
+// ============================================
 // CONVERT TRACKING ENTRY → TASK
 // Promotes a daily tracking entry into a proper Task in pms.tasks so it can be
 // time-tracked in the timesheet system. Links back via team_tracking_entries.task_id.
 // ============================================
 export interface ConvertToTaskInput {
     trackingEntryId: string
-    story_id: string             // required — task must belong to a story
+    /** Optional — when omitted, we auto-pick (or auto-create) a "General" story per project.
+     *  This keeps the UI form Story-less while the DB still has the FK populated. */
+    story_id?: string
     task_type: string            // task_type_configs.code (DEVELOPMENT, BUG_FIX, ...)
     priority: 'critical' | 'high' | 'medium' | 'low'
     estimated_hours?: number | null
@@ -636,7 +825,58 @@ export async function createTaskFromTrackingEntry(input: ConvertToTaskInput) {
         const t = trk.recordset[0]
         if (t.task_id) return { success: false, error: 'รายการนี้ผูกกับ task อยู่แล้ว' }
 
-        // 2) Strip HTML from the note → use as task title (default to "งานจาก tracking" if empty)
+        // 2) Resolve story_id — auto-find/create "General" story when caller didn't pick one.
+        // Per user policy (Option A): tasks are story-less from the user's POV; we still need
+        // a story_id in DB so all existing queries/KPI/Manday logic continues to work.
+        let storyId = input.story_id
+        if (!storyId) {
+            const found = await pool.request()
+                .input('projectId', sql.UniqueIdentifier, t.project_id)
+                .query(`
+                    SELECT TOP 1 id FROM pms.stories
+                    WHERE project_id = @projectId AND is_active = 1 AND title = N'General'
+                    ORDER BY sort_order
+                `)
+            if (found.recordset.length) {
+                storyId = found.recordset[0].id
+            } else {
+                // Create a General story for this project. Code format follows other stories:
+                // {project_code}-S-{n}. We just pick a high sort_order so it sinks to the bottom.
+                const projRes = await pool.request()
+                    .input('id', sql.UniqueIdentifier, t.project_id)
+                    .query(`SELECT project_code FROM pms.projects WHERE id = @id`)
+                const projectCode = projRes.recordset[0]?.project_code || 'GEN'
+                const prefix = `${projectCode}-S-`
+                const codeRes = await pool.request()
+                    .input('projectId', sql.UniqueIdentifier, t.project_id)
+                    .input('prefix', sql.NVarChar, `${prefix}%`)
+                    .input('prefixLen', sql.Int, prefix.length)
+                    .query(`
+                        SELECT ISNULL(MAX(TRY_CAST(SUBSTRING(story_code, @prefixLen + 1, LEN(story_code)) AS INT)), 0) + 1 AS n
+                        FROM pms.stories
+                        WHERE project_id = @projectId AND story_code LIKE @prefix
+                    `)
+                const storyCode = `${prefix}${String(codeRes.recordset[0].n).padStart(3, '0')}`
+                const newStoryId = require('crypto').randomUUID()
+                await pool.request()
+                    .input('id', sql.UniqueIdentifier, newStoryId)
+                    .input('projectId', sql.UniqueIdentifier, t.project_id)
+                    .input('storyCode', sql.NVarChar, storyCode)
+                    .input('createdBy', sql.UniqueIdentifier, user.id)
+                    .query(`
+                        INSERT INTO pms.stories (
+                            id, project_id, story_code, title, priority, status,
+                            sort_order, created_by, is_active, created_at, updated_at
+                        ) VALUES (
+                            @id, @projectId, @storyCode, N'General', 'medium', 'backlog',
+                            9999, @createdBy, 1, GETDATE(), GETDATE()
+                        )
+                    `)
+                storyId = newStoryId
+            }
+        }
+
+        // 3) Strip HTML from the note → use as task title (default to "งานจาก tracking" if empty)
         const titleRaw = (t.note || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
         const title = titleRaw.slice(0, 250) || 'งานจาก tracking'
 
@@ -653,7 +893,7 @@ export async function createTaskFromTrackingEntry(input: ConvertToTaskInput) {
         await pool.request()
             .input('id', sql.UniqueIdentifier, newId)
             .input('taskCode', sql.NVarChar, taskCode)
-            .input('storyId', sql.UniqueIdentifier, input.story_id)
+            .input('storyId', sql.UniqueIdentifier, storyId)
             .input('title', sql.NVarChar, title)
             .input('taskType', sql.NVarChar, input.task_type)
             .input('assigneeId', sql.UniqueIdentifier, t.assignee_id || null)
@@ -705,6 +945,9 @@ export interface OverdueEntry {
     entry_date: string
     assignee_id: string | null
     assignee_name: string
+    /** Name of the user who created the entry — used in the popup so the PM can
+     *  ask the original recorder for context. */
+    created_by_name: string
     note: string
     status: TrackingStatus
     milestone_name: string | null
@@ -730,6 +973,7 @@ export async function getOverdueTrackingEntries(): Promise<{ success: true; data
                     t.entry_date,
                     t.assignee_id,
                     ISNULL(CONCAT(e.first_name_th, ' ', e.last_name_th), 'ไม่ระบุ') AS assignee_name,
+                    ISNULL(CONCAT(cu.first_name_th, ' ', cu.last_name_th), 'ไม่ระบุ') AS created_by_name,
                     t.note,
                     t.status,
                     mc.name AS milestone_name,
@@ -738,6 +982,7 @@ export async function getOverdueTrackingEntries(): Promise<{ success: true; data
                 FROM pms.team_tracking_entries t
                 INNER JOIN pms.projects p ON p.id = t.project_id
                 LEFT JOIN pms.employees e ON e.id = t.assignee_id
+                LEFT JOIN pms.employees cu ON cu.id = t.created_by
                 LEFT JOIN pms.project_milestones pm ON pm.id = t.milestone_id
                 LEFT JOIN pms.milestone_configs mc ON mc.id = pm.milestone_config_id
                 WHERE t.is_active = 1
@@ -757,6 +1002,7 @@ export async function getOverdueTrackingEntries(): Promise<{ success: true; data
                 : String(r.entry_date),
             assignee_id: r.assignee_id,
             assignee_name: r.assignee_name,
+            created_by_name: r.created_by_name || 'ไม่ระบุ',
             note: r.note || '',
             status: r.status,
             milestone_name: r.milestone_name,
