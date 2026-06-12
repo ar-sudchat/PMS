@@ -593,22 +593,23 @@ export function GanttOverviewBoard() {
                             <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
-                    {/* "งานยังไม่ระบุวัน" — opens a pane to schedule action-plan templates.
-                        Shows a red badge with the count so it's hard to miss. */}
+                    {/* "งานค้าง" — re-opens the overdue popup so the PM can review at any time
+                        (the popup also auto-opens on page load when there are items). */}
                     <button
-                        onClick={() => setUnscheduledOpen(true)}
+                        onClick={() => setOverdueOpen(true)}
+                        disabled={overdueItems.length === 0}
                         className={cn(
                             "px-2.5 py-1.5 text-[11px] font-semibold rounded-lg inline-flex items-center gap-1.5 border",
-                            unscheduledCount > 0
+                            overdueItems.length > 0
                                 ? "text-red-700 border-red-300 bg-red-50 hover:bg-red-100 animate-pulse"
-                                : "text-slate-500 border-slate-200 bg-white hover:bg-slate-50",
+                                : "text-slate-400 border-slate-200 bg-white cursor-not-allowed",
                         )}
-                        title="งานที่ยังไม่ได้กำหนดวันที่ (action plan รอกระจาย)"
+                        title="แสดงงานที่ยังค้าง / ค้างก่อนวันนี้"
                     >
-                        📌 งานยังไม่ระบุวัน
-                        {unscheduledCount > 0 && (
+                        ⚠️ งานค้าง
+                        {overdueItems.length > 0 && (
                             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold text-white bg-red-600">
-                                {unscheduledCount}
+                                {overdueItems.length}
                             </span>
                         )}
                     </button>
@@ -992,6 +993,13 @@ export function GanttOverviewBoard() {
                 onOpenItem={(it) => {
                     setOverdueOpen(false)
                     handleCellClick(it.project_id, it.entry_date, it.id)
+                }}
+                onLogTime={async (taskId) => {
+                    // Don't close the overdue popup — open log-time modal on top.
+                    const t = await getTaskDetail(taskId)
+                    if (!t) { alert('ไม่พบ Task'); return }
+                    setLogTimeTask(t)
+                    setLogTimeOpen(true)
                 }}
             />
 

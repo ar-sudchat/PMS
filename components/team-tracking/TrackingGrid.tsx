@@ -874,7 +874,20 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                             {cellEntries.length > 0 && (
                                                                 <div className="flex items-center justify-center">
                                                                     {cellEntries.length === 1 ? (
-                                                                        <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                        // If the linked task has any logged hours,
+                                                                        // swap the default red mark for a green checkmark
+                                                                        // so the user can see at a glance what's already
+                                                                        // been worked on.
+                                                                        cellEntries[0].entry.task_id && (cellEntries[0].entry.task_actual_hours ?? 0) > 0 ? (
+                                                                            <CheckCircle2
+                                                                                className="w-4 h-4 text-emerald-600"
+                                                                                strokeWidth={2.5}
+                                                                                aria-label={`Logged ${cellEntries[0].entry.task_actual_hours}h`}
+                                                                            >
+                                                                            </CheckCircle2>
+                                                                        ) : (
+                                                                            <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                        )
                                                                     ) : (
                                                                         <span
                                                                             className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-md text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
