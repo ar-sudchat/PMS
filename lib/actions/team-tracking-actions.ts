@@ -54,6 +54,9 @@ export interface TrackingEntry {
      *  grid (no log = red dot, has log = green clock). */
     task_actual_hours?: number | null
     task_estimated_hours?: number | null
+    /** Task status — used to hide finished tasks from the daily grid via the
+     *  "ซ่อนงานเสร็จ" toggle. */
+    task_status?: string | null
     created_by: string
     created_at: string
     updated_at: string
@@ -220,6 +223,7 @@ export async function getTeamTrackingData(
                         tk.task_code,
                         tk.actual_hours AS task_actual_hours,
                         tk.estimated_hours AS task_estimated_hours,
+                        tk.[status] AS task_status,
                         t.created_by,
                         CONVERT(varchar(19), t.created_at, 126) AS created_at,
                         CONVERT(varchar(19), t.updated_at, 126) AS updated_at
