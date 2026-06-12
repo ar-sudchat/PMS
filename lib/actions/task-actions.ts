@@ -758,9 +758,18 @@ export async function deleteTask(taskId: string) {
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`SELECT p.id AS project_id FROM pms.tasks t INNER JOIN pms.stories s ON t.story_id = s.id INNER JOIN pms.projects p ON s.project_id = p.id WHERE t.id = @taskId`)
 
+        // Soft-delete the task
         await pool.request()
             .input('taskId', sql.UniqueIdentifier, taskId)
             .query(`UPDATE pms.tasks SET [is_active] = 0, updated_at = GETDATE() WHERE id = @taskId`)
+
+        // Cascade: also soft-delete tracking entries linked to this task.
+        // This keeps /projects/gantt-overview daily grid in sync — deleting a task
+        // from /my-projects, /projects/resource-planning, or any other surface that
+        // calls deleteTask will remove the mirrored activity from the daily grid.
+        await pool.request()
+            .input('taskId', sql.UniqueIdentifier, taskId)
+            .query(`UPDATE pms.team_tracking_entries SET is_active = 0, updated_at = GETDATE() WHERE task_id = @taskId AND is_active = 1`)
 
         if (taskResult.recordset[0]) {
             revalidatePath(`/projects/${taskResult.recordset[0].project_id}`)

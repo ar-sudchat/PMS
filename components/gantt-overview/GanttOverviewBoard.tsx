@@ -1049,18 +1049,24 @@ export function GanttOverviewBoard() {
                     headerTitle="แปลงกิจกรรม → Task"
                     initialRows={bulkConvertCtx.initialRows}
                     onTasksCreated={async (taskIds) => {
-                        // Two flows:
-                        //  1) Bulk convert FROM tracking — link new tasks to their source entries.
-                        //  2) Pure "สร้าง Task" mode (no sources) — create tracking entries for
-                        //     each new task so they surface on the daily grid as well.
+                        // `createTasksBulk` already auto-mirrors each new task into a
+                        // tracking entry, so we don't call createTrackingEntriesForTasks
+                        // here anymore — calling it would duplicate.
+                        //
+                        // For the bulk-convert path (sourceIds set): link the OLD source
+                        // entries to the new tasks AND delete the auto-mirrored duplicates
+                        // (the auto-mirrors are the freshest entries with task_id set but
+                        // a different id than any of our sourceIds).
                         if (bulkConvertCtx.sourceIds.length > 0) {
                             const pairs = taskIds.map((tid, i) => ({
                                 trackingId: bulkConvertCtx.sourceIds[i],
                                 taskId: tid,
                             })).filter(p => p.trackingId)
+                            // Delete auto-mirrored entries first (those with task_id set but
+                            // id NOT in our sourceIds) so the link-back doesn't leave dupes.
+                            const { deleteAutoMirroredEntries } = await import('@/lib/actions/team-tracking-actions')
+                            await deleteAutoMirroredEntries(taskIds, bulkConvertCtx.sourceIds)
                             await linkTrackingEntriesToTasks(pairs)
-                        } else {
-                            await createTrackingEntriesForTasks(taskIds)
                         }
                         load()
                         refreshUnscheduledCount()

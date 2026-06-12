@@ -634,6 +634,12 @@ export async function deleteTask(id: string) {
             SET is_active = 0, updated_at = GETDATE()
             WHERE id = @id
         `)
+        // Cascade — soft-delete the mirrored tracking entry on the daily grid.
+        await pool.request().input('id', id).query(`
+            UPDATE pms.team_tracking_entries
+            SET is_active = 0, updated_at = GETDATE()
+            WHERE task_id = @id AND is_active = 1
+        `)
         return { success: true }
     } catch (error) {
         console.error('deleteTask error:', error)

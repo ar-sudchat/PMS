@@ -716,6 +716,32 @@ export async function createTrackingEntriesForTasks(taskIds: string[]) {
     }
 }
 
+// Remove tracking entries that were auto-mirrored by createTasksBulk when we already
+// have source entries (e.g. the bulk-convert flow). Identifies them by `task_id IN
+// taskIds AND id NOT IN preserveIds`. Soft-deletes only.
+export async function deleteAutoMirroredEntries(taskIds: string[], preserveIds: string[]) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        if (!taskIds.length) return { success: true, removed: 0 }
+        const pool = await getConnection()
+        const taskPlaceholders = taskIds.map((_, i) => `@tk${i}`).join(',')
+        const preservePlaceholders = preserveIds.length
+            ? preserveIds.map((_, i) => `@p${i}`).join(',')
+            : null
+        const req = pool.request()
+        taskIds.forEach((id, i) => req.input(`tk${i}`, sql.UniqueIdentifier, id))
+        preserveIds.forEach((id, i) => req.input(`p${i}`, sql.UniqueIdentifier, id))
+        const where = preservePlaceholders
+            ? `task_id IN (${taskPlaceholders}) AND id NOT IN (${preservePlaceholders}) AND is_active = 1`
+            : `task_id IN (${taskPlaceholders}) AND is_active = 1`
+        const r = await req.query(`UPDATE pms.team_tracking_entries SET is_active = 0, updated_at = GETDATE() WHERE ${where}`)
+        return { success: true, removed: r.rowsAffected[0] }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
 // Link a list of new task ids back to a parallel list of tracking entry ids
 // (positionally matched — caller is responsible for keeping arrays aligned).
 export async function linkTrackingEntriesToTasks(pairs: { trackingId: string; taskId: string }[]) {

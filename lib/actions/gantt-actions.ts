@@ -418,6 +418,10 @@ export async function deleteStory(storyId: string): Promise<{ success: boolean; 
         await pool.request()
             .input('storyId', sql.UniqueIdentifier, cleanId)
             .query(`
+        -- Cascade tracking-entry soft-delete first (before tasks lose their is_active flag)
+        UPDATE pms.team_tracking_entries
+        SET is_active = 0, updated_at = GETDATE()
+        WHERE task_id IN (SELECT id FROM pms.tasks WHERE story_id = @storyId) AND is_active = 1;
         UPDATE pms.tasks SET is_active = 0, updated_at = GETDATE() WHERE story_id = @storyId;
         UPDATE pms.stories SET is_active = 0, updated_at = GETDATE() WHERE id = @storyId;
       `)
@@ -438,6 +442,11 @@ export async function deleteTask(taskId: string): Promise<{ success: boolean; er
         await pool.request()
             .input('taskId', sql.UniqueIdentifier, cleanId)
             .query(`UPDATE pms.tasks SET is_active = 0, updated_at = GETDATE() WHERE id = @taskId`)
+
+        // Cascade — soft-delete linked tracking entries so the gantt-overview daily grid stays in sync.
+        await pool.request()
+            .input('taskId', sql.UniqueIdentifier, cleanId)
+            .query(`UPDATE pms.team_tracking_entries SET is_active = 0, updated_at = GETDATE() WHERE task_id = @taskId AND is_active = 1`)
 
         revalidatePath('/my-projects')
         return { success: true }
