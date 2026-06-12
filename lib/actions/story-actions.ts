@@ -434,6 +434,10 @@ export async function deleteStory(id: string) {
     await pool.request()
       .input('id', sql.UniqueIdentifier, id)
       .query(`
+        -- Cascade tracking-entry soft-delete first (before tasks lose their is_active flag)
+        UPDATE pms.team_tracking_entries
+        SET is_active = 0, updated_at = GETDATE()
+        WHERE task_id IN (SELECT id FROM pms.tasks WHERE story_id = @id) AND is_active = 1;
         UPDATE pms.tasks SET is_active = 0, updated_at = GETDATE() WHERE story_id = @id;
         UPDATE pms.stories SET is_active = 0, updated_at = GETDATE() WHERE id = @id;
       `)

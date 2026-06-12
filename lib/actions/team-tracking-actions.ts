@@ -50,6 +50,13 @@ export interface TrackingEntry {
     task_id?: string | null
     /** task_code of the linked task — surfaced so the daily grid can show it inline. */
     task_code?: string | null
+    /** Hours already logged against the linked task — drives the icon swap on the daily
+     *  grid (no log = red dot, has log = green clock). */
+    task_actual_hours?: number | null
+    task_estimated_hours?: number | null
+    /** Task status — used to hide finished tasks from the daily grid via the
+     *  "ซ่อนงานเสร็จ" toggle. */
+    task_status?: string | null
     created_by: string
     created_at: string
     updated_at: string
@@ -214,6 +221,9 @@ export async function getTeamTrackingData(
                         mc.color AS milestone_color,
                         t.task_id,
                         tk.task_code,
+                        tk.actual_hours AS task_actual_hours,
+                        tk.estimated_hours AS task_estimated_hours,
+                        tk.[status] AS task_status,
                         t.created_by,
                         CONVERT(varchar(19), t.created_at, 126) AS created_at,
                         CONVERT(varchar(19), t.updated_at, 126) AS updated_at
@@ -716,6 +726,32 @@ export async function createTrackingEntriesForTasks(taskIds: string[]) {
     }
 }
 
+// Remove tracking entries that were auto-mirrored by createTasksBulk when we already
+// have source entries (e.g. the bulk-convert flow). Identifies them by `task_id IN
+// taskIds AND id NOT IN preserveIds`. Soft-deletes only.
+export async function deleteAutoMirroredEntries(taskIds: string[], preserveIds: string[]) {
+    try {
+        const user = await getCurrentUser()
+        if (!user) return { success: false, error: 'Unauthorized' }
+        if (!taskIds.length) return { success: true, removed: 0 }
+        const pool = await getConnection()
+        const taskPlaceholders = taskIds.map((_, i) => `@tk${i}`).join(',')
+        const preservePlaceholders = preserveIds.length
+            ? preserveIds.map((_, i) => `@p${i}`).join(',')
+            : null
+        const req = pool.request()
+        taskIds.forEach((id, i) => req.input(`tk${i}`, sql.UniqueIdentifier, id))
+        preserveIds.forEach((id, i) => req.input(`p${i}`, sql.UniqueIdentifier, id))
+        const where = preservePlaceholders
+            ? `task_id IN (${taskPlaceholders}) AND id NOT IN (${preservePlaceholders}) AND is_active = 1`
+            : `task_id IN (${taskPlaceholders}) AND is_active = 1`
+        const r = await req.query(`UPDATE pms.team_tracking_entries SET is_active = 0, updated_at = GETDATE() WHERE ${where}`)
+        return { success: true, removed: r.rowsAffected[0] }
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed' }
+    }
+}
+
 // Link a list of new task ids back to a parallel list of tracking entry ids
 // (positionally matched — caller is responsible for keeping arrays aligned).
 export async function linkTrackingEntriesToTasks(pairs: { trackingId: string; taskId: string }[]) {
@@ -953,6 +989,10 @@ export interface OverdueEntry {
     milestone_name: string | null
     milestone_color: string | null
     days_overdue: number
+    /** When set, the entry is linked to a Task in /timesheet — the UI shows a
+     *  shortcut button to open the task detail / log time. */
+    task_id: string | null
+    task_code: string | null
 }
 
 export async function getOverdueTrackingEntries(): Promise<{ success: true; data: OverdueEntry[] } | { success: false; error: string }> {
@@ -978,9 +1018,12 @@ export async function getOverdueTrackingEntries(): Promise<{ success: true; data
                     t.status,
                     mc.name AS milestone_name,
                     mc.color AS milestone_color,
-                    DATEDIFF(day, t.entry_date, @today) AS days_overdue
+                    DATEDIFF(day, t.entry_date, @today) AS days_overdue,
+                    t.task_id,
+                    tk.task_code
                 FROM pms.team_tracking_entries t
                 INNER JOIN pms.projects p ON p.id = t.project_id
+                LEFT JOIN pms.tasks tk ON tk.id = t.task_id
                 LEFT JOIN pms.employees e ON e.id = t.assignee_id
                 LEFT JOIN pms.employees cu ON cu.id = t.created_by
                 LEFT JOIN pms.project_milestones pm ON pm.id = t.milestone_id
@@ -989,6 +1032,27 @@ export async function getOverdueTrackingEntries(): Promise<{ success: true; data
                   AND t.entry_date < @today
                   AND t.status <> 'DONE'
                   AND NOT (t.status = 'POSTPONED' AND t.postponed_date >= @today)
+                  -- If the entry is linked to a Task, the Task must still exist (is_active = 1).
+                  -- Entries pointing at deleted tasks shouldn't bother the PM anymore.
+                  AND (
+                      t.task_id IS NULL
+                      OR EXISTS (
+                          SELECT 1 FROM pms.tasks tk
+                          WHERE tk.id = t.task_id AND tk.is_active = 1
+                      )
+                  )
+                  -- Filter out task-linked entries whose Task is already wrapped up
+                  -- (status done/done_not_planned/cancelled OR fully time-logged).
+                  AND NOT EXISTS (
+                      SELECT 1 FROM pms.tasks tk
+                      WHERE tk.id = t.task_id
+                        AND tk.is_active = 1
+                        AND (
+                            tk.status IN ('done', 'done_not_planned', 'cancelled')
+                            OR (tk.estimated_hours IS NOT NULL AND tk.estimated_hours > 0
+                                AND tk.actual_hours >= tk.estimated_hours)
+                        )
+                  )
                 ORDER BY t.entry_date ASC, p.project_code, t.created_at
             `)
 
@@ -1008,6 +1072,8 @@ export async function getOverdueTrackingEntries(): Promise<{ success: true; data
             milestone_name: r.milestone_name,
             milestone_color: r.milestone_color,
             days_overdue: r.days_overdue,
+            task_id: r.task_id || null,
+            task_code: r.task_code || null,
         }))
         return { success: true, data }
     } catch (error) {

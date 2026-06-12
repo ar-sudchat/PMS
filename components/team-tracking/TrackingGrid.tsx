@@ -355,6 +355,10 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
             milestoneName: string | null;
             taskCode: string | null;
             taskId: string | null;
+            /** True when the linked Task in /timesheet is wrapped up — used by the
+             *  "ซ่อนงานเสร็จ" filter to also hide finished tasks, not only activities
+             *  whose every entry is marked DONE on the tracking side. */
+            taskDone: boolean;
         }>>()
         for (const e of entries) {
             const clean = summariseNote(e.note || '', 9999)  // full cleaned text for the key
@@ -371,6 +375,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                     milestoneName: null,
                     taskCode: null,
                     taskId: null,
+                    taskDone: false,
                 })
             }
             const slot = inner.get(noteKey)!
@@ -386,6 +391,14 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
             }
             if (!slot.taskId && e.task_id) {
                 slot.taskId = e.task_id
+            }
+            if (!slot.taskDone && e.task_id) {
+                // Task is considered "done" when status is terminal OR when log time
+                // fully covers the estimate.
+                const terminal = e.task_status === 'done' || e.task_status === 'done_not_planned' || e.task_status === 'cancelled'
+                const fullyLogged = (e.task_estimated_hours ?? 0) > 0
+                    && (e.task_actual_hours ?? 0) >= (e.task_estimated_hours ?? 0)
+                if (terminal || fullyLogged) slot.taskDone = true
             }
         }
         return map
@@ -496,7 +509,7 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                             const assignees = assigneesByProject.get(p.id)
                             const assigneeList = assignees ? Array.from(assignees.values()) : []
                             const tasks = tasksByProject.get(p.id)
-                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount, milestoneColor: v.milestoneColor, milestoneName: v.milestoneName, taskCode: v.taskCode, taskId: v.taskId })) : []
+                            const rawTaskList = tasks ? Array.from(tasks.entries()).map(([key, v]) => ({ key, display: v.display, assignees: v.assignees, total: v.total, doneCount: v.doneCount, milestoneColor: v.milestoneColor, milestoneName: v.milestoneName, taskCode: v.taskCode, taskId: v.taskId, taskDone: v.taskDone })) : []
                             // Sort by first assignee name (Thai collation) so each person's
                             // tasks group together — user requested this for scan-ability.
                             // Tasks without an assignee sort last.
@@ -505,8 +518,11 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                 const bName = b.assignees.size ? Array.from(b.assignees).sort()[0] : '~~'
                                 return aName.localeCompare(bName, 'th')
                             })
+                            // Hide both kinds of "done":
+                            //   • activity-only (every tracking entry status === DONE)
+                            //   • Task in /timesheet wrapped up (status terminal OR fully time-logged)
                             const taskList = hideCompletedTasks
-                                ? rawTaskList.filter(t => t.doneCount < t.total)  // hide tasks where every entry is DONE
+                                ? rawTaskList.filter(t => !(t.doneCount >= t.total && t.total > 0) && !t.taskDone)
                                 : rawTaskList
                             const subRowCount = subRowMode === 'task' ? taskList.length : assigneeList.length
  
@@ -874,7 +890,20 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
                                                             {cellEntries.length > 0 && (
                                                                 <div className="flex items-center justify-center">
                                                                     {cellEntries.length === 1 ? (
-                                                                        <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                        // If the linked task has any logged hours,
+                                                                        // swap the default red mark for a green checkmark
+                                                                        // so the user can see at a glance what's already
+                                                                        // been worked on.
+                                                                        cellEntries[0].entry.task_id && (cellEntries[0].entry.task_actual_hours ?? 0) > 0 ? (
+                                                                            <CheckCircle2
+                                                                                className="w-4 h-4 text-emerald-600"
+                                                                                strokeWidth={2.5}
+                                                                                aria-label={`Logged ${cellEntries[0].entry.task_actual_hours}h`}
+                                                                            >
+                                                                            </CheckCircle2>
+                                                                        ) : (
+                                                                            <EntryMark cell={cellEntries[0]} size="sm" />
+                                                                        )
                                                                     ) : (
                                                                         <span
                                                                             className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-md text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 shadow-sm"
