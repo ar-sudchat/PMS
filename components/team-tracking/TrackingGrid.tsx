@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils'
 //   - 'own'      : entry lives at this date (its current/active home)
 //   - 'incoming' : was postponed here from another date
 //   - 'departed' : originally planned here but moved (postponed or done elsewhere)
-type CellEntryKind = 'own' | 'incoming' | 'departed'
-interface CellEntry {
+export type CellEntryKind = 'own' | 'incoming' | 'departed'
+export interface CellEntry {
     entry: TrackingEntry
     kind: CellEntryKind
 }
@@ -19,7 +19,7 @@ interface CellEntry {
 type SortKey = 'project_code' | 'name' | 'customer_name' | 'project_type_code' | 'owner_name'
 type SortDir = 'asc' | 'desc' | null
 
-interface Project {
+export interface Project {
     id: string
     project_code: string
     name: string
@@ -85,7 +85,7 @@ function pad2(n: number): string {
 // Strip HTML tags + entities, collapse whitespace, truncate.
 // Notes pasted from Outlook arrive as `<div data-olk-copy-source="MessageBody" style="...">…</div>`;
 // the raw markup is unreadable in a one-line cell.
-function summariseNote(raw: string, max = 60): string {
+export function summariseNote(raw: string, max = 60): string {
     if (!raw) return ''
     // 1) drop tags  2) decode common entities  3) collapse whitespace
     const noTags = raw.replace(/<[^>]*>/g, ' ')
@@ -105,9 +105,69 @@ function isWeekend(year: number, month: number, day: number): boolean {
     return d === 0 || d === 6
 }
 
+// One column per day rendered by the grid. Shared with the employee-pivot grid.
+export interface GridDay {
+    day: number
+    date: string          // yyyy-MM-dd
+    weekend: boolean
+    monthShort?: string
+}
+
+// Build the day columns for the grid. If a start/end range is given, iterate that
+// range inclusively; otherwise fall back to the entire calendar month.
+export function buildDays(year: number, month: number, startDate?: string, endDate?: string): GridDay[] {
+    const arr: GridDay[] = []
+    if (startDate && endDate) {
+        const s = new Date(startDate)
+        const e = new Date(endDate)
+        const cur = new Date(s)
+        while (cur <= e) {
+            arr.push({
+                day: cur.getDate(),
+                date: `${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}-${pad2(cur.getDate())}`,
+                weekend: cur.getDay() === 0 || cur.getDay() === 6,
+                monthShort: THAI_MONTHS_SHORT[cur.getMonth()],
+            })
+            cur.setDate(cur.getDate() + 1)
+        }
+        return arr
+    }
+    const total = daysInMonth(year, month)
+    for (let d = 1; d <= total; d++) {
+        arr.push({
+            day: d,
+            date: `${year}-${pad2(month)}-${pad2(d)}`,
+            weekend: isWeekend(year, month, d),
+            monthShort: THAI_MONTHS_SHORT[month - 1],
+        })
+    }
+    return arr
+}
+
+// Map a single entry onto the day(s) it should render at, with the kind of mark.
+// Placement rules (one entry can appear at up to two days):
+//   - DONE + completed_date ≠ entry_date → 'own' at completed_date, 'departed' at entry_date
+//   - POSTPONED + postponed_date ≠ entry_date → 'own' at entry_date, 'incoming' at postponed_date
+//   - otherwise → 'own' at entry_date
+// Entries with no entry_date (unscheduled) produce no day marks.
+export function placeEntryOnDates(e: TrackingEntry): { date: string; kind: CellEntryKind }[] {
+    if (!e.entry_date) return []
+    const out: { date: string; kind: CellEntryKind }[] = []
+    if (e.status === 'DONE' && e.completed_date) {
+        out.push({ date: e.completed_date, kind: 'own' })
+        if (e.completed_date !== e.entry_date) out.push({ date: e.entry_date, kind: 'departed' })
+        return out
+    }
+    out.push({ date: e.entry_date, kind: 'own' })
+    if (e.status === 'POSTPONED' && e.postponed_date && e.postponed_date !== e.entry_date) {
+        out.push({ date: e.postponed_date, kind: 'incoming' })
+    }
+    return out
+}
+
 // Render a single entry mark inside a cell. Used by both main rows and
 // expanded sub-rows so they look consistent.
-function EntryMark({ cell, size = 'sm' }: { cell: CellEntry; size?: 'sm' | 'md' }) {
+export function EntryMark({ cell, size = 'sm' }: { cell: CellEntry; size?: 'sm' | 'md' }) {
     const { entry, kind } = cell
     const sz = size === 'md' ? 'w-3.5 h-3.5' : 'w-3 h-3'
     const dotSz = size === 'md' ? 'w-2.5 h-2.5' : 'w-2 h-2'
@@ -176,7 +236,7 @@ function EntryMark({ cell, size = 'sm' }: { cell: CellEntry; size?: 'sm' | 'md' 
     )
 }
 
-function cellTooltip(cell: CellEntry): string {
+export function cellTooltip(cell: CellEntry): string {
     const { entry, kind } = cell
     const who = entry.assignee_name || 'ไม่ระบุ'
     if (kind === 'incoming') {
@@ -257,36 +317,10 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
         )
     }
 
-    const days = useMemo(() => {
-        const arr: { day: number; date: string; weekend: boolean; monthShort?: string }[] = []
-        // If a date range is provided, iterate from startDate to endDate (inclusive).
-        // Otherwise fall back to the entire calendar month.
-        if (startDate && endDate) {
-            const s = new Date(startDate)
-            const e = new Date(endDate)
-            const cur = new Date(s)
-            while (cur <= e) {
-                arr.push({
-                    day: cur.getDate(),
-                    date: `${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}-${pad2(cur.getDate())}`,
-                    weekend: cur.getDay() === 0 || cur.getDay() === 6,
-                    monthShort: THAI_MONTHS_SHORT[cur.getMonth()],
-                })
-                cur.setDate(cur.getDate() + 1)
-            }
-            return arr
-        }
-        const total = daysInMonth(year, month)
-        for (let d = 1; d <= total; d++) {
-            arr.push({
-                day: d,
-                date: `${year}-${pad2(month)}-${pad2(d)}`,
-                weekend: isWeekend(year, month, d),
-                monthShort: THAI_MONTHS_SHORT[month - 1],
-            })
-        }
-        return arr
-    }, [year, month, startDate, endDate])
+    const days = useMemo(
+        () => buildDays(year, month, startDate, endDate),
+        [year, month, startDate, endDate],
+    )
 
     // Group entries: projectId -> date -> CellEntry[]
     //
@@ -307,18 +341,10 @@ export function TrackingGrid({ projects, entries, year, month, onCellClick, isLo
             if (!inner.has(date)) inner.set(date, [])
             inner.get(date)!.push(cellEntry)
         }
+        // Entries with no entry_date produce no placements (tasksByProject still includes them).
         for (const e of entries) {
-            if (!e.entry_date) continue   // skip the per-DAY map only; tasksByProject still includes these
-            if (e.status === 'DONE' && e.completed_date) {
-                push(e.project_id, e.completed_date, { entry: e, kind: 'own' })
-                if (e.completed_date !== e.entry_date) {
-                    push(e.project_id, e.entry_date, { entry: e, kind: 'departed' })
-                }
-                continue
-            }
-            push(e.project_id, e.entry_date, { entry: e, kind: 'own' })
-            if (e.status === 'POSTPONED' && e.postponed_date && e.postponed_date !== e.entry_date) {
-                push(e.project_id, e.postponed_date, { entry: e, kind: 'incoming' })
+            for (const { date, kind } of placeEntryOnDates(e)) {
+                push(e.project_id, date, { entry: e, kind })
             }
         }
         return map

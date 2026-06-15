@@ -126,6 +126,9 @@ export interface GanttProjectRow {
     close_milestone_id: string | null
     close_due_date: string | null
     close_progress: number | null
+    /** MAPPING + SYSTEMTEST milestone due dates — used by the Excel export. */
+    mapping_due_date?: string | null
+    systemtest_due_date?: string | null
 }
 
 export interface GanttMilestoneNode {
@@ -299,6 +302,8 @@ export async function getProjectsForGantt(
                 pm_cl.id           AS close_milestone_id,
                 pm_cl.due_date     AS close_due_date,
                 pm_cl.progress_percent  AS close_progress,
+                pm_mp.due_date     AS mapping_due_date,
+                pm_st.due_date     AS systemtest_due_date,
                 ma.earliest_ms_due,
                 ma.latest_ms_due,
                 ma.avg_progress,
@@ -321,6 +326,11 @@ export async function getProjectsForGantt(
             LEFT JOIN pms.project_milestones  pm_gl  ON pm_gl.project_id  = p.id AND pm_gl.milestone_config_id  = mc_gl.id
             LEFT JOIN pms.milestone_configs   mc_cl  ON mc_cl.code  = 'CLOSEGOLIVE'
             LEFT JOIN pms.project_milestones  pm_cl  ON pm_cl.project_id  = p.id AND pm_cl.milestone_config_id  = mc_cl.id
+            -- Extra milestones for Excel export: MAPPING + SYSTEMTEST
+            LEFT JOIN pms.milestone_configs   mc_mp  ON mc_mp.code  = 'MAPPING'
+            LEFT JOIN pms.project_milestones  pm_mp  ON pm_mp.project_id  = p.id AND pm_mp.milestone_config_id  = mc_mp.id
+            LEFT JOIN pms.milestone_configs   mc_st  ON mc_st.code  = 'SYSTEMTEST'
+            LEFT JOIN pms.project_milestones  pm_st  ON pm_st.project_id  = p.id AND pm_st.milestone_config_id  = mc_st.id
             LEFT JOIN ms_agg ma ON ma.project_id = p.id
             WHERE ${where.join(' AND ')}
             ORDER BY ma.earliest_ms_due ASC, p.project_code ASC
@@ -362,6 +372,8 @@ export async function getProjectsForGantt(
                 close_milestone_id:  row.close_milestone_id || null,
                 close_due_date:      toISODate(row.close_due_date),
                 close_progress:      row.close_progress == null ? null : Math.round(Number(row.close_progress)),
+                mapping_due_date:    toISODate(row.mapping_due_date),
+                systemtest_due_date: toISODate(row.systemtest_due_date),
             }
         })
         // Compute overall span from returned rows (auto-fit window)

@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronLeft, ChevronRight, Search, RefreshCw, GanttChart, CalendarDays, ListTodo } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, RefreshCw, GanttChart, CalendarDays, ListTodo, FolderKanban, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SmartCombobox } from '@/components/shared/SmartCombobox'
 import {
@@ -12,6 +12,7 @@ import {
     type AssigneeBucket,
 } from '@/lib/actions/gantt-overview-actions'
 import { TasksByAssigneeView } from './TasksByAssigneeView'
+import { TrackingGridByEmployee } from '@/components/team-tracking/TrackingGridByEmployee'
 import { getProjectFilterOptions, getProjectById, type ProjectFilters } from '@/lib/actions/project-actions'
 import { ProjectModal } from '@/components/modals/ProjectModal'
 import {
@@ -33,6 +34,7 @@ import { updateMilestoneProgress } from '@/lib/actions/kpi-actions'
 type EmployeeOpt = { id: string; name: string; name_th: string }
 import { TrackingGrid } from '@/components/team-tracking/TrackingGrid'
 import { TrackingCellDialog } from '@/components/team-tracking/TrackingCellDialog'
+import * as XLSX from 'xlsx'
 import { OverdueWorkDialog } from './OverdueWorkDialog'
 import { UnscheduledPane } from './UnscheduledPane'
 import { BulkTaskModal } from '@/components/modals/BulkTaskModal'
@@ -42,7 +44,7 @@ import { MyTask, getTaskDetail, updateTaskStatus as myTasksUpdateStatus } from '
 import {
     getOverdueTrackingEntries, OverdueEntry,
     getConvertibleEntriesForProject, getOrCreateGeneralStory, linkTrackingEntriesToTasks,
-    createTrackingEntriesForTasks,
+    createTrackingEntriesForTasks, deleteTrackingEntry,
 } from '@/lib/actions/team-tracking-actions'
 import { ProjectDetailPopup } from './ProjectDetailPopup'
 import {
@@ -106,8 +108,13 @@ export function GanttOverviewBoard() {
         return new Date(now.getFullYear(), now.getMonth(), 1)
     })
     const monthsInWindow = view === 'daily' ? 1 : 3
+    // Top-level pivot for the daily view:
+    //   - "project"  : projects on top (default) → assignee/task sub-rows
+    //   - "employee" : พนักงาน on top → โครงการ → กิจกรรม/task underneath
+    const [dailyPivot, setDailyPivot] = React.useState<'project' | 'employee'>('project')
     // Sub-row grouping mode for the daily view — "assignee" or "task". Default "task"
     // because the per-task view is the one users land on most for daily triage.
+    // Only applies to the "project" pivot.
     const [dailySubRowMode, setDailySubRowMode] = React.useState<'assignee' | 'task'>('task')
     // In task mode, optionally hide tasks where every entry has status === 'DONE'.
     // Default: hidden — completed tasks rarely need a follow-up; user can uncheck to see them.
@@ -418,6 +425,64 @@ export function GanttOverviewBoard() {
         return arr
     }, [filteredRows, sortKey, sortDir])
 
+    // Export the current sortedRows to Excel. Columns match the format the user
+    // shared (No / Year / Code / Project Name / Type / Current Milestone /
+    // Due: MAPPING / SYSTEMTEST / UAT / GOLIVE / Close).
+    // Code + Project Name are clickable hyperlinks back to localhost /projects/{id}.
+    const exportExcel = React.useCallback(() => {
+        const fmt = (iso: string | null | undefined) => {
+            if (!iso) return ''
+            const d = new Date(iso)
+            if (isNaN(d.getTime())) return ''
+            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+        }
+        // Use the runtime origin so the link still works on intranet servers.
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+
+        const data = sortedRows.map((r, i) => ({
+            'No': i + 1,
+            'Year': windowStart.getFullYear(),
+            'Code': r.project_code,
+            'Project Name': r.name_th || r.name || '',
+            'Customer': r.customer_name || '',
+            'Type': r.project_type_name || '',
+            'Current Milestone': r.current_milestone_name || '',
+            'Due: MAPPING': fmt(r.mapping_due_date),
+            'Due: SYSTEMTEST': fmt(r.systemtest_due_date),
+            'Due: UAT': fmt(r.uat_due_date),
+            'Due: GOLIVE': fmt(r.golive_due_date),
+            'Close': fmt(r.close_due_date),
+        }))
+        const ws = XLSX.utils.json_to_sheet(data)
+
+        // Attach hyperlinks to Code (col C) and Project Name (col D) cells,
+        // pointing at the project detail page. Excel renders these as blue links.
+        sortedRows.forEach((r, i) => {
+            const url = `${origin}/projects/${r.id}`
+            const rowNo = i + 2   // +1 for header, +1 because rows are 1-indexed
+            const codeCell = ws[XLSX.utils.encode_cell({ r: rowNo - 1, c: 2 })]
+            const nameCell = ws[XLSX.utils.encode_cell({ r: rowNo - 1, c: 3 })]
+            if (codeCell) {
+                codeCell.l = { Target: url, Tooltip: `เปิดโครงการ ${r.project_code}` }
+                codeCell.s = { font: { color: { rgb: '0563C1' }, underline: true } }
+            }
+            if (nameCell) {
+                nameCell.l = { Target: url, Tooltip: `เปิดโครงการ ${r.project_code}` }
+                nameCell.s = { font: { color: { rgb: '0563C1' }, underline: true } }
+            }
+        })
+
+        ws['!cols'] = [
+            { wch: 5 },  { wch: 6 },  { wch: 8 },  { wch: 55 }, { wch: 30 },
+            { wch: 10 }, { wch: 22 }, { wch: 13 }, { wch: 14 }, { wch: 12 },
+            { wch: 14 }, { wch: 12 },
+        ]
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Gantt Overview')
+        const yymd = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        XLSX.writeFile(wb, `gantt-overview-${yymd}.xlsx`)
+    }, [sortedRows, windowStart])
+
     // In Gantt mode we tack on a partial trailing month covering GANTT_TRAIL_DAYS
     // extra days past the last full month. Daily/Todo modes don't use this.
     const trail = view === 'gantt'
@@ -493,7 +558,11 @@ export function GanttOverviewBoard() {
                         ) : (
                             <>
                                 {' · '}<b>{view === 'daily' ? dailyProjects.length : filteredRows.length}</b> โครงการ
-                                {' · '}<span className="text-slate-400">{view === 'daily' ? 'มุมมองรายวัน' : 'มุมมอง Gantt'}</span>
+                                {' · '}<span className="text-slate-400">
+                                    {view === 'daily'
+                                        ? (dailyPivot === 'employee' ? 'มุมมองรายวัน · ตามพนักงาน' : 'มุมมองรายวัน · ตามโครงการ')
+                                        : 'มุมมอง Gantt'}
+                                </span>
                             </>
                         )}
                     </p>
@@ -542,8 +611,36 @@ export function GanttOverviewBoard() {
                         </button>
                     </div>
 
-                    {/* Daily-only: switch between "by assignee" (aggregated) and "by task" sub-rows */}
+                    {/* Daily-only: top-level pivot — projects on top vs. พนักงาน on top */}
                     {view === 'daily' && (
+                        <div className="flex items-center border rounded-lg overflow-hidden bg-white shadow-sm">
+                            <button
+                                onClick={() => setDailyPivot('project')}
+                                className={cn(
+                                    "flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold",
+                                    dailyPivot === 'project' ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50",
+                                )}
+                                title="มุมมองโครงการ: โครงการขึ้นก่อน"
+                            >
+                                <FolderKanban className="w-3.5 h-3.5" />
+                                ตามโครงการ
+                            </button>
+                            <button
+                                onClick={() => setDailyPivot('employee')}
+                                className={cn(
+                                    "flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold border-l border-slate-200",
+                                    dailyPivot === 'employee' ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50",
+                                )}
+                                title="มุมมองพนักงาน: พนักงานขึ้นก่อน → โครงการ → กิจกรรม/งาน"
+                            >
+                                <Users className="w-3.5 h-3.5" />
+                                ตามพนักงาน
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Daily + project pivot: switch between "by assignee" (aggregated) and "by task" sub-rows */}
+                    {view === 'daily' && dailyPivot === 'project' && (
                         <div className="flex items-center border rounded-lg overflow-hidden bg-white">
                             <button
                                 onClick={() => setDailySubRowMode('assignee')}
@@ -568,8 +665,8 @@ export function GanttOverviewBoard() {
                         </div>
                     )}
 
-                    {/* Hide completed tasks — only meaningful in task mode */}
-                    {view === 'daily' && dailySubRowMode === 'task' && (
+                    {/* Hide completed tasks — task mode (project pivot) or always in employee pivot */}
+                    {view === 'daily' && ((dailyPivot === 'project' && dailySubRowMode === 'task') || dailyPivot === 'employee') && (
                         <label className="inline-flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 border rounded-lg bg-white hover:bg-slate-50">
                             <input
                                 type="checkbox"
@@ -613,6 +710,17 @@ export function GanttOverviewBoard() {
                             </span>
                         )}
                     </button>
+                    {/* Excel export — disabled while in daily view (it's a Gantt-format export) */}
+                    {view !== 'todo' && (
+                        <button
+                            onClick={exportExcel}
+                            disabled={sortedRows.length === 0}
+                            className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="ส่งออกข้อมูลโครงการเป็น Excel"
+                        >
+                            📊 Excel
+                        </button>
+                    )}
                     <button onClick={load} className="p-1.5 hover:bg-slate-100 rounded-lg border text-slate-500">
                         <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
                     </button>
@@ -852,6 +960,37 @@ export function GanttOverviewBoard() {
                             }
                         }}
                     />
+                ) : view === 'daily' && dailyPivot === 'employee' ? (
+                    /* Daily view — พนักงาน pivot (employee → project → task) */
+                    <div className="p-1.5">
+                        <TrackingGridByEmployee
+                            projects={dailyProjects}
+                            entries={dailyEntries}
+                            year={windowStart.getFullYear()}
+                            month={windowStart.getMonth() + 1}
+                            startDate={(() => {
+                                const today = new Date()
+                                const sameMonth = windowStart.getFullYear() === today.getFullYear()
+                                    && windowStart.getMonth() === today.getMonth()
+                                if (sameMonth) {
+                                    const d = new Date(today); d.setDate(d.getDate() - 7)
+                                    return toISODate(d)
+                                }
+                                return toISODate(windowStart)
+                            })()}
+                            endDate={(() => {
+                                const e = new Date(lastOfMonth(windowStart))
+                                e.setDate(e.getDate() + DAILY_TRAIL_DAYS)
+                                return toISODate(e)
+                            })()}
+                            isLoading={loading && dailyProjects.length === 0}
+                            hideCompletedTasks={dailyHideDone}
+                            onCellClick={handleCellClick}
+                            onProjectClick={handleEditProject}
+                            onProjectNameClick={(pid) => setOpenProjectId(pid)}
+                            onTaskCodeClick={(taskId) => openTaskDetail(taskId)}
+                        />
+                    </div>
                 ) : view === 'daily' ? (
                     /* Daily view — reuse TrackingGrid from /team-tracking */
                     <div className="p-1.5">
@@ -1000,6 +1139,31 @@ export function GanttOverviewBoard() {
                     if (!t) { alert('ไม่พบ Task'); return }
                     setLogTimeTask(t)
                     setLogTimeOpen(true)
+                }}
+                onDelete={async (it) => {
+                    // Mirror the slide-bar (TrackingCellDialog) delete: if the entry is
+                    // linked to a Task, offer to cascade-delete the Task too.
+                    const hasTask = !!it.task_id
+                    if (hasTask) {
+                        const cascade = confirm(
+                            'งานนี้ผูกกับ Task ในระบบ Timesheet\n\n' +
+                            'กด OK = ลบทั้งกิจกรรม + Task (Task จะถูกซ่อนจาก /my-projects)\n' +
+                            'กด Cancel = ยกเลิก',
+                        )
+                        if (!cascade) return
+                    } else {
+                        if (!confirm('ลบงานนี้?')) return
+                    }
+                    const res = await deleteTrackingEntry(it.id)
+                    if (!res.success) { alert('ลบไม่สำเร็จ: ' + (res.error || '')); return }
+                    if (hasTask && it.task_id) {
+                        const { deleteTask } = await import('@/lib/actions/task-actions')
+                        const tr = await deleteTask(it.task_id)
+                        if (!tr.success) alert('ลบ Task ไม่สำเร็จ: ' + (tr.error || ''))
+                    }
+                    // Drop from the popup list locally + refresh the grid behind it.
+                    setOverdueItems(prev => prev.filter(o => o.id !== it.id))
+                    load()
                 }}
             />
 
