@@ -235,6 +235,16 @@ export async function getTeamTrackingData(
                     WHERE t.is_active = 1
                       AND t.project_id IN (${idParams})
                       AND t.entry_date BETWEEN @monthStart AND @monthEnd
+                      -- If linked to a Task, hide entries whose Task was cancelled or
+                      -- deleted so the daily grid stays aligned with /timesheet/my-tasks.
+                      AND (
+                          t.task_id IS NULL
+                          OR NOT EXISTS (
+                              SELECT 1 FROM pms.tasks tk
+                              WHERE tk.id = t.task_id
+                                AND (tk.is_active = 0 OR tk.[status] = 'cancelled')
+                          )
+                      )
                     ORDER BY t.entry_date, t.created_at
                 `)
                 entries = result.recordset as TrackingEntry[]

@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { AlertTriangle, X, ChevronRight, Clock } from 'lucide-react'
+import { AlertTriangle, X, ChevronRight, Clock, Trash2 } from 'lucide-react'
 import { OverdueEntry } from '@/lib/actions/team-tracking-actions'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,9 @@ interface Props {
      *  button that opens the timesheet log-time modal without closing the popup
      *  so the user can keep working through the list. */
     onLogTime?: (taskId: string) => void
+    /** When set, each row gets a 🗑 delete button. The host owns the confirm +
+     *  cascade (entry, and its linked Task when present) and removes the row. */
+    onDelete?: (item: OverdueEntry) => void
 }
 
 // Strip HTML + truncate the note for readability in the list.
@@ -43,7 +46,7 @@ const thaiDate = (iso: string) => {
  * are tracking entries from prior dates that aren't DONE. Lets the PM quickly chase
  * each one (click → opens the TrackingCellDialog focused on that entry).
  */
-export function OverdueWorkDialog({ open, items, onClose, onOpenItem, onLogTime }: Props) {
+export function OverdueWorkDialog({ open, items, onClose, onOpenItem, onLogTime, onDelete }: Props) {
     if (!open) return null
 
     // Filter by assignee (optional) then sort by days_overdue desc.
@@ -201,6 +204,29 @@ export function OverdueWorkDialog({ open, items, onClose, onOpenItem, onLogTime 
                                                 >
                                                     <Clock className="w-3 h-3" />
                                                     Log Time
+                                                </span>
+                                            )}
+                                            {/* Delete shortcut — removes the activity (and its linked Task
+                                                when present). stopPropagation so it doesn't open the slide. */}
+                                            {onDelete && (
+                                                <span
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        onDelete(it)
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.stopPropagation()
+                                                            onDelete(it)
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 shrink-0 mr-1 cursor-pointer"
+                                                    title="ลบงานนี้"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                    ลบ
                                                 </span>
                                             )}
                                             <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" />
