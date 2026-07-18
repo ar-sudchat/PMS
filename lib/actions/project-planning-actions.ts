@@ -3,6 +3,7 @@
 import sql from 'mssql'
 import { getConnection } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 // ============================================
 // Get current user info (safe for client component use)
@@ -209,7 +210,7 @@ export async function getProjectPlanningData(projectId: string): Promise<{
                     mc.sort_order,
                     pm.due_date,
                     pm.completed_date,
-                    ISNULL(pm.planned_mandays, 0) AS planned_mandays,
+                    ep.eff_plan AS planned_mandays,
                     ISNULL(pm.weight_percent, 0) AS weight_percent,
                     pm.status,
                     ISNULL(pm.is_locked, 0) AS is_locked,
@@ -225,6 +226,8 @@ export async function getProjectPlanningData(projectId: string): Promise<{
                      WHERE s.milestone_id = pm.id AND t.is_active = 1 AND t.status = 'done') AS completed_tasks
                 FROM pms.project_milestones pm
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                INNER JOIN pms.projects pr ON pr.id = pm.project_id
+                CROSS APPLY (SELECT ${effectivePlanMdSql('pr.sold_mandays', 'pm', 'mc')} AS eff_plan) ep
                 WHERE pm.project_id = @projectId
                 ORDER BY mc.sort_order
             `)

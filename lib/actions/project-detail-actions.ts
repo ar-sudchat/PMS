@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 // ============================================
 // TYPES
@@ -447,7 +448,7 @@ export async function getProjectMilestones(projectId: string) {
           mc.color AS milestone_color,
           pm.due_date,
           pm.weight_percent,
-          pm.planned_mandays,
+          ep.eff_plan AS planned_mandays,
 
           (SELECT ISNULL(SUM(te.hours), 0) / 7.0 FROM pms.timesheet_entries te
            INNER JOIN pms.tasks t ON te.task_id = t.id
@@ -462,6 +463,8 @@ export async function getProjectMilestones(projectId: string) {
           
         FROM pms.project_milestones pm
         INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+        INNER JOIN pms.projects pr ON pr.id = pm.project_id
+        CROSS APPLY (SELECT ${effectivePlanMdSql('pr.sold_mandays', 'pm', 'mc')} AS eff_plan) ep
         WHERE pm.project_id = @projectId
         ORDER BY mc.sort_order
       `)

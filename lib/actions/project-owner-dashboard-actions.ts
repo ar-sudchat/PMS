@@ -3,6 +3,7 @@
 import sql from 'mssql'
 import { getConnection } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 // ============================================
 // Types
@@ -419,7 +420,7 @@ export async function getProjectMilestones(projectId: string): Promise<Milestone
                     pm.status,
                     pm.due_date AS planned_date,
                     pm.completed_date AS actual_date,
-                    ISNULL(pm.planned_mandays, 0) AS planned_mandays,
+                    ep.eff_plan AS planned_mandays,
                     ISNULL(pm.actual_mandays, 0) AS actual_mandays,
                     pm.sort_order,
                     DATEDIFF(DAY, GETDATE(), pm.due_date) AS days_until_due,
@@ -433,6 +434,7 @@ export async function getProjectMilestones(projectId: string): Promise<Milestone
                 FROM pms.project_milestones pm
                 INNER JOIN pms.projects p ON pm.project_id = p.id
                 LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                CROSS APPLY (SELECT ${effectivePlanMdSql('p.sold_mandays', 'pm', 'mc')} AS eff_plan) ep
                 WHERE pm.project_id = @project_id
                 ORDER BY pm.sort_order, pm.due_date
             `)
@@ -1020,7 +1022,7 @@ async function getOwnerProjectsWithMilestonesFiltered(
                 m.status AS status,
                 m.due_date AS due_date,
                 m.completed_date AS completed_date,
-                ISNULL(m.planned_mandays, 0) AS planned_mandays,
+                ep.eff_plan AS planned_mandays,
                 ISNULL(m.actual_mandays, 0) AS actual_mandays,
                 ISNULL(m.progress_percent, 0) AS progress_percent,
                 CASE WHEN m.status != 'completed' THEN DATEDIFF(day, GETDATE(), m.due_date) ELSE 0 END AS days_until_due,
@@ -1028,6 +1030,8 @@ async function getOwnerProjectsWithMilestonesFiltered(
                 ISNULL(m.sort_order, 0) AS sort_order
             FROM pms.project_milestones m
             LEFT JOIN pms.milestone_configs mc ON m.milestone_config_id = mc.id
+            INNER JOIN pms.projects p ON p.id = m.project_id
+            CROSS APPLY (SELECT ${effectivePlanMdSql('p.sold_mandays', 'm', 'mc')} AS eff_plan) ep
             WHERE m.project_id IN ('${projectIds.join("','")}')
             ORDER BY m.project_id, m.sort_order
         `)
