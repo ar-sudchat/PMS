@@ -3,6 +3,7 @@
 import { getConnection } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { getProjects, ProjectFilters } from '@/lib/actions/project-actions'
+import { resolveProjectMilestoneId } from '@/lib/actions/milestone-resolve'
 import sql from 'mssql'
 
 // Cached column-existence flags so the page works even if a migration
@@ -340,6 +341,10 @@ export async function createTrackingEntry(input: CreateTrackingEntryInput) {
         const pool = await getConnection()
         const flags = await checkOptionalCols(pool)
 
+        // Enforce milestone: default to the project's current milestone when unset,
+        // so this man-day entry is always attributable to a milestone.
+        const milestoneId = await resolveProjectMilestoneId(pool, input.project_id, input.milestone_id)
+
         const request = pool.request()
         request.input('project_id', sql.UniqueIdentifier, input.project_id)
         request.input('entry_date', sql.Date, input.entry_date || null)
@@ -348,7 +353,7 @@ export async function createTrackingEntry(input: CreateTrackingEntryInput) {
         request.input('note', sql.NVarChar(sql.MAX), input.note || null)
         request.input('color', sql.NVarChar(50), input.color || null)
         request.input('color_source', sql.NVarChar(20), input.color_source || 'MANUAL')
-        request.input('milestone_id', sql.UniqueIdentifier, input.milestone_id || null)
+        request.input('milestone_id', sql.UniqueIdentifier, milestoneId)
         request.input('created_by', sql.UniqueIdentifier, user.id)
         if (flags.icon) request.input('icon', sql.NVarChar(50), input.icon || null)
         if (flags.status) {
@@ -392,6 +397,16 @@ export async function updateTrackingEntry(id: string, patch: UpdateTrackingEntry
         const pool = await getConnection()
         const flags = await checkOptionalCols(pool)
 
+        // Enforce milestone on edit too: never let an update null it out. Keep the
+        // existing milestone (or default to the project's current) when unspecified.
+        const existing = await pool.request()
+            .input('id', sql.UniqueIdentifier, id)
+            .query(`SELECT project_id, milestone_id FROM pms.team_tracking_entries WHERE id = @id`)
+        const exRow = existing.recordset[0]
+        const effectiveMilestone = patch.milestone_id
+            || exRow?.milestone_id
+            || (exRow ? await resolveProjectMilestoneId(pool, exRow.project_id) : null)
+
         const request = pool.request()
         request.input('id', sql.UniqueIdentifier, id)
         request.input('assignee_id', sql.UniqueIdentifier, patch.assignee_id ?? null)
@@ -399,7 +414,7 @@ export async function updateTrackingEntry(id: string, patch: UpdateTrackingEntry
         request.input('note', sql.NVarChar(sql.MAX), patch.note ?? null)
         request.input('color', sql.NVarChar(50), patch.color ?? null)
         request.input('color_source', sql.NVarChar(20), patch.color_source ?? 'MANUAL')
-        request.input('milestone_id', sql.UniqueIdentifier, patch.milestone_id ?? null)
+        request.input('milestone_id', sql.UniqueIdentifier, effectiveMilestone)
         request.input('updated_by', sql.UniqueIdentifier, user.id)
         if (flags.icon) request.input('icon', sql.NVarChar(50), patch.icon ?? null)
         if (flags.status) {
@@ -700,13 +715,15 @@ export async function createTrackingEntriesForTasks(taskIds: string[]) {
             const tk = await pool.request()
                 .input('id', sql.UniqueIdentifier, tid)
                 .query(`
-                    SELECT t.id, t.title, t.due_date, t.assignee_id, s.project_id
+                    SELECT t.id, t.title, t.due_date, t.assignee_id, s.project_id, s.milestone_id
                     FROM pms.tasks t
                     INNER JOIN pms.stories s ON s.id = t.story_id
                     WHERE t.id = @id
                 `)
             if (tk.recordset.length === 0) continue
             const row = tk.recordset[0]
+            // Inherit the story's milestone; fall back to the project's current milestone.
+            const milestoneId = row.milestone_id || await resolveProjectMilestoneId(pool, row.project_id)
             const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             const note = `<p><b>${esc(row.title || '')}</b></p>`
             await pool.request()
@@ -716,16 +733,17 @@ export async function createTrackingEntriesForTasks(taskIds: string[]) {
                 .input('assigneeId', sql.UniqueIdentifier, row.assignee_id || null)
                 .input('note', sql.NVarChar(sql.MAX), note)
                 .input('taskId', sql.UniqueIdentifier, tid)
+                .input('milestoneId', sql.UniqueIdentifier, milestoneId)
                 .input('createdBy', sql.UniqueIdentifier, user.id)
                 .query(`
                     INSERT INTO pms.team_tracking_entries (
                         id, project_id, entry_date, assignee_id, assignee_role,
                         note, color, color_source, status, is_active,
-                        task_id, created_by, created_at, updated_at
+                        task_id, milestone_id, created_by, created_at, updated_at
                     ) VALUES (
                         @id, @projectId, @entryDate, @assigneeId, 'EMPLOYEE',
                         @note, '#dc2626', 'MANUAL', 'PLANNED', 1,
-                        @taskId, @createdBy, GETDATE(), GETDATE()
+                        @taskId, @milestoneId, @createdBy, GETDATE(), GETDATE()
                     )
                 `)
             created++
@@ -817,17 +835,21 @@ export async function getOrCreateGeneralStory(projectId: string): Promise<{ succ
             `)
         const storyCode = `${prefix}${String(codeRes.recordset[0].n).padStart(3, '0')}`
         const newId = require('crypto').randomUUID()
+        // The auto "General" story must belong to a milestone so its tasks' man-day
+        // is attributed correctly — default to the project's current milestone.
+        const generalMilestoneId = await resolveProjectMilestoneId(pool, projectId)
         await pool.request()
             .input('id', sql.UniqueIdentifier, newId)
             .input('projectId', sql.UniqueIdentifier, projectId)
+            .input('milestoneId', sql.UniqueIdentifier, generalMilestoneId)
             .input('storyCode', sql.NVarChar, storyCode)
             .input('createdBy', sql.UniqueIdentifier, user.id)
             .query(`
                 INSERT INTO pms.stories (
-                    id, project_id, story_code, title, priority, status,
+                    id, project_id, milestone_id, story_code, title, priority, status,
                     sort_order, created_by, is_active, created_at, updated_at
                 ) VALUES (
-                    @id, @projectId, @storyCode, N'General', 'medium', 'backlog',
+                    @id, @projectId, @milestoneId, @storyCode, N'General', 'medium', 'backlog',
                     9999, @createdBy, 1, GETDATE(), GETDATE()
                 )
             `)
@@ -904,17 +926,19 @@ export async function createTaskFromTrackingEntry(input: ConvertToTaskInput) {
                     `)
                 const storyCode = `${prefix}${String(codeRes.recordset[0].n).padStart(3, '0')}`
                 const newStoryId = require('crypto').randomUUID()
+                const generalMilestoneId = await resolveProjectMilestoneId(pool, t.project_id)
                 await pool.request()
                     .input('id', sql.UniqueIdentifier, newStoryId)
                     .input('projectId', sql.UniqueIdentifier, t.project_id)
+                    .input('milestoneId', sql.UniqueIdentifier, generalMilestoneId)
                     .input('storyCode', sql.NVarChar, storyCode)
                     .input('createdBy', sql.UniqueIdentifier, user.id)
                     .query(`
                         INSERT INTO pms.stories (
-                            id, project_id, story_code, title, priority, status,
+                            id, project_id, milestone_id, story_code, title, priority, status,
                             sort_order, created_by, is_active, created_at, updated_at
                         ) VALUES (
-                            @id, @projectId, @storyCode, N'General', 'medium', 'backlog',
+                            @id, @projectId, @milestoneId, @storyCode, N'General', 'medium', 'backlog',
                             9999, @createdBy, 1, GETDATE(), GETDATE()
                         )
                     `)

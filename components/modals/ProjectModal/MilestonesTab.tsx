@@ -87,7 +87,7 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
     // --- Computed Totals & Validation ---
     const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
     const totalMDC = milestones.reduce((sum, m) => sum + (m.weight_mdc || 0), 0)
-    const totalPlanMD = milestones.reduce((sum, m) => sum + (m.planned_mandays || 0), 0)
+    const totalPlanMD = milestones.reduce((sum, m) => sum + (m.planned_mandays || m.effective_planned_mandays || 0), 0)
     const totalActMD = milestones.reduce((sum, m) => sum + (m.actual_mandays || 0), 0)
 
     const isTTDValid = Math.abs(totalTTD - 100) < 0.1
@@ -463,7 +463,8 @@ export function MilestonesTab({ milestones, setMilestones, milestoneConfigs, cur
                                                 <input
                                                     type="number"
                                                     className="w-full text-center border-slate-200 rounded px-1 py-1 text-xs"
-                                                    value={m.planned_mandays || 0}
+                                                    value={m.planned_mandays || m.effective_planned_mandays || 0}
+                                                    title={!m.planned_mandays && m.effective_planned_mandays ? `อัตโนมัติจาก MDC% × งบขาย (${m.effective_planned_mandays})` : undefined}
                                                     onChange={(e) => handleUpdateMilestone(i, 'planned_mandays', parseFloat(e.target.value))}
                                                     onKeyDown={(e) => handleKeyDown(e, i, 'planned_mandays')}
                                                     data-row={i}

@@ -164,7 +164,7 @@ export async function getProjectStatusOverview(filters?: StatusOverviewFilters):
 
                 -- Actual mandays from timesheet (exclude cancelled tasks and cancelled timesheet entries)
                 ISNULL((
-                    SELECT CAST(SUM(te.hours) / 8.0 AS DECIMAL(10,1))
+                    SELECT CAST(SUM(te.hours) / 7.0 AS DECIMAL(10,1))
                     FROM pms.timesheet_entries te
                     INNER JOIN pms.tasks t ON te.task_id = t.id
                     INNER JOIN pms.stories s ON t.story_id = s.id

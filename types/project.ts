@@ -125,6 +125,8 @@ export interface ProjectDeliverable {
 
 export interface MilestoneRow extends ProjectMilestone {
     // Extended properties for UI usage if any
+    /** Derived Plan MD (sold_mandays × MDC weight%) shown when planned_mandays is unset. */
+    effective_planned_mandays?: number
     deliverable_count?: number
     submitted_count?: number
     required_docs?: number

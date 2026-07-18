@@ -5,6 +5,7 @@ import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { generateTaskCode } from '@/lib/utils/task-code-generator'
+import { resolveProjectMilestoneId } from '@/lib/actions/milestone-resolve'
 
 // ============================================
 // TYPES
@@ -247,6 +248,9 @@ export async function createStory(data: {
 
         const pool = await getConnection()
 
+        // Enforce milestone: default to the project's current milestone when unset.
+        const effectiveMilestoneId = milestoneId || await resolveProjectMilestoneId(pool, projectId)
+
         // Generate story code
         const codeResult = await pool.request()
             .input('projectId', sql.UniqueIdentifier, projectId)
@@ -261,7 +265,7 @@ export async function createStory(data: {
 
         const result = await pool.request()
             .input('projectId', sql.UniqueIdentifier, projectId)
-            .input('milestoneId', sql.UniqueIdentifier, milestoneId || null)
+            .input('milestoneId', sql.UniqueIdentifier, effectiveMilestoneId)
             .input('storyCode', sql.NVarChar, storyCode)
             .input('title', sql.NVarChar, data.title.trim())
             .input('createdBy', sql.UniqueIdentifier, (user as any).employeeId || user.id)

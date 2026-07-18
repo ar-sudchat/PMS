@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { getWorkloadConfig } from './config-actions'
 import { generateTaskCode } from '@/lib/utils/task-code-generator'
+import { resolveProjectMilestoneId } from '@/lib/actions/milestone-resolve'
 
 // ============================================
 // TYPES
@@ -1246,6 +1247,7 @@ export async function createQuickReserveTask(data: {
         } else {
             // Create new story for internal issues
             const newStoryId = require('crypto').randomUUID()
+            const issueMilestoneId = await resolveProjectMilestoneId(pool, project.id)
 
             // Generate story code
             const codeResult = await pool.request()
@@ -1261,11 +1263,12 @@ export async function createQuickReserveTask(data: {
                 .input('id', sql.UniqueIdentifier, newStoryId)
                 .input('storyCode', sql.NVarChar, storyCode)
                 .input('projectId', sql.UniqueIdentifier, project.id)
+                .input('milestoneId', sql.UniqueIdentifier, issueMilestoneId)
                 .input('title', sql.NVarChar, storyTitle)
                 .input('createdBy', sql.UniqueIdentifier, user.id)
                 .query(`
-                    INSERT INTO pms.stories (id, story_code, project_id, title, status, is_active, created_by, created_at, updated_at)
-                    VALUES (@id, @storyCode, @projectId, @title, 'in_progress', 1, @createdBy, GETDATE(), GETDATE())
+                    INSERT INTO pms.stories (id, story_code, project_id, milestone_id, title, status, is_active, created_by, created_at, updated_at)
+                    VALUES (@id, @storyCode, @projectId, @milestoneId, @title, 'in_progress', 1, @createdBy, GETDATE(), GETDATE())
                 `)
 
             storyId = newStoryId

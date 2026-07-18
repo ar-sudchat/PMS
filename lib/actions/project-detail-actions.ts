@@ -351,7 +351,7 @@ export async function getProjectDetail(projectId: string) {
            WHERE s.project_id = p.id AND t.[is_active] = 1 AND t.[status] = 'done') AS completed_tasks,
           
           -- Used mandays
-          (SELECT ISNULL(SUM(te.hours), 0) / 8 FROM pms.timesheet_entries te
+          (SELECT ISNULL(SUM(te.hours), 0) / 7.0 FROM pms.timesheet_entries te
            INNER JOIN pms.tasks t ON te.task_id = t.id
            INNER JOIN pms.stories s ON t.story_id = s.id
            WHERE s.project_id = p.id AND te.[is_active] = 1) AS used_mandays
@@ -448,8 +448,8 @@ export async function getProjectMilestones(projectId: string) {
           pm.due_date,
           pm.weight_percent,
           pm.planned_mandays,
-          
-          (SELECT ISNULL(SUM(te.hours), 0) / 8 FROM pms.timesheet_entries te
+
+          (SELECT ISNULL(SUM(te.hours), 0) / 7.0 FROM pms.timesheet_entries te
            INNER JOIN pms.tasks t ON te.task_id = t.id
            INNER JOIN pms.stories s ON t.story_id = s.id
            WHERE s.milestone_id = pm.id AND te.[is_active] = 1) AS actual_mandays,

@@ -214,7 +214,7 @@ export async function getProjectPlanningData(projectId: string): Promise<{
                     pm.status,
                     ISNULL(pm.is_locked, 0) AS is_locked,
                     ISNULL(pm.is_verified, 0) AS is_verified,
-                    (SELECT ISNULL(SUM(te.hours), 0) / 8.0 FROM pms.timesheet_entries te
+                    (SELECT ISNULL(SUM(te.hours), 0) / 7.0 FROM pms.timesheet_entries te
                      INNER JOIN pms.tasks t ON te.task_id = t.id
                      INNER JOIN pms.stories s ON t.story_id = s.id
                      WHERE s.milestone_id = pm.id AND te.is_active = 1) AS actual_mandays,

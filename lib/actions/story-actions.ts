@@ -7,6 +7,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { randomUUID } from 'crypto'
 // Force revalidation
 import { isMilestoneLocked } from './milestone-actions'
+import { resolveProjectMilestoneId } from '@/lib/actions/milestone-resolve'
 
 export interface Story {
   id: string
@@ -51,9 +52,9 @@ export async function getStories(filters: StoryFilters) {
         mc.color AS milestone_color,
         (SELECT COUNT(*) FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS total_tasks,
         (SELECT COUNT(*) FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1 AND t.status = 'done') AS completed_tasks,
-        (SELECT ISNULL(SUM(t.estimated_hours), 0) / 8 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_estimated_md,
-        (SELECT ISNULL(SUM(t.actual_hours), 0) / 8 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_actual_md,
-        (ISNULL(s.estimated_hours, 0) / 8.0) AS estimated_md
+        (SELECT ISNULL(SUM(t.estimated_hours), 0) / 7.0 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_estimated_md,
+        (SELECT ISNULL(SUM(t.actual_hours), 0) / 7.0 FROM pms.tasks t WHERE t.story_id = s.id AND t.is_active = 1) AS calculated_actual_md,
+        (ISNULL(s.estimated_hours, 0) / 7.0) AS estimated_md
       FROM pms.stories s
       LEFT JOIN pms.projects p ON s.project_id = p.id
       LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
@@ -125,7 +126,7 @@ export async function getStoryById(id: string) {
           mc.code AS milestone_code,
           mc.name AS milestone_name,
           mc.color AS milestone_color,
-          (ISNULL(s.estimated_hours, 0) / 8.0) AS estimated_md
+          (ISNULL(s.estimated_hours, 0) / 7.0) AS estimated_md
         FROM pms.stories s
         LEFT JOIN pms.projects p ON s.project_id = p.id
         LEFT JOIN pms.project_milestones pm ON s.milestone_id = pm.id
@@ -175,8 +176,8 @@ export async function getStoryById(id: string) {
         tasks,
         total_tasks: totalTasks,
         completed_tasks: completedTasks,
-        calculated_estimated_md: totalEstimatedHours / 8,
-        calculated_actual_md: totalActualHours / 8,
+        calculated_estimated_md: totalEstimatedHours / 7,
+        calculated_actual_md: totalActualHours / 7,
         progress_percent: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
       }
     }
@@ -207,6 +208,10 @@ export async function createStory(data: {
     }
 
     const pool = await getConnection()
+
+    // Enforce milestone: default to the project's current milestone when unset,
+    // so the story's tasks are attributable to a milestone for man-day reporting.
+    const milestoneId = await resolveProjectMilestoneId(pool, data.project_id, data.milestone_id)
 
     // Check if milestone is locked
     if (data.milestone_id) {
@@ -244,7 +249,7 @@ export async function createStory(data: {
 
     const sortResult = await pool.request()
       .input('projectId', sql.UniqueIdentifier, data.project_id)
-      .input('milestoneId', sql.UniqueIdentifier, data.milestone_id || null)
+      .input('milestoneId', sql.UniqueIdentifier, milestoneId)
       .query(`
         SELECT ISNULL(MAX(sort_order), 0) + 1 AS next_sort
         FROM pms.stories
@@ -258,7 +263,7 @@ export async function createStory(data: {
     const result = await pool.request()
       .input('id', sql.UniqueIdentifier, newId)
       .input('projectId', sql.UniqueIdentifier, data.project_id)
-      .input('milestoneId', sql.UniqueIdentifier, data.milestone_id || null)
+      .input('milestoneId', sql.UniqueIdentifier, milestoneId)
       .input('storyCode', sql.NVarChar, storyCode)
       .input('title', sql.NVarChar, data.title)
       .input('titleTh', sql.NVarChar, data.title_th || null)

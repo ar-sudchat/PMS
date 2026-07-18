@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
 import { ProjectFormData } from '@/types/project'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 // Cache for optional column existence checks
 let _optionalCols: { hasContractValue: boolean; hasPaymentPercent: boolean } | null = null
@@ -629,6 +630,7 @@ export async function getProjectById(id: string) {
           pm.id,
           pm.milestone_config_id,
           pm.planned_mandays,
+          ep.eff_plan AS effective_planned_mandays,
           ISNULL(ts_md.actual_mandays, 0) as actual_mandays,
           -- Legacy weight for backward comaptibility/display
           ISNULL(pm.weight_percent, 0) as weight_percent,
@@ -683,6 +685,8 @@ export async function getProjectById(id: string) {
 
         FROM pms.project_milestones pm
         LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+        INNER JOIN pms.projects pr ON pr.id = pm.project_id
+        CROSS APPLY (SELECT ${effectivePlanMdSql('pr.sold_mandays', 'pm', 'mc')} AS eff_plan) ep
         LEFT JOIN (
             SELECT
                 s.milestone_id,

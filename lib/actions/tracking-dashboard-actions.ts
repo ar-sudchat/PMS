@@ -116,11 +116,11 @@ export async function getTrackingProjects(filters: TrackingFilters = {}): Promis
                 ISNULL(CONCAT(pm.first_name_th, ' ', pm.last_name_th), '-') as pm_name,
                 ISNULL(pm.nickname, '-') as pm_nickname,
                 ISNULL(p.sold_mandays, 0) as sold_mandays,
-                (SELECT ISNULL(SUM(ISNULL(hours,0))/8.0, 0) FROM pms.time_entries te 
-                 INNER JOIN pms.tasks t ON te.task_id = t.id 
+                (SELECT ISNULL(SUM(ISNULL(te.hours,0))/7.0, 0) FROM pms.timesheet_entries te
+                 INNER JOIN pms.tasks t ON te.task_id = t.id
                  INNER JOIN pms.stories s ON t.story_id = s.id
                  INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
-                 WHERE pm.project_id = p.id) as used_mandays,
+                 WHERE pm.project_id = p.id AND te.is_active = 1) as used_mandays,
                 ISNULL(p.progress_percent, 0) as progress_percent
             FROM pms.projects p
             LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id

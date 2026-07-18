@@ -112,7 +112,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
     const totalValue = formData.sold_mandays * formData.manday_rate
     const totalTTD = milestones.reduce((sum, m) => sum + (m.weight_ttd || 0), 0)
     const totalMDC = milestones.reduce((sum, m) => sum + (m.weight_mdc || 0), 0)
-    const totalMandays = milestones.reduce((sum, m) => sum + (m.planned_mandays || 0), 0)
+    const totalMandays = milestones.reduce((sum, m) => sum + (m.planned_mandays || m.effective_planned_mandays || 0), 0)
     // Validation: Allow small float diffs
     const isWeightValid = Math.abs(totalTTD - 100) < 0.1 && Math.abs(totalMDC - 100) < 0.1
     const isMandaysValid = totalMandays <= formData.sold_mandays
@@ -183,6 +183,7 @@ export function ProjectModal({ open, onClose, mode, project, onSuccess, defaultP
                         due_date: m.due_date ? new Date(m.due_date).toISOString().split('T')[0] : '',
                         completed_date: m.completed_date ? new Date(m.completed_date).toISOString().split('T')[0] : '',
                         planned_mandays: m.planned_mandays,
+                        effective_planned_mandays: m.effective_planned_mandays,
                         actual_mandays: m.actual_mandays,
                         deliverable_ids: m.deliverable_ids || [],
                         deliverables: m.deliverables || [], // New
