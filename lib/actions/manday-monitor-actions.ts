@@ -215,7 +215,7 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
                 INNER JOIN pms.tasks t ON te.task_id = t.id
                 INNER JOIN pms.stories s ON t.story_id = s.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
                 GROUP BY s.project_id
             )
             SELECT
@@ -247,7 +247,7 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
             LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
             LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
             WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
-            AND ${whereClause}
+            AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied */
             AND ${projWhere}
         `)
 
@@ -397,7 +397,7 @@ export async function getMandayByProject(
                 INNER JOIN pms.tasks t ON te.task_id = t.id
                 INNER JOIN pms.stories s ON t.story_id = s.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
                 GROUP BY s.project_id
             ) md ON p.id = md.project_id
             LEFT JOIN (
@@ -509,7 +509,7 @@ export async function getMandayByEmployee(
                 INNER JOIN pms.stories s ON t.story_id = s.id
                 ${projectJoin}
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
                 ${subqueryWhere}
                 GROUP BY te.employee_id
             ) md ON e.id = md.employee_id
@@ -568,7 +568,7 @@ export async function getMandayByCategory(filters: FilterParams): Promise<{
                 LEFT JOIN pms.task_type_configs ttc ON t.task_type = ttc.code
                 LEFT JOIN pms.employees e ON te.employee_id = e.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
                 ${additionalWhere}
                 GROUP BY t.task_type, ttc.name, ttc.color
             )
@@ -720,7 +720,7 @@ export async function getEmployeeProjectMatrix(filters: FilterParams): Promise<{
             INNER JOIN pms.stories s ON t.story_id = s.id
             INNER JOIN pms.projects p ON s.project_id = p.id
             WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1 AND p.is_active = 1
-            AND ${whereClause}
+            AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied */
             ${additionalWhere}
             GROUP BY
                 te.employee_id,
@@ -1003,7 +1003,7 @@ export async function getProjectMandayDetail(
                 INNER JOIN pms.project_milestones pm ON s.milestone_id = pm.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND s.project_id = @projectId
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
                 GROUP BY pm.id
             ),
             UnassignedData AS (
@@ -1016,7 +1016,7 @@ export async function getProjectMandayDetail(
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND s.project_id = @projectId
                 AND s.milestone_id IS NULL
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
             ),
             AllMilestones AS (
                 SELECT
@@ -1091,7 +1091,7 @@ export async function getProjectMandayDetail(
                 LEFT JOIN pms.positions pos ON e.position_id = pos.id
                 WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
                 AND s.project_id = @projectId
-                AND ${whereClause}
+                AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied; see getMandayTrend for the period breakdown */
                 GROUP BY e.id, e.employee_code, e.first_name_th, e.last_name_th, e.first_name, e.last_name, pos.code
             )
             SELECT
@@ -1133,7 +1133,7 @@ export async function getProjectMandayDetail(
             LEFT JOIN pms.milestone_configs ms ON pm.milestone_config_id = ms.id
             WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
             AND s.project_id = @projectId
-            AND ${whereClause}
+            AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied */
             GROUP BY e.id, e.first_name_th, e.last_name_th, e.first_name, e.last_name, pos.code, pm.id, ms.name
             ORDER BY employee_name, milestone_name
         `)
@@ -1168,7 +1168,7 @@ export async function getProjectMandayDetail(
             LEFT JOIN pms.milestone_configs msc ON pm.milestone_config_id = msc.id
             WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
             AND s.project_id = @projectId
-            AND ${whereClause}
+            AND 1 = 1 /* Actual MD is lifetime (cumulative) — period filter intentionally not applied */
             ORDER BY te.entry_date DESC, employee_name, t.title
         `)
 
