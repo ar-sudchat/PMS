@@ -98,5 +98,24 @@ GROUP BY year, month, quarter, project_id, project_code, project_name
 HAVING SUM(milestone_weight) > 0;
 GO
 
-PRINT 'Effective Plan MD view + man-day-control KPI updated.';
+-- 3) Milestone actual-vs-plan view — use effective Plan MD for variance / over-budget
+--    (read by manday-monitor's per-project "milestone over budget" flag).
+CREATE OR ALTER VIEW pms.vw_milestone_actual_mandays AS
+SELECT
+    pm.id AS milestone_id,
+    pm.project_id,
+    ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays,
+    ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS calculated_actual_mandays,
+    pm.actual_mandays AS stored_actual_mandays,
+    ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) - ISNULL(vp.effective_planned_mandays, 0) AS manday_variance
+FROM pms.project_milestones pm
+LEFT JOIN pms.stories s ON s.milestone_id = pm.id
+LEFT JOIN pms.tasks t ON t.story_id = s.id
+LEFT JOIN pms.timesheet_entries te ON te.task_id = t.id AND te.is_active = 1
+LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
+WHERE pm.status <> 'cancelled'
+GROUP BY pm.id, pm.project_id, vp.effective_planned_mandays, pm.actual_mandays;
+GO
+
+PRINT 'Effective Plan MD view + man-day-control KPI + milestone actual-mandays updated.';
 GO

@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 
 import { getCurrentUser } from '@/lib/auth'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 export interface SalesMetric {
     title: string
@@ -163,7 +164,7 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                     pm.due_date,
                     pm.completed_date,
                     pm.weight_percent,
-                    pm.planned_mandays,
+                    ep.eff_plan AS planned_mandays,
                     (p.total_value * ISNULL(pm.weight_percent, 0) / 100) as payment_amount,
                     
                     -- Calc Status
@@ -179,6 +180,7 @@ export async function getMilestoneTimeline(filters: TimelineFilters): Promise<Pr
                 LEFT JOIN pms.employees e ON p.project_owner_id = e.id
                 LEFT JOIN pms.project_milestones pm ON p.id = pm.project_id
                 LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                OUTER APPLY (SELECT ${effectivePlanMdSql('p.sold_mandays', 'pm', 'mc')} AS eff_plan) ep
                 LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
                 LEFT JOIN pms.customers c ON p.customer_id = c.id
                 

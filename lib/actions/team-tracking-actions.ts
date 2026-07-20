@@ -606,6 +606,8 @@ export async function copyTrackingEntryToDates(
             `)
         if (src.recordset.length === 0) return { success: false, error: 'ไม่พบรายการต้นทาง' }
         const s = src.recordset[0]
+        // Enforce milestone on the copies — inherit the source, else the project's current milestone.
+        const copyMilestoneId = s.milestone_id || await resolveProjectMilestoneId(pool, s.project_id)
 
         // 2) Insert one row per target date — INSERT...SELECT loop in one round-trip
         let created = 0
@@ -621,7 +623,7 @@ export async function copyTrackingEntryToDates(
                 .input('color', sql.NVarChar(20), s.color || '#6366f1')
                 .input('color_source', sql.NVarChar(20), s.color_source || 'MANUAL')
                 .input('icon', sql.NVarChar(50), s.icon || null)
-                .input('milestone_id', sql.UniqueIdentifier, s.milestone_id || null)
+                .input('milestone_id', sql.UniqueIdentifier, copyMilestoneId)
                 .input('created_by', sql.UniqueIdentifier, user.id)
                 .query(`
                     INSERT INTO pms.team_tracking_entries (

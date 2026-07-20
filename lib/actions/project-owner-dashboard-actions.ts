@@ -530,7 +530,7 @@ export async function getOwnerProjectsWithMilestones(ownerId: string): Promise<P
                 pm.status,
                 pm.due_date,
                 pm.completed_date,
-                ISNULL(pm.planned_mandays, 0) AS planned_mandays,
+                ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays,
                 ISNULL(pm.actual_mandays, 0) AS actual_mandays,
                 ISNULL(pm.progress_percent, 0) AS progress_percent,
                 DATEDIFF(DAY, GETDATE(), pm.due_date) AS days_until_due,
@@ -542,6 +542,7 @@ export async function getOwnerProjectsWithMilestones(ownerId: string): Promise<P
                 pm.sort_order
             FROM pms.project_milestones pm
             LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+            LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
             WHERE pm.project_id IN (${projectIds.map((_, i) => `@p${i}`).join(',')})
             ORDER BY pm.project_id, pm.sort_order
         `.replace(/@p\d+/g, (match, offset) => {
