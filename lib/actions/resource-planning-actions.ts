@@ -272,7 +272,7 @@ export async function getDevProjectsWithMilestones(): Promise<{
         }
 
         // Add PLAN resources (group by employee+milestone → 1 row per person per milestone)
-        // Use actual_hours/8 for mandays (fall back to estimated_hours/8)
+        // Use actual_hours/7 for mandays (fall back to estimated_hours/7)
         const planGroupMap = new Map<string, {
             first: any
             ranges: { start_date: string; end_date: string }[]
@@ -309,9 +309,9 @@ export async function getDevProjectsWithMilestones(): Promise<{
 
             // Calculate mandays: prefer actual_hours, fallback to estimated_hours, then count unique days
             const totalHours = group.totalActualHours > 0 ? group.totalActualHours : group.totalEstimatedHours
-            // Convert hours to mandays (1 MD = 8 hours), round to 2 decimals
+            // Convert hours to mandays (1 MD = 7 hours), round to 2 decimals
             const mandays = totalHours > 0
-                ? Math.round((totalHours / 8) * 100) / 100
+                ? Math.round((totalHours / 7) * 100) / 100
                 : 0
 
             if (!resourceMap.has(msId)) resourceMap.set(msId, [])

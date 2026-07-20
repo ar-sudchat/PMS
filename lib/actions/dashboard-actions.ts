@@ -223,7 +223,7 @@ export async function getDashboardData(): Promise<{ success: boolean; data: Dash
             : {
                 total_hours_today: 0,
                 entry_count: 0,
-                target_hours: 8,
+                target_hours: 7,
                 completion_percent: 0,
                 entries: []
             }

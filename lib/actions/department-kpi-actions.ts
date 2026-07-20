@@ -2,6 +2,7 @@
 
 import sql from 'mssql'
 import { getConnection } from '@/lib/db'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 // ============================================
 // Time to Delivery KPI Actions
@@ -405,7 +406,7 @@ export async function getMandayControlMilestones(params: {
                     ISNULL(p.kpi_exclude_mdc, 0) AS kpi_exclude_mdc,
                     mc.name AS milestone_name,
                     pm.due_date,
-                    pm.planned_mandays,
+                    ep.eff_plan AS planned_mandays,
                     ISNULL(ts_md.actual_mandays, 0) AS actual_mandays,
                     COALESCE(pm.weight_mdc, mc.default_weight_mdc,
                         CASE mc.name
@@ -418,15 +419,16 @@ export async function getMandayControlMilestones(params: {
                         END) AS weight_mdc,
                     CASE
                         WHEN ts_md.actual_mandays IS NULL OR ts_md.actual_mandays = 0 THEN 0
-                        WHEN pm.planned_mandays IS NULL OR pm.planned_mandays = 0 THEN 0
-                        WHEN ts_md.actual_mandays <= pm.planned_mandays THEN 100
-                        WHEN ts_md.actual_mandays <= pm.planned_mandays * 1.1 THEN 90
-                        WHEN ts_md.actual_mandays <= pm.planned_mandays * 1.2 THEN 70
+                        WHEN ep.eff_plan IS NULL OR ep.eff_plan = 0 THEN 0
+                        WHEN ts_md.actual_mandays <= ep.eff_plan THEN 100
+                        WHEN ts_md.actual_mandays <= ep.eff_plan * 1.1 THEN 90
+                        WHEN ts_md.actual_mandays <= ep.eff_plan * 1.2 THEN 70
                         ELSE 50
                     END AS achievement_percent
                 FROM pms.project_milestones pm
                 INNER JOIN pms.projects p ON pm.project_id = p.id
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                CROSS APPLY (SELECT ${effectivePlanMdSql('p.sold_mandays', 'pm', 'mc')} AS eff_plan) ep
                 LEFT JOIN (
                     SELECT
                         s.milestone_id,

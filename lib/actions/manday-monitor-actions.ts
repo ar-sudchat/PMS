@@ -3,6 +3,7 @@
 import { getConnection } from '@/lib/db'
 import sql from 'mssql'
 import { getCurrentUser } from '@/lib/auth'
+import { effectivePlanMdSql } from '@/lib/actions/milestone-plan'
 
 // ============================================
 // Types
@@ -177,88 +178,119 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
         const pool = await getConnection()
         const { whereClause, params } = buildPeriodWhereClause(filters)
 
+        // Project-level filter — kept IDENTICAL to getMandayByProject so the KPI cards
+        // reconcile exactly with the project table (and its "Budget Status" footer).
+        // Previously the summary used a different status filter and the budget query
+        // ignored projectId entirely, so card totals ≠ table totals and filtering by a
+        // single project left the budget/utilization showing org-wide numbers.
+        let projWhere = `p.is_active = 1 AND (ps.code IS NULL OR ps.code NOT IN ('CANCELLED'))`
+
         const request = pool.request()
         Object.entries(params).forEach(([key, value]) => {
             request.input(key, value)
         })
-
-        // Add optional filters
-        let additionalWhere = ''
         if (filters.projectId) {
-            additionalWhere += ' AND s.project_id = @projectId'
+            projWhere += ' AND p.id = @projectId'
             request.input('projectId', sql.UniqueIdentifier, filters.projectId)
         }
-        if (filters.departmentId) {
-            additionalWhere += ' AND e.department_id = @departmentId'
-            request.input('departmentId', sql.UniqueIdentifier, filters.departmentId)
-        }
         if (filters.projectTypeCode) {
-            additionalWhere += ' AND pt.code = @projectTypeCode'
+            projWhere += ' AND pt.code = @projectTypeCode'
             request.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode)
         }
         if (filters.ownerId) {
-            additionalWhere += ' AND p.project_owner_id = @ownerId'
+            projWhere += ' AND p.project_owner_id = @ownerId'
             request.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
         }
 
+        // total_manday_used = Σ of the SAME per-project rounded value the table shows
+        // (round-per-project /7 then sum), and total_budget = Σ sold_mandays over the
+        // SAME (non-cancelled, filtered) project set → the headline cards equal the
+        // table sums exactly.
         const result = await request.query(`
+            WITH md AS (
+                SELECT
+                    s.project_id,
+                    CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS actual_mandays
+                FROM pms.timesheet_entries te
+                INNER JOIN pms.tasks t ON te.task_id = t.id
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
+                AND ${whereClause}
+                GROUP BY s.project_id
+            )
             SELECT
-                CAST(ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS DECIMAL(10,2)) AS total_manday_used,
-                COUNT(DISTINCT s.project_id) AS active_projects,
-                COUNT(DISTINCT te.employee_id) AS active_employees
+                CAST(ISNULL(SUM(ISNULL(md.actual_mandays, 0)), 0) AS DECIMAL(12,2)) AS total_manday_used,
+                ISNULL(SUM(ISNULL(p.sold_mandays, 0)), 0) AS total_budget,
+                COUNT(DISTINCT CASE WHEN ISNULL(md.actual_mandays, 0) > 0 THEN p.id END) AS active_projects
+            FROM pms.projects p
+            LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
+            LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+            LEFT JOIN md ON md.project_id = p.id
+            WHERE ${projWhere}
+        `)
+
+        // active_employees = distinct people who logged time in the period within the
+        // same (non-cancelled, filtered) project set.
+        const empRequest = pool.request()
+        Object.entries(params).forEach(([key, value]) => {
+            empRequest.input(key, value)
+        })
+        if (filters.projectId) empRequest.input('projectId', sql.UniqueIdentifier, filters.projectId)
+        if (filters.projectTypeCode) empRequest.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode)
+        if (filters.ownerId) empRequest.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
+        const empResult = await empRequest.query(`
+            SELECT COUNT(DISTINCT te.employee_id) AS active_employees
             FROM pms.timesheet_entries te
             INNER JOIN pms.tasks t ON te.task_id = t.id
             INNER JOIN pms.stories s ON t.story_id = s.id
             INNER JOIN pms.projects p ON s.project_id = p.id
-            LEFT JOIN pms.employees e ON te.employee_id = e.id
+            LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
             LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
-            WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1 AND p.is_active = 1
+            WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
             AND ${whereClause}
-            ${additionalWhere}
+            AND ${projWhere}
         `)
 
-        // Get total budget
-        const budgetRequest = pool.request()
-        budgetRequest.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode || '')
-        if (filters.ownerId) {
-            budgetRequest.input('budgetOwnerId', sql.UniqueIdentifier, filters.ownerId)
-        }
-        const budgetResult = await budgetRequest.query(`
-                SELECT ISNULL(SUM(ISNULL(p.sold_mandays, 0)), 0) AS total_budget
-                FROM pms.projects p
-                LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
-                LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
-                WHERE p.is_active = 1
-                AND (ps.code IS NULL OR ps.code NOT IN ('CANCELLED', 'COMPLETED', 'CLOSED'))
-                ${filters.projectTypeCode ? 'AND pt.code = @projectTypeCode' : ''}
-                ${filters.ownerId ? 'AND p.project_owner_id = @budgetOwnerId' : ''}
-            `)
-
-        // Get previous period for comparison
-        const prevParams = { ...params }
+        // Get previous period for the change % arrow — same project set + rounding.
+        const prevParams: Record<string, any> = { ...params }
         if (filters.periodType === 'month' && filters.month) {
             prevParams.month = filters.month > 1 ? filters.month - 1 : 12
             if (filters.month === 1) prevParams.year = filters.year - 1
         } else if (filters.periodType === 'year') {
             prevParams.year = filters.year - 1
         }
+        const prevWhereClause = buildPeriodWhereClause({ ...filters, ...prevParams }).whereClause
 
         const prevRequest = pool.request()
         Object.entries(prevParams).forEach(([key, value]) => {
             prevRequest.input(key, value)
         })
+        if (filters.projectId) prevRequest.input('projectId', sql.UniqueIdentifier, filters.projectId)
+        if (filters.projectTypeCode) prevRequest.input('projectTypeCode', sql.NVarChar, filters.projectTypeCode)
+        if (filters.ownerId) prevRequest.input('ownerId', sql.UniqueIdentifier, filters.ownerId)
 
         const prevResult = await prevRequest.query(`
-            SELECT CAST(ROUND(ISNULL(SUM(te.hours), 0) / 7.0, 2) AS DECIMAL(10,2)) AS prev_mandays
-            FROM pms.timesheet_entries te
-            INNER JOIN pms.tasks t ON te.task_id = t.id
-            INNER JOIN pms.stories s ON t.story_id = s.id
-            WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
-            AND ${buildPeriodWhereClause({ ...filters, ...prevParams }).whereClause}
+            WITH md AS (
+                SELECT
+                    s.project_id,
+                    CAST(ROUND(SUM(te.hours) / 7.0, 2) AS DECIMAL(10,2)) AS actual_mandays
+                FROM pms.timesheet_entries te
+                INNER JOIN pms.tasks t ON te.task_id = t.id
+                INNER JOIN pms.stories s ON t.story_id = s.id
+                WHERE te.is_active = 1 AND t.is_active = 1 AND s.is_active = 1
+                AND ${prevWhereClause}
+                GROUP BY s.project_id
+            )
+            SELECT CAST(ISNULL(SUM(ISNULL(md.actual_mandays, 0)), 0) AS DECIMAL(12,2)) AS prev_mandays
+            FROM pms.projects p
+            LEFT JOIN pms.project_status_configs ps ON p.status_id = ps.id
+            LEFT JOIN pms.project_types pt ON p.project_type_id = pt.id
+            LEFT JOIN md ON md.project_id = p.id
+            WHERE ${projWhere}
         `)
 
         const data = result.recordset[0]
-        const totalBudget = budgetResult.recordset[0]?.total_budget || 0
+        const totalBudget = data.total_budget || 0
         const prevMandays = prevResult.recordset[0]?.prev_mandays || 0
         const totalUsed = data.total_manday_used || 0
 
@@ -272,7 +304,7 @@ export async function getMandaySummary(filters: FilterParams): Promise<{
                     ? Math.round((totalUsed / totalBudget) * 1000) / 10
                     : 0,
                 active_projects: data.active_projects || 0,
-                active_employees: data.active_employees || 0,
+                active_employees: empResult.recordset[0]?.active_employees || 0,
                 prev_period_mandays: prevMandays,
                 change_percent: prevMandays > 0
                     ? Math.round(((totalUsed - prevMandays) / prevMandays) * 1000) / 10
@@ -955,6 +987,7 @@ export async function getProjectMandayDetail(
         // Get man-day by milestone
         const milestoneRequest = pool.request()
         milestoneRequest.input('projectId', sql.UniqueIdentifier, projectId)
+        milestoneRequest.input('budget', sql.Decimal(18, 2), project.budget_mandays || 0)
         Object.entries(params).forEach(([key, value]) => {
             milestoneRequest.input(key, value)
         })
@@ -992,12 +1025,13 @@ export async function getProjectMandayDetail(
                     COALESCE(ms.name, N'Milestone #' + CAST(ISNULL(pm.sort_order, 0) AS NVARCHAR(10))) AS milestone_name,
                     ms.code AS milestone_code,
                     COALESCE(ms.sort_order, pm.sort_order, 0) AS sort_order,
-                    ISNULL(pm.planned_mandays, 0) AS planned_mandays,
+                    ISNULL(ep.eff_plan, 0) AS planned_mandays,
                     ISNULL(ad.mandays, 0) AS mandays,
                     ISNULL(ad.hours, 0) AS hours
                 FROM pms.project_milestones pm
                 LEFT JOIN pms.milestone_configs ms ON pm.milestone_config_id = ms.id
                 LEFT JOIN ActualData ad ON pm.id = ad.milestone_id
+                CROSS APPLY (SELECT ${effectivePlanMdSql('@budget', 'pm', 'ms')} AS eff_plan) ep
                 WHERE pm.project_id = @projectId
 
                 UNION ALL

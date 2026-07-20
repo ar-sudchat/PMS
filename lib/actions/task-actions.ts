@@ -5,6 +5,7 @@ import sql from 'mssql'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import { isMilestoneLocked } from './milestone-actions'
+import { resolveProjectMilestoneId } from '@/lib/actions/milestone-resolve'
 import { generateTaskCode } from '@/lib/utils/task-code-generator'
 import { moveFile, deleteFile } from '@/lib/services/file-service'
 import { getWorkingDaysBetween, addWorkingDays, subtractWorkingDays } from '@/lib/utils/date-math'
@@ -178,8 +179,9 @@ export async function createTasksBulk(input: {
         // Revalidate project view once
         const storyProjectResult = await pool.request()
             .input('storyId', sql.UniqueIdentifier, input.story_id)
-            .query(`SELECT project_id FROM pms.stories WHERE id = @storyId`)
+            .query(`SELECT project_id, milestone_id FROM pms.stories WHERE id = @storyId`)
         const projectId = storyProjectResult.recordset[0]?.project_id
+        const storyMilestoneId = storyProjectResult.recordset[0]?.milestone_id
         if (projectId) {
             revalidatePath(`/projects/${projectId}`)
         }
@@ -187,6 +189,9 @@ export async function createTasksBulk(input: {
         // Auto-create a matching tracking entry per task so they surface on the
         // gantt-overview daily grid. Skips silently when the column doesn't exist.
         if (projectId) {
+            // Mirror entries inherit the story's milestone (fallback: project current
+            // milestone) so their man-day is attributed to a milestone.
+            const mirrorMilestoneId = storyMilestoneId || await resolveProjectMilestoneId(pool, projectId)
             for (let i = 0; i < input.tasks.length; i++) {
                 const row = input.tasks[i]
                 const c = created[i]
@@ -199,16 +204,17 @@ export async function createTasksBulk(input: {
                         .input('assigneeId', sql.UniqueIdentifier, row.assignee_id || null)
                         .input('note', sql.NVarChar(sql.MAX), `<p><b>${esc(c.title)}</b></p>`)
                         .input('taskId', sql.UniqueIdentifier, c.id)
+                        .input('milestoneId', sql.UniqueIdentifier, mirrorMilestoneId)
                         .input('createdBy', sql.UniqueIdentifier, user.id)
                         .query(`
                             INSERT INTO pms.team_tracking_entries (
                                 id, project_id, entry_date, assignee_id, assignee_role,
                                 note, color, color_source, status, is_active,
-                                task_id, created_by, created_at, updated_at
+                                task_id, milestone_id, created_by, created_at, updated_at
                             ) VALUES (
                                 @id, @projectId, @entryDate, @assigneeId, 'EMPLOYEE',
                                 @note, '#dc2626', 'MANUAL', 'PLANNED', 1,
-                                @taskId, @createdBy, GETDATE(), GETDATE()
+                                @taskId, @milestoneId, @createdBy, GETDATE(), GETDATE()
                             )
                         `)
                 } catch (e) {

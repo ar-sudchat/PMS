@@ -98,8 +98,8 @@ SELECT
     te.employee_id,
     SUM(te.hours) AS total_hours_today,
     COUNT(*) AS entry_count,
-    8 AS target_hours,
-    CAST(ROUND((SUM(te.hours) / 8.0) * 100, 0) AS INT) AS completion_percent
+    7 AS target_hours,
+    CAST(ROUND((SUM(te.hours) / 7.0) * 100, 0) AS INT) AS completion_percent
 FROM pms.timesheet_entries te
 WHERE te.is_active = 1 
   AND te.entry_date = CAST(GETDATE() AS DATE)

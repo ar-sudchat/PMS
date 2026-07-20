@@ -202,7 +202,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
                             <p className="text-3xl font-bold">
                                 {data.timesheetToday?.total_hours_today || 0}h
                                 <span className="text-slate-300 mx-1">/</span>
-                                {data.timesheetToday?.target_hours || 8}h
+                                {data.timesheetToday?.target_hours || 7}h
                             </p>
                             <div className="w-full h-3 bg-slate-100 rounded-full mt-2 overflow-hidden">
                                 <div

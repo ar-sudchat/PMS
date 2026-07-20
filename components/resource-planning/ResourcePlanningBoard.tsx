@@ -770,7 +770,7 @@ export function ResourcePlanningBoard({ data, filterOptions, onRefresh }: Resour
                                             <th className="text-left py-2 px-1 font-medium min-w-[80px] bg-muted/50 text-[11px]">Milestone</th>
                                             <th className="text-center py-2 px-1 font-medium min-w-[65px] bg-muted/50 text-[11px]">Due</th>
                                             <th className="text-center py-2 px-1 font-medium min-w-[40px] bg-muted/50 text-[11px]">Budget</th>
-                                            <th className="text-center py-2 px-1 font-medium min-w-[40px] bg-muted/50 text-[11px]" title="MD = Mandays (actual hours / 8)">MD</th>
+                                            <th className="text-center py-2 px-1 font-medium min-w-[40px] bg-muted/50 text-[11px]" title="MD = Mandays (actual hours / 7)">MD</th>
                                             <th className="text-center py-2 px-0 font-medium min-w-[24px] bg-muted/50"></th>
                                             {monthDays.map((day, i) => {
                                                 const weekend = isWeekend(day)

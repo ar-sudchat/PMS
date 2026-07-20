@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import sql from 'mssql'
 import { generateTaskCode } from '@/lib/utils/task-code-generator'
+import { resolveProjectMilestoneId } from '@/lib/actions/milestone-resolve'
 
 // Types
 export interface WorkItemFilters {
@@ -438,6 +439,9 @@ export async function createStory(data: any) {
     try {
         const pool = await getConnection()
 
+        // Enforce milestone: default to the project's current milestone when unset.
+        const milestoneId = await resolveProjectMilestoneId(pool, data.project_id, data.milestone_id)
+
         // Generate Story Code (S-XXXX)
         const codeResult = await pool.request()
             .input('projectId', data.project_id)
@@ -452,7 +456,7 @@ export async function createStory(data: any) {
         const result = await pool.request()
             .input('id', sql.UniqueIdentifier, newId)
             .input('project_id', sql.UniqueIdentifier, data.project_id)
-            .input('milestone_id', sql.UniqueIdentifier, data.milestone_id)
+            .input('milestone_id', sql.UniqueIdentifier, milestoneId)
             .input('story_code', sql.NVarChar, storyCode)
             .input('title', sql.NVarChar, data.title)
             .input('description', sql.NVarChar, data.description || null)
