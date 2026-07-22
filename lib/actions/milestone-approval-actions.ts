@@ -109,7 +109,7 @@ export async function getMilestoneApprovalStatus(milestoneId: string): Promise<M
       pm.approval_notes,
       pm.due_date,
       pm.completed_date,
-      pm.planned_mandays AS plan_mandays,
+      ISNULL(vp.effective_planned_mandays, 0) AS plan_mandays,
       ISNULL(pm.actual_mandays, 0) AS actual_mandays,
       
       -- Story counts
@@ -130,6 +130,7 @@ export async function getMilestoneApprovalStatus(milestoneId: string): Promise<M
        
     FROM pms.project_milestones pm
     LEFT JOIN pms.employees e ON pm.approved_by = e.id
+    LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
     WHERE pm.id = @milestoneId
   `)
 
@@ -281,7 +282,7 @@ export async function getProjectMilestonesWithApproval(projectId: string): Promi
           ISNULL(mc.name, pm.name) AS name,
           ISNULL(mc.color, ISNULL(pm.color, '#6366f1')) AS color,
           ISNULL(pm.weight_percent, 0) AS weight_percent,
-          ISNULL(pm.planned_mandays, 0) AS planned_mandays,
+          ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays,
           ISNULL(pm.actual_mandays, 0) AS actual_mandays,
           pm.due_date,
           pm.completed_date,
@@ -296,6 +297,7 @@ export async function getProjectMilestonesWithApproval(projectId: string): Promi
            
         FROM pms.project_milestones pm
         LEFT JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+        LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
         WHERE pm.project_id = @projectId AND pm.is_active = 1
         ORDER BY pm.display_order, pm.due_date
       `)

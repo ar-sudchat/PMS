@@ -770,11 +770,12 @@ export async function getProjectHealthDetail(projectId: string): Promise<{
                     pm.id, mc.name AS milestone_name, mc.code AS milestone_code,
                     pm.due_date, pm.completed_date, pm.is_verified, pm.is_locked,
                     pm.kpi_ttd_pass, pm.kpi_mdc_pass, pm.kpi_docs_pass,
-                    pm.planned_mandays, pm.actual_mandays, pm.weight_ttd, pm.weight_mdc,
+                    ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays, pm.actual_mandays, pm.weight_ttd, pm.weight_mdc,
                     (SELECT COUNT(*) FROM pms.project_deliverables pd WHERE pd.project_milestone_id = pm.id AND pd.is_required = 1) AS required_docs,
                     (SELECT COUNT(*) FROM pms.project_deliverables pd WHERE pd.project_milestone_id = pm.id AND pd.is_required = 1 AND pd.submitted_date IS NOT NULL) AS submitted_docs
                 FROM pms.project_milestones pm
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+                LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
                 WHERE pm.project_id = @projectId
                 ORDER BY pm.sort_order
             `)
@@ -837,11 +838,12 @@ export async function getMilestoneHealthDetail(milestoneId: string): Promise<{
             .input('milestoneId', sql.UniqueIdentifier, milestoneId)
             .query(`
                 SELECT pm.id, mc.name, mc.code, p.name AS project_name, pm.due_date, pm.completed_date,
-                       pm.support_end_date, pm.is_verified, pm.planned_mandays, pm.actual_mandays,
+                       pm.support_end_date, pm.is_verified, ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays, pm.actual_mandays,
                        pm.kpi_ttd_pass, pm.kpi_mdc_pass, pm.kpi_docs_pass
                 FROM pms.project_milestones pm
                 INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
                 INNER JOIN pms.projects p ON pm.project_id = p.id
+                LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
                 WHERE pm.id = @milestoneId
             `)
 

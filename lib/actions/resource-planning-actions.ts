@@ -175,9 +175,10 @@ export async function getDevProjectsWithMilestones(): Promise<{
                 mc.color AS milestone_color,
                 pm.due_date,
                 mc.sort_order,
-                ISNULL(pm.planned_mandays, 0) AS planned_mandays
+                ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays
             FROM pms.project_milestones pm
             INNER JOIN pms.milestone_configs mc ON pm.milestone_config_id = mc.id
+            LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
             WHERE pm.project_id IN (${projectIds.map((_: string, i: number) => `'${projectIds[i]}'`).join(',')})
             ORDER BY mc.sort_order
         `)

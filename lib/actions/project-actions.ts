@@ -731,7 +731,7 @@ export async function getProjectById(id: string) {
             }
         })
 
-        const totalPlannedMD = milestones.reduce((sum: number, m: any) => sum + (m.planned_mandays || 0), 0)
+        const totalPlannedMD = milestones.reduce((sum: number, m: any) => sum + (m.planned_mandays || m.effective_planned_mandays || 0), 0)
         const totalActualMD = milestones.reduce((sum: number, m: any) => sum + (m.actual_mandays || 0), 0)
         const completedCount = milestones.filter((m: any) => m.status === 'completed').length
 

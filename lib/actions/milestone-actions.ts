@@ -120,13 +120,13 @@ export async function calculateMilestoneKPI(milestoneId: string): Promise<{
         const result = await pool.request()
             .input('milestoneId', sql.UniqueIdentifier, milestoneId)
             .query(`
-        SELECT 
+        SELECT
           pm.completed_date,
           pm.due_date,
           pm.actual_mandays,
-          pm.planned_mandays,
+          ISNULL(vp.effective_planned_mandays, 0) AS planned_mandays,
           CASE WHEN pm.completed_date <= pm.due_date THEN 1 ELSE 0 END AS ttd_pass,
-          CASE WHEN pm.actual_mandays <= pm.planned_mandays THEN 1 ELSE 0 END AS mdc_pass,
+          CASE WHEN pm.actual_mandays <= ISNULL(vp.effective_planned_mandays, 0) THEN 1 ELSE 0 END AS mdc_pass,
           COUNT(CASE WHEN pd.is_required = 1 THEN 1 END) AS required_docs,
           COUNT(CASE 
             WHEN pd.is_required = 1 
@@ -136,8 +136,9 @@ export async function calculateMilestoneKPI(milestoneId: string): Promise<{
           END) AS docs_on_time
         FROM pms.project_milestones pm
         LEFT JOIN pms.project_deliverables pd ON pm.id = pd.project_milestone_id
+        LEFT JOIN pms.vw_milestone_plan_md vp ON vp.project_milestone_id = pm.id
         WHERE pm.id = @milestoneId
-        GROUP BY pm.id, pm.completed_date, pm.due_date, pm.actual_mandays, pm.planned_mandays
+        GROUP BY pm.id, pm.completed_date, pm.due_date, pm.actual_mandays, vp.effective_planned_mandays
       `)
 
         if (result.recordset.length === 0) {
